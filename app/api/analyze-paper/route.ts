@@ -5,8 +5,10 @@ import { createOpenAI } from "@ai-sdk/openai"
 // Safe imports for optional dependencies
 let ratelimit: any = null
 try {
-  const { Ratelimit } = require("@upstash/ratelimit")
-  const { Redis } = require("@upstash/redis")
+  // Use eval('require') to hide the require from Webpack's static analysis
+  const req = eval('require')
+  const { Ratelimit } = req("@upstash/ratelimit")
+  const { Redis } = req("@upstash/redis")
   
   const redis = new Redis({
     url: process.env.UPSTASH_REDIS_REST_URL || "",
