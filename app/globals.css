@@ -144,3 +144,30 @@
   @apply bg-muted-foreground/20 rounded-full border-2 border-transparent bg-clip-padding hover:bg-muted-foreground/40 transition-colors;
 }
 
+/* Premium UI Utilities */
+.hover-rotate-y-12:hover {
+  transform: perspective(1000px) rotateY(12deg);
+}
+
+.glass-morphism {
+  @apply bg-background/60 backdrop-blur-xl border border-white/10 shadow-2xl;
+}
+
+.flipper-card {
+  transition: transform 0.6s;
+  transform-style: preserve-3d;
+}
+
+.flipper-card:hover {
+  transform: rotateY(10deg);
+}
+
+@keyframes float {
+  0% { transform: translateY(0px); }
+  50% { transform: translateY(-10px); }
+  100% { transform: translateY(0px); }
+}
+
+.animate-float {
+  animation: float 4s ease-in-out infinite;
+}

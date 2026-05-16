@@ -1,0 +1,7 @@
+Syllabus for Calculus:
+1. Limits and Continuity
+2. Differentiation: Rules, Chain Rule, Implicit Differentiation
+3. Applications of Differentiation: Maxima/Minima, Related Rates
+4. Integration: Indefinite and Definite Integrals, Substitution
+5. Differential Equations: First Order Linear
+6. Sequences and Series

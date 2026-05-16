@@ -1,8 +1,7 @@
 import ExamAnalyzer from "@/components/exam-analyzer"
-import { Brain, ShieldCheck, Zap, Code2, Sparkles, ChevronRight } from "lucide-react"
+import { Brain, ShieldCheck, Zap, Code2, Sparkles, ChevronDown } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { Footer } from "@/components/footer"
 
 export default function Home() {
   return (
@@ -22,10 +21,10 @@ export default function Home() {
             weight topics, and predict potential examination questions with 94% accuracy.
           </p>
           <div className="flex justify-center gap-4">
-            <Button size="lg" className="h-14 px-10 text-lg font-bold rounded-full shadow-lg shadow-primary/20" asChild>
+            <Button size="lg" className="h-14 px-10 text-lg font-bold rounded-full" asChild>
               <a href="#analyzer">Start Analyzing</a>
             </Button>
-            <Button size="lg" variant="outline" className="h-14 px-10 text-lg font-medium rounded-full bg-background/50 backdrop-blur">
+            <Button size="lg" variant="outline" className="h-14 px-10 text-lg font-medium rounded-full bg-background/50">
               View Sample Results
             </Button>
           </div>
@@ -38,7 +37,7 @@ export default function Home() {
         </div>
       </section>
 
-      {/* Technical Feature Section */}
+      {/* Technical Feature Section (The "Code Try Catch" section) */}
       <section className="py-24 border-b bg-background">
         <div className="container mx-auto px-4">
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-16 items-center">
@@ -48,8 +47,8 @@ export default function Home() {
               </div>
               <h2 className="text-4xl font-bold mb-6 tracking-tight">Robust Error-Resilient Processing</h2>
               <p className="text-lg text-muted-foreground mb-8">
-                Every analysis step is protected by multi-layered error handling 
-                and fallback mechanisms. Our "Self-Dependent" architecture ensures stability.
+                We take stability seriously. Every analysis step is protected by multi-layered error handling 
+                and fallback mechanisms to ensure you get results even when models fluctuate.
               </p>
               
               <div className="space-y-4">
@@ -58,8 +57,8 @@ export default function Home() {
                     <ShieldCheck className="w-3 h-3 text-green-500" />
                   </div>
                   <div>
-                    <span className="font-semibold">LangChain Powered:</span>
-                    <p className="text-muted-foreground text-sm">We use advanced chaining for complex reasoning and comparative analysis.</p>
+                    <span className="font-semibold">Automatic Fallbacks:</span>
+                    <p className="text-muted-foreground text-sm">If an API fails, we automatically switch to secondary models.</p>
                   </div>
                 </div>
                 <div className="flex items-start gap-3">
@@ -67,15 +66,15 @@ export default function Home() {
                     <Zap className="w-3 h-3 text-blue-500" />
                   </div>
                   <div>
-                    <span className="font-semibold">Vercel Production Ready:</span>
-                    <p className="text-muted-foreground text-sm">Optimized for low latency and high availability on edge networks.</p>
+                    <span className="font-semibold">JSON Validation:</span>
+                    <p className="text-muted-foreground text-sm">Every AI response is strictly validated and cleaned before rendering.</p>
                   </div>
                 </div>
               </div>
             </div>
 
             <div className="bg-slate-950 rounded-2xl p-6 shadow-2xl border border-white/10 font-mono text-sm overflow-hidden relative">
-              <div className="absolute top-0 right-0 p-4 opacity-10 text-white">
+              <div className="absolute top-0 right-0 p-4 opacity-10">
                 <Brain className="w-48 h-48" />
               </div>
               <div className="flex gap-2 mb-6">
@@ -85,28 +84,45 @@ export default function Home() {
               </div>
               <pre className="text-slate-300">
                 <code>{`try {
-  // Comparative LangChain analysis
-  const insights = await analyzePaper({
-    target: paperContent,
-    requirements: sampleContent
-  });
+  // 1. Analyze paper structure
+  const result = await analyzePaper(content);
   
-  return formatProductionReady(insights);
+  // 2. Validate structural integrity
+  if (!isValid(result)) {
+    throw new ValidationError("Incomplete analysis");
+  }
+
+  return formatPremiumOutput(result);
 } catch (error) {
-  return handleProductionError(error);
+  console.error("Resilient Mode Engaged:", error);
+  return generateVerifiedBackup(content);
 }`}</code>
               </pre>
+              <div className="mt-6 flex items-center gap-2 text-xs text-primary/80 font-bold uppercase tracking-wider">
+                <Sparkles className="w-3 h-3" /> System: Stable 
+              </div>
             </div>
           </div>
         </div>
       </section>
 
       {/* Main App Section */}
-      <div id="analyzer" className="scroll-mt-20 py-20 bg-muted/10">
+      <div id="analyzer" className="scroll-mt-20">
         <ExamAnalyzer />
       </div>
 
-      <Footer />
+      <footer className="py-12 border-t bg-muted/30">
+        <div className="container mx-auto px-4 text-center">
+          <div className="flex items-center justify-center gap-2 font-bold mb-4 opacity-50">
+            <Brain className="w-5 h-5" />
+            <span>Aura Prime Analyzer</span>
+          </div>
+          <p className="text-sm text-muted-foreground">
+            © 2026 Aura Technologies. All rights reserved. Built for academic excellence.
+          </p>
+        </div>
+      </footer>
     </main>
   )
 }
+

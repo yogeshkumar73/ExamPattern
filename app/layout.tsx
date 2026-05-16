@@ -3,7 +3,7 @@ import { Geist, Geist_Mono } from 'next/font/google'
 import { Analytics } from '@vercel/analytics/next'
 import './globals.css'
 import { Header } from '@/components/header'
-import { NavProvider } from '@/hooks/use-nav'
+import { Providers } from '@/components/providers'
 
 const _geist = Geist({ subsets: ["latin"] });
 const _geistMono = Geist_Mono({ subsets: ["latin"] });
@@ -22,12 +22,12 @@ export default function RootLayout({
   return (
     <html lang="en" className="dark">
       <body className={`font-sans antialiased min-h-screen bg-background text-foreground`}>
-        <NavProvider>
+        <Providers>
           <Header />
           <div className="relative flex min-h-screen flex-col">
             {children}
           </div>
-        </NavProvider>
+        </Providers>
         <Analytics />
       </body>
     </html>

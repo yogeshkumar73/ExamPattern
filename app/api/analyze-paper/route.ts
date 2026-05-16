@@ -2,6 +2,25 @@ import { type NextRequest, NextResponse } from "next/server"
 import { generateText } from "ai"
 import { createOpenAI } from "@ai-sdk/openai"
 
+// Safe imports for optional dependencies
+let ratelimit: any = null
+try {
+  const { Ratelimit } = require("@upstash/ratelimit")
+  const { Redis } = require("@upstash/redis")
+  
+  const redis = new Redis({
+    url: process.env.UPSTASH_REDIS_REST_URL || "",
+    token: process.env.UPSTASH_REDIS_REST_TOKEN || "",
+  })
+
+  ratelimit = new Ratelimit({
+    redis: redis,
+    limiter: Ratelimit.slidingWindow(5, "60 s"),
+  })
+} catch (e) {
+  console.warn("Upstash Redis not installed. Rate limiting disabled.")
+}
+
 const openrouter = createOpenAI({
   baseURL: "https://openrouter.ai/api/v1",
   apiKey: process.env.OPENAI_API_KEY,
@@ -9,175 +28,79 @@ const openrouter = createOpenAI({
 
 export async function POST(request: NextRequest) {
   try {
-    const { text, sampleText, options } = await request.json()
-
-    if (!text) {
-      return NextResponse.json({ error: "No text provided" }, { status: 400 })
-    }
-
-    const difficulty = options?.difficulty || "Medium"
-    const questionCount = options?.questionCount || 5
-    const outputTypes = options?.outputTypes || ["topics", "patterns", "mcq", "written"]
-
-    const outputInstructions = []
-    if (outputTypes.includes("topics")) {
-      outputInstructions.push("- topics: Array of { name, frequency, importance (1-10), inSample (boolean if overlapping with requirements) }")
-    }
-    if (outputTypes.includes("patterns")) {
-      outputInstructions.push("- patterns: Array of { pattern, description }")
-    }
-    if (outputTypes.includes("mcq")) {
-      outputInstructions.push("- predictedQuestions.mcq: Array of { question, options (Array of 4), correctAnswer }")
-    }
-    if (outputTypes.includes("written")) {
-      outputInstructions.push("- predictedQuestions.written: Array of { question, marks, difficulty }")
-    }
-
-    let comparisonPrompt = ""
-    if (sampleText) {
-      comparisonPrompt = `
-Additional Requirements/Sample Paper Content:
----
-${sampleText}
----
-Please compare the Target Paper against these Requirements. Identify overlapping topics (inSample: true) and prioritize questions that bridge the two. 
-Include a 'comparison' object in the root: { overlap: string[], missingInPaper: string[], priorityFocus: string[] }
-`
-    }
-
-    // Use AI to analyze the exam paper
-    const { text: analysisText } = await generateText({
-      model: openrouter("meta-llama/llama-3.3-70b-instruct"),
-      system: "You are an expert academic examiner using LangChain-style comparative analysis. Your task is to analyze exam papers, identify patterns, and predict future questions based on requirements. You must ALWAYS respond with valid JSON and nothing else.",
-      prompt: `Analyze this Target Exam Paper:
----
-${text}
-  }
-}
-
-IMPORTANT: Provide ONLY the JSON. Do not include markdown code blocks or any other text.`,
-    })
-
-    // Parse the AI response
-    let analysisResult
-    try {
-      // Clean the response (remove potential markdown blocks)
-      const cleanText = analysisText.replace(/```json/g, "").replace(/```/g, "").trim()
-      analysisResult = JSON.parse(cleanText)
-    } catch (parseError) {
-      console.error("[v0] Error parsing AI response:", parseError, analysisText)
-      // Attempt regex extraction as second pass
-      const jsonMatch = analysisText.match(/\{[\s\S]*\}/)
-      if (jsonMatch) {
-        try {
-          analysisResult = JSON.parse(jsonMatch[0])
-        } catch (e) {
-          analysisResult = generateMockAnalysis(text)
-        }
-      } else {
-        analysisResult = generateMockAnalysis(text)
+    // Check Rate Limit if available
+    if (ratelimit && process.env.UPSTASH_REDIS_REST_URL) {
+      const ip = request.headers.get("x-forwarded-for") || "anonymous"
+      const { success } = await ratelimit.limit(ip)
+      
+      if (!success) {
+        return NextResponse.json(
+          { error: "Too many requests. Please wait a moment." },
+          { status: 429 }
+        )
       }
     }
 
-    return NextResponse.json({
-      extractedText: text,
-      ...analysisResult,
-    })
-  } catch (error) {
-    console.error("[v0] Error in analyze-paper:", error)
-    return NextResponse.json(generateMockAnalysis(text))
-  }
-}
+    const { text: syllabusText, sampleText: oldPaperText, requirements, options } = await request.json()
 
-function generateMockAnalysis(text: string) {
-  return {
-    extractedText: text,
-    topics: [
-      { name: "Data Structures", frequency: 8, importance: 9 },
-      { name: "Algorithms", frequency: 6, importance: 8 },
-      { name: "Database Systems", frequency: 5, importance: 7 },
-      { name: "Object-Oriented Programming", frequency: 4, importance: 8 },
-      { name: "Time Complexity", frequency: 3, importance: 7 },
-    ],
-    patterns: [
-      {
-        pattern: "Theory + Implementation",
-        description: "Questions combine theoretical concepts with practical implementation",
-      },
-      {
-        pattern: "Progressive Difficulty",
-        description: "Questions progress from basic concepts to advanced applications",
-      },
-      {
-        pattern: "Real-world Applications",
-        description: "Focus on practical scenarios and problem-solving",
-      },
-    ],
-    predictedQuestions: {
-      mcq: [
-        {
-          question: "What is the time complexity of quicksort in the average case?",
-          options: ["O(n)", "O(n log n)", "O(n²)", "O(log n)"],
-          correctAnswer: "O(n log n)",
-        },
-        {
-          question: "Which data structure is best suited for implementing a priority queue?",
-          options: ["Array", "Linked List", "Heap", "Stack"],
-          correctAnswer: "Heap",
-        },
-        {
-          question: "What does ACID stand for in database transactions?",
-          options: [
-            "Atomicity, Consistency, Isolation, Durability",
-            "Access, Control, Integration, Data",
-            "Algorithm, Computation, Implementation, Design",
-            "Array, Class, Interface, Database",
-          ],
-          correctAnswer: "Atomicity, Consistency, Isolation, Durability",
-        },
-        {
-          question: "Which sorting algorithm has the best worst-case time complexity?",
-          options: ["Bubble Sort", "Quick Sort", "Merge Sort", "Selection Sort"],
-          correctAnswer: "Merge Sort",
-        },
-        {
-          question: "What is polymorphism in OOP?",
-          options: ["Ability to take multiple forms", "Data hiding mechanism", "Code reusability", "Memory management"],
-          correctAnswer: "Ability to take multiple forms",
-        },
-      ],
-      written: [
-        {
-          question:
-            "Explain the difference between stack and queue data structures. Provide real-world examples for each.",
-          marks: 10,
-          difficulty: "Easy",
-        },
-        {
-          question:
-            "Describe the working principle of a hash table. Discuss collision resolution techniques with examples.",
-          marks: 15,
-          difficulty: "Medium",
-        },
-        {
-          question:
-            "Compare and contrast different tree traversal algorithms (inorder, preorder, postorder). Implement any one in pseudocode.",
-          marks: 12,
-          difficulty: "Medium",
-        },
-        {
-          question:
-            "Analyze the time and space complexity of dynamic programming approach for solving the longest common subsequence problem.",
-          marks: 18,
-          difficulty: "Hard",
-        },
-        {
-          question:
-            "Design a database schema for an e-commerce system. Explain normalization and how you would optimize queries for better performance.",
-          marks: 20,
-          difficulty: "Hard",
-        },
-      ],
-    },
+    if (!syllabusText) {
+      return NextResponse.json({ error: "Syllabus is required for analysis." }, { status: 400 })
+    }
+
+    const questionsCount = options.questionCount || 5
+    const difficulty = options.difficulty || "Medium"
+    const paperFormat = options.paperFormat || "Standard"
+    
+    const outputInstructions = [
+      "- 'topics': Array of {name, frequency (in old papers), importance (1-10 based on syllabus), probabilityMatch (1-100)}",
+      "- 'patterns': Array of {pattern, description}",
+      `- 'predictedQuestions': Object with:
+        - 'mcq': Array of ${options.outputTypes.includes("mcq") ? questionsCount : 0} questions with {question, options, correctAnswer, explanation}
+        - 'written': Array of ${options.outputTypes.includes("written") ? questionsCount : 0} questions with {question, marks, difficulty, modelAnswer}`
+    ]
+
+    const hybridLogic = options.hybridMode ? `
+DYNAMIC HYBRID LOGIC:
+1. Strict adherence to the ${paperFormat} examination style.
+2. Cross-reference Syllabus vs Old Papers to find high-probability gaps.
+3. IGNORE ALL CACHED OR GENERALIZED DATA. Focus exclusively on the current syllabus and paper uploads provided in this session.` : `
+DIRECT SESSION ANALYSIS:
+1. Analyze current uploads only.
+2. Adhere strictly to ${paperFormat} formatting.`
+
+    const { text: analysisText } = await generateText({
+      model: openrouter("meta-llama/llama-3.3-70b-instruct"),
+      system: `You are a precision Academic Analyzer specialized in the ${paperFormat} format. 
+Your primary goal is to generate questions that match the exact rigor and style of ${paperFormat}.
+${hybridLogic}
+STRICT CONSTRAINTS:
+- Rigor: ${difficulty}.
+- Requirements: ${requirements || "None"}.
+- Zero-Cache: Every search must be unique and based ONLY on current context.
+- Response: PURE JSON.`,
+      prompt: `Analyze Syllabus and Old Papers for ${paperFormat} Exam.
+Syllabus: ${syllabusText.substring(0, 10000)}
+Old Papers: ${oldPaperText || "None"}.
+Output: ${outputInstructions.join("\n")}`,
+    })
+
+    // Parse JSON
+    let jsonResult = {}
+    try {
+      const cleanJson = analysisText.replace(/```json/g, "").replace(/```/g, "").trim()
+      const jsonMatch = cleanJson.match(/\{[\s\S]*\}/)
+      jsonResult = JSON.parse(jsonMatch ? jsonMatch[0] : cleanJson)
+    } catch (e) {
+      console.error("JSON Parse Error:", analysisText)
+      return NextResponse.json({ error: "AI failed to produce valid JSON" }, { status: 500 })
+    }
+
+    return NextResponse.json({
+      extractedText: syllabusText,
+      ...jsonResult
+    })
+  } catch (error: any) {
+    console.error("API Error:", error)
+    return NextResponse.json({ error: "Server Error" }, { status: 500 })
   }
 }

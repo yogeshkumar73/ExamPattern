@@ -2,26 +2,33 @@
 
 import React, { createContext, useContext, useState } from "react"
 
-type Step = "upload" | "analyze" | "predict"
+type Step = "onboarding" | "upload" | "analyze" | "predict" | "admin" | "community" | "policy" | "chat"
 
 interface NavContextType {
   currentStep: Step
   setStep: (step: Step) => void
-  canGoNext: boolean
-  canGoPrev: boolean
+  isRegistered: boolean
+  setRegistered: (v: boolean) => void
+  isAdmin: boolean
+  setAdmin: (v: boolean) => void
 }
 
 const NavContext = createContext<NavContextType | undefined>(undefined)
 
 export function NavProvider({ children }: { children: React.ReactNode }) {
-  const [currentStep, setStep] = useState<Step>("upload")
+  const [currentStep, setStep] = useState<Step>("onboarding")
+  const [isRegistered, setRegistered] = useState(false)
+  const [isAdmin, setAdmin] = useState(false)
   
-  // These will be updated by the ExamAnalyzer component
-  const [canGoNext, setCanGoNext] = useState(false)
-  const [canGoPrev, setCanGoPrev] = useState(false)
-
   return (
-    <NavContext.Provider value={{ currentStep, setStep, canGoNext, canGoPrev }}>
+    <NavContext.Provider value={{ 
+      currentStep, 
+      setStep, 
+      isRegistered, 
+      setRegistered,
+      isAdmin,
+      setAdmin
+    }}>
       {children}
     </NavContext.Provider>
   )
