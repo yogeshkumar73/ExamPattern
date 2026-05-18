@@ -3,7 +3,7 @@
 import { Menubar, MenubarContent, MenubarItem, MenubarMenu, MenubarSeparator, MenubarTrigger } from "@/components/ui/menubar"
 import { 
   Brain, FileText, Settings, HelpCircle, User, LogOut, ChevronLeft, ChevronRight, 
-  Home, Trophy, Video, Mail, Smartphone, UserPlus, ShieldCheck, Globe, Scale, MessageSquare 
+  Home, Trophy, Video, Mail, Smartphone, UserPlus, ShieldCheck, Globe, Scale, MessageSquare, Sparkles 
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { useNav } from "@/hooks/use-nav"
@@ -100,18 +100,18 @@ export function Header() {
 
           <Menubar className="border-none bg-transparent shadow-none hidden md:flex hover:rotate-y-12 transition-transform">
             <MenubarMenu>
-              <MenubarTrigger className="cursor-pointer font-bold hover:text-primary transition-colors">
-                <User className="w-4 h-4 mr-2" /> {session?.user?.name || (userId ? "Profile" : "Account")}
+              <MenubarTrigger onClick={() => setStep("profile")} className="cursor-pointer font-bold hover:text-primary transition-colors">
+                <User className="w-4 h-4 mr-2" /> {session?.user?.name || "Student Profile"}
               </MenubarTrigger>
               <MenubarContent className="w-56">
                 {session?.user ? (
                   <>
-                    <MenubarItem className="font-bold text-xs">{session.user.email}</MenubarItem>
+                    <MenubarItem onClick={() => setStep("profile")} className="font-bold text-xs cursor-pointer">{session.user.email}</MenubarItem>
                     <MenubarSeparator />
                   </>
                 ) : userId ? (
                   <>
-                    <MenubarItem className="font-mono text-xs">{userId}</MenubarItem>
+                    <MenubarItem onClick={() => setStep("profile")} className="font-mono text-xs cursor-pointer">{userId}</MenubarItem>
                     <MenubarSeparator />
                   </>
                 ) : (
@@ -119,7 +119,19 @@ export function Header() {
                     <UserPlus className="w-4 h-4" /> Create User ID
                   </MenubarItem>
                 )}
-                <MenubarItem onClick={() => setAdmin(!isAdmin)} className="gap-2">
+                <MenubarItem onClick={() => {
+                  if (isAdmin) {
+                    setAdmin(false);
+                  } else {
+                    const pass = prompt("Enter Admin Password:");
+                    if (pass === "admin123") {
+                      setAdmin(true);
+                      alert("Admin Access Granted!");
+                    } else if (pass !== null) {
+                      alert("Incorrect Password!");
+                    }
+                  }
+                }} className="gap-2">
                   <ShieldCheck className="w-4 h-4 text-primary" /> {isAdmin ? "Lock Admin" : "Unlock Admin"}
                 </MenubarItem>
                 <MenubarSeparator />
@@ -150,6 +162,18 @@ export function Header() {
             </MenubarMenu>
 
             <MenubarMenu>
+              <MenubarTrigger onClick={() => setStep("lab")} className="cursor-pointer font-bold text-indigo-500 hover:text-indigo-600 transition-colors">
+                <Brain className="w-4 h-4 mr-2" /> Smart Lab
+              </MenubarTrigger>
+            </MenubarMenu>
+
+            <MenubarMenu>
+              <MenubarTrigger onClick={() => setStep("guider")} className="cursor-pointer font-bold text-green-500 hover:text-green-600 transition-colors">
+                <Sparkles className="w-4 h-4 mr-2" /> AI Guider
+              </MenubarTrigger>
+            </MenubarMenu>
+
+            <MenubarMenu>
               <MenubarTrigger onClick={() => setStep("policy")} className="cursor-pointer font-bold">
                 <Scale className="w-4 h-4 mr-2" /> Policies
               </MenubarTrigger>
@@ -161,13 +185,41 @@ export function Header() {
               </MenubarTrigger>
               <MenubarContent>
                 <MenubarItem asChild>
-                  <a href="mailto:feedback@aurastudy.ai?subject=Aura%20Improvement%20Feedback" className="flex items-center gap-2">
-                    <Mail className="w-4 h-4" /> Send Gmail Feedback
+                  <a href="mailto:help@gmail.com" className="flex items-center gap-2">
+                    <Mail className="w-4 h-4" /> Email: help@gmail.com
+                  </a>
+                </MenubarItem>
+                <MenubarItem asChild>
+                  <a href="tel:+91123456789" className="flex items-center gap-2">
+                    <Smartphone className="w-4 h-4" /> Phone: +91 123456789
                   </a>
                 </MenubarItem>
                 <MenubarItem>Documentation</MenubarItem>
                 <MenubarSeparator />
                 <MenubarItem className="font-bold text-xs text-muted-foreground">v2.0 Stable Build</MenubarItem>
+              </MenubarContent>
+            </MenubarMenu>
+
+            <MenubarMenu>
+              <MenubarTrigger onClick={() => setStep("developer")} className="cursor-pointer font-bold text-muted-foreground">
+                <Settings className="w-4 h-4 mr-2" /> Developer Section
+              </MenubarTrigger>
+              <MenubarContent className="w-64 p-4">
+                <div className="flex items-center gap-3 mb-3">
+                  <img src="https://ui-avatars.com/api/?name=Dev+Team&background=0D8ABC&color=fff&rounded=true" alt="Developer Avatar" className="w-10 h-10" />
+                  <div>
+                    <h4 className="text-sm font-bold">Aura Core Team</h4>
+                    <p className="text-xs text-muted-foreground">Engineers</p>
+                  </div>
+                </div>
+                <MenubarSeparator />
+                <div className="space-y-2 mt-3 text-xs text-muted-foreground">
+                  <p><strong className="text-foreground">Status:</strong> All Systems Operational</p>
+                  <p><strong className="text-foreground">Release:</strong> v2.1.4-beta</p>
+                  <p><strong className="text-foreground">Region:</strong> US-East (N. Virginia)</p>
+                  <p><strong className="text-foreground">Uptime:</strong> 99.99%</p>
+                </div>
+                <Button onClick={() => setStep("developer")} variant="outline" className="w-full mt-4 text-xs font-bold">View Contributors</Button>
               </MenubarContent>
             </MenubarMenu>
           </Menubar>

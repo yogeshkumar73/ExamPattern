@@ -30,6 +30,10 @@ import FileUpload from "@/components/file-upload"
 import TopicAnalysis from "@/components/topic-analysis"
 import QuestionPredictor from "@/components/question-predictor"
 import { UserOnboarding, AdminPanel, PaperRepository, PolicySection, CommunityChat } from "./admin-community"
+import { StudentProfile } from "@/components/student-profile"
+import { DeveloperSection } from "@/components/developer-section"
+import { SmartLab } from "@/components/smart-lab"
+import { GuiderAgent } from "@/components/guider-agent"
 import { Spinner } from "@/components/ui/spinner"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
@@ -46,7 +50,7 @@ export type AnalysisResult = {
   topics: Array<{ name: string; frequency: number; importance: number; probabilityMatch?: number }>
   patterns: Array<{ pattern: string; description: string }>
   predictedQuestions: {
-    mcq: Array<{ question: string; options: string[]; correctAnswer: string; explanation?: string }>
+    mcq: Array<{ question: string; options: string[]; correctAnswer: string; explanation?: string; difficulty?: string }>
     written: Array<{ question: string; marks: number; difficulty: string; modelAnswer?: string }>
   }
 }
@@ -106,6 +110,10 @@ export default function ExamAnalyzer() {
   if (currentStep === "community") return <PaperRepository />
   if (currentStep === "policy") return <PolicySection />
   if (currentStep === "chat") return <CommunityChat />
+  if (currentStep === "profile") return <StudentProfile />
+  if (currentStep === "developer") return <DeveloperSection />
+  if (currentStep === "lab") return <SmartLab />
+  if (currentStep === "guider") return <GuiderAgent />
 
   const toggleOutputType = (type: string) => {
     setOutputTypes(prev => 

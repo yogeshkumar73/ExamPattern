@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Badge } from "@/components/ui/badge"
-import { ShieldCheck, User, Users, Lock, Unlock, Phone, CheckCircle2, Download, Upload, FileText, Globe, Scale, ArrowRight, ShieldAlert, Brain, MessageSquare, Send } from "lucide-react"
+import { ShieldCheck, User, Users, Lock, Unlock, Phone, CheckCircle2, Download, Upload, FileText, Globe, Scale, ArrowRight, ShieldAlert, Brain, MessageSquare, Send, Sparkles } from "lucide-react"
 import { useNav } from "@/hooks/use-nav"
 import { Switch } from "@/components/ui/switch"
 // import { signIn, useSession } from "next-auth/react" // Removed due to environment restrictions
@@ -14,143 +14,186 @@ import { Switch } from "@/components/ui/switch"
 // --- ONBOARDING COMPONENT ---
 export function UserOnboarding() {
   const { setRegistered, setStep } = useNav()
-  // Simulated Session State
-  const [session, setSession] = useState<any>(null)
-  
-  const [step, setLocalStep] = useState(1)
-  const [formData, setFormData] = useState({ name: "", phone: "" })
-  const [otp, setOtp] = useState("")
-
-  const handleSimulatedGoogleLogin = () => {
-    const mockUser = {
-      user: {
-        name: "Aura Demo Student",
-        email: "student@aurastudy.ai",
-        image: null
-      }
-    }
-    setSession(mockUser)
-    setRegistered(true)
-    setStep("upload")
-    // Store in localStorage for persistence
-    localStorage.setItem("aura_session", JSON.stringify(mockUser))
-  }
+  const [mode, setMode] = useState<"login" | "register">("register")
+  const [formData, setFormData] = useState({ name: "", email: "", phone: "", password: "" })
+  const [loading, setLoading] = useState(false)
 
   useEffect(() => {
     const saved = localStorage.getItem("aura_session")
     if (saved) {
-      setSession(JSON.parse(saved))
       setRegistered(true)
-      setStep("upload")
+      setStep("profile")
     }
   }, [setRegistered, setStep])
 
-  const [isSending, setIsSending] = useState(false)
-  const [isVerifying, setIsVerifying] = useState(false)
-
-  const handleNext = async () => {
-    setIsSending(true)
+  const handleRegister = async () => {
+    if (!formData.name || !formData.email || !formData.phone || !formData.password) {
+      alert("Please fill in all details.")
+      return
+    }
+    setLoading(true)
     try {
-      const response = await fetch("http://localhost:5000/api/otp/send", {
+      const res = await fetch("/api/auth/register", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ identifier: formData.phone })
+        body: JSON.stringify({
+          name: formData.name,
+          email: formData.email,
+          phone: formData.phone,
+          password: formData.password
+        })
       })
-      const data = await response.json()
-      if (data.success) {
-        setLocalStep(2)
+      const data = await res.json()
+      
+      if (res.status === 400 && data.message?.toLowerCase().includes("exists")) {
+        alert("Account already exists! Redirecting to Login to enter your credentials...")
+        setMode("login")
+      } else if (res.ok) {
+        alert("Registration Successful! Please login using your Gmail and Password.")
+        setMode("login")
       } else {
-        alert(data.message || "Failed to send OTP")
+        alert(data.message || "Registration failed. Please try again.")
       }
     } catch (e) {
-      // Fallback for demo if service is offline
-      console.warn("OTP Service offline. Using demo mode.")
-      setLocalStep(2)
+      console.error(e)
+      alert("Network error. Could not reach server.")
     } finally {
-      setIsSending(false)
+      setLoading(false)
     }
   }
 
-  const handleVerify = async () => {
-    setIsVerifying(true)
+  const handleLogin = async () => {
+    if (!formData.email || !formData.password) {
+      alert("Please fill in your Gmail and Password.")
+      return
+    }
+    setLoading(true)
     try {
-      const response = await fetch("http://localhost:5000/api/otp/verify", {
+      const res = await fetch("/api/auth/login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ identifier: formData.phone, otp })
+        body: JSON.stringify({
+          email: formData.email,
+          password: formData.password
+        })
       })
-      const data = await response.json()
-      if (data.success) {
+      const data = await res.json()
+      
+      if (res.ok && data.user) {
+        const sessionUser = {
+          id: data.user.id || data.user._id,
+          name: data.user.name,
+          email: data.user.email,
+          phone: data.user.phone,
+          photoUrl: data.user.photoUrl || "",
+          branch: data.user.branch || "",
+          bio: data.user.bio || "",
+          isLabApproved: data.user.isLabApproved || false,
+          status: data.user.status || "Active"
+        }
+        localStorage.setItem("aura_session", JSON.stringify({ user: sessionUser }))
         setRegistered(true)
-        setStep("upload")
+        setStep("profile")
       } else {
-        alert(data.message || "Invalid OTP")
+        alert(data.message || "Invalid credentials! Check your Gmail and Password.")
       }
     } catch (e) {
-      // Fallback for demo
-      if (otp === "123456" || otp === "1234") {
-        setRegistered(true)
-        setStep("upload")
-      } else {
-        alert("Verification failed. Try 123456")
-      }
+      console.error(e)
+      alert("Network error. Could not reach server.")
     } finally {
-      setIsVerifying(false)
+      setLoading(false)
     }
   }
 
   return (
     <div className="max-w-md mx-auto py-20 animate-in fade-in zoom-in duration-500">
-      <Card className="border-2 shadow-2xl overflow-hidden glass-morphism">
-        <CardHeader className="bg-primary text-primary-foreground py-10 text-center relative">
-          <div className="absolute top-0 right-0 p-4 opacity-20"><Brain className="w-20 h-20" /></div>
-          <CardTitle className="text-3xl font-black italic">AURA WELCOME</CardTitle>
-          <CardDescription className="text-primary-foreground/80 font-bold uppercase tracking-widest text-xs">Initialize Your Study Profile</CardDescription>
+      <Card className="border-2 shadow-2xl overflow-hidden glass-morphism border-primary/20">
+        <CardHeader className="bg-gradient-to-r from-indigo-600 via-primary to-purple-600 text-primary-foreground py-8 text-center relative">
+          <div className="absolute top-0 right-0 p-4 opacity-20"><Brain className="w-20 h-20 text-white" /></div>
+          <CardTitle className="text-3xl font-black tracking-wider italic text-white">AURA PORTAL</CardTitle>
+          <CardDescription className="text-primary-foreground/90 font-bold uppercase tracking-widest text-xs">
+            {mode === "register" ? "STUDENT REGISTRATION" : "STUDENT LOGIN"}
+          </CardDescription>
         </CardHeader>
-        <CardContent className="pt-8">
-          <div className="space-y-6">
-            <Button onClick={handleSimulatedGoogleLogin} variant="outline" className="w-full h-14 rounded-xl border-2 font-bold gap-3 hover:bg-muted transition-all">
-              <svg className="w-6 h-6" viewBox="0 0 24 24">
-                <path fill="#EA4335" d="M5.266 9.765A7.077 7.077 0 0 1 12 4.909c1.69 0 3.218.6 4.418 1.582L19.91 3C17.782 1.145 15.055 0 12 0 7.27 0 3.198 2.698 1.24 6.65l4.026 3.115Z" />
-                <path fill="#FBBC05" d="M16.04 18.013c-1.09.61-2.39.987-3.79.987-3.23 0-5.94-2.12-6.98-5.01L1.24 17.1c2.16 4.38 6.72 7.4 12.01 7.4 2.8 0 5.43-.84 7.6-2.3l-4.81-4.187Z" />
-                <path fill="#4285F4" d="M22.527 12.236c0-.833-.073-1.636-.21-2.409H12v4.573h5.92c-.255 1.364-1.027 2.527-2.182 3.309l4.818 4.19C23.364 19.345 24 16.073 24 12.236Z" />
-                <path fill="#34A853" d="M1.24 6.65l4.026 3.115a7.047 7.047 0 0 1 6.984-5.01c1.39 0 2.68.35 3.79.96L21.84 2.3A11.96 11.96 0 0 0 12 0C6.71 0 2.15 3.02 0 7.4l1.24-.75Z" />
-              </svg>
-              Login with Google
-            </Button>
-            
-            <div className="relative">
-              <div className="absolute inset-0 flex items-center"><span className="w-full border-t" /></div>
-              <div className="relative flex justify-center text-xs uppercase"><span className="bg-background px-2 text-muted-foreground font-bold italic">OR USE AURA ID</span></div>
-            </div>
+        
+        <CardContent className="pt-8 space-y-6">
+          <div className="flex border-2 border-muted rounded-xl overflow-hidden">
+            <button 
+              onClick={() => setMode("register")}
+              className={`flex-1 py-3 text-sm font-bold uppercase tracking-wider transition-colors ${mode === "register" ? "bg-primary text-primary-foreground" : "bg-transparent text-muted-foreground hover:bg-muted/10"}`}
+            >
+              Register
+            </button>
+            <button 
+              onClick={() => setMode("login")}
+              className={`flex-1 py-3 text-sm font-bold uppercase tracking-wider transition-colors ${mode === "login" ? "bg-primary text-primary-foreground" : "bg-transparent text-muted-foreground hover:bg-muted/10"}`}
+            >
+              Login
+            </button>
+          </div>
 
-            {step === 1 ? (
-              <div className="space-y-6">
+          <div className="space-y-4">
+            {mode === "register" && (
+              <>
                 <div className="space-y-2">
                   <Label className="font-bold">Full Name</Label>
-                  <Input placeholder="Enter your name" className="h-12 border-2" value={formData.name} onChange={(e) => setFormData({ ...formData, name: e.target.value })} />
+                  <Input 
+                    placeholder="Enter your name" 
+                    className="h-12 border-2" 
+                    value={formData.name} 
+                    onChange={(e) => setFormData({ ...formData, name: e.target.value })} 
+                  />
                 </div>
                 <div className="space-y-2">
-                  <Label className="font-bold flex items-center gap-2"><Phone className="w-4 h-4" /> Phone Number</Label>
-                  <Input placeholder="+91 00000 00000" className="h-12 border-2" value={formData.phone} onChange={(e) => setFormData({ ...formData, phone: e.target.value })} />
+                  <Label className="font-bold">Phone Number</Label>
+                  <Input 
+                    placeholder="+91 00000 00000" 
+                    className="h-12 border-2" 
+                    value={formData.phone} 
+                    onChange={(e) => setFormData({ ...formData, phone: e.target.value })} 
+                  />
                 </div>
-                <Button onClick={handleNext} disabled={!formData.name || !formData.phone || isSending} className="w-full h-14 text-lg font-black bg-primary rounded-xl shadow-xl hover:scale-105 transition-transform">
-                  {isSending ? "SENDING..." : "GET OTP"} <ArrowRight className="ml-2 w-5 h-5" />
-                </Button>
-              </div>
+              </>
+            )}
+
+            <div className="space-y-2">
+              <Label className="font-bold">Gmail Address</Label>
+              <Input 
+                type="email" 
+                placeholder="student@gmail.com" 
+                className="h-12 border-2" 
+                value={formData.email} 
+                onChange={(e) => setFormData({ ...formData, email: e.target.value })} 
+              />
+            </div>
+            
+            <div className="space-y-2">
+              <Label className="font-bold">Password</Label>
+              <Input 
+                type="password" 
+                placeholder="••••••••" 
+                className="h-12 border-2" 
+                value={formData.password} 
+                onChange={(e) => setFormData({ ...formData, password: e.target.value })} 
+              />
+            </div>
+
+            {mode === "register" ? (
+              <Button 
+                onClick={handleRegister} 
+                disabled={loading} 
+                className="w-full h-14 text-lg font-black bg-primary rounded-xl shadow-xl hover:scale-102 transition-transform mt-4 text-white"
+              >
+                {loading ? "REGISTERING..." : "CREATE ACCOUNT"} <ArrowRight className="ml-2 w-5 h-5" />
+              </Button>
             ) : (
-              <div className="space-y-6">
-                <div className="text-center space-y-2">
-                  <p className="text-sm font-medium text-muted-foreground">OTP sent to {formData.phone}</p>
-                </div>
-                <div className="space-y-2">
-                  <Label className="font-bold">6-Digit Verification Code</Label>
-                  <Input placeholder="0 0 0 0 0 0" maxLength={6} className="h-16 text-center text-3xl font-black tracking-[0.5em] border-2" value={otp} onChange={(e) => setOtp(e.target.value)} />
-                </div>
-                <Button onClick={handleVerify} disabled={isVerifying} className="w-full h-14 text-lg font-black bg-green-600 hover:bg-green-700 rounded-xl shadow-xl">
-                  {isVerifying ? "VERIFYING..." : "VERIFY ACCOUNT"}
-                </Button>
-              </div>
+              <Button 
+                onClick={handleLogin} 
+                disabled={loading} 
+                className="w-full h-14 text-lg font-black bg-green-600 hover:bg-green-700 rounded-xl shadow-xl hover:scale-102 transition-transform mt-4 text-white border-none"
+              >
+                {loading ? "LOGGING IN..." : "VERIFY & ENTER"} <ArrowRight className="ml-2 w-5 h-5" />
+              </Button>
             )}
           </div>
         </CardContent>
@@ -162,61 +205,320 @@ export function UserOnboarding() {
 // --- ADMIN PANEL COMPONENT ---
 export function AdminPanel() {
   const { setAdmin, isAdmin } = useNav()
-  const [users, setUsers] = useState([
-    { id: 1, name: "John Doe", status: "Active", rank: "Gold" },
-    { id: 2, name: "Sarah Smith", status: "Inactive", rank: "Silver" },
-    { id: 3, name: "Alex Johnson", status: "Active", rank: "Platinum" },
+  const [users, setUsers] = useState<any[]>([])
+  const [loading, setLoading] = useState(true)
+  const [activeTab, setActiveTab] = useState<"users" | "credentials" | "feedback">("users")
+  
+  // Feedback states
+  const [feedbacks, setFeedbacks] = useState([
+    { 
+      id: "1", 
+      user: "User #102 (John Doe)", 
+      message: "Prediction model is very accurate!", 
+      time: "12 mins ago",
+      replies: [] as string[],
+      replyInput: "",
+      aiLoading: false
+    },
+    { 
+      id: "2", 
+      user: "User #45 (Alice)", 
+      message: "Need more UPSC past papers.", 
+      time: "1 hour ago",
+      replies: ["Admin: We are currently uploading more papers for UPSC v2026!"] as string[],
+      replyInput: "",
+      aiLoading: false
+    }
   ])
 
-  const toggleStatus = (id: number) => {
-    setUsers(users.map(u => u.id === id ? { ...u, status: u.status === "Active" ? "Inactive" : "Active" } : u))
+  useEffect(() => {
+    fetch("/api/users")
+      .then(res => res.json())
+      .then(data => {
+        if (data.users) setUsers(data.users)
+        setLoading(false)
+      })
+      .catch(err => {
+        console.error(err)
+        setLoading(false)
+      })
+  }, [])
+
+  const toggleStatus = async (id: string, currentStatus: string) => {
+    const nextStatus = currentStatus === "Active" ? "Inactive" : "Active"
+    try {
+      const res = await fetch("/api/users", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ userId: id, status: nextStatus })
+      })
+      if (res.ok) {
+        setUsers(users.map(u => u._id === id ? { ...u, status: nextStatus } : u))
+      }
+    } catch (e) {
+      console.error(e)
+    }
+  }
+
+  const toggleLabAccess = async (id: string, currentAccess: boolean) => {
+    try {
+      const res = await fetch("/api/users", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ userId: id, isLabApproved: !currentAccess })
+      })
+      if (res.ok) {
+        setUsers(users.map(u => u._id === id ? { ...u, isLabApproved: !currentAccess } : u))
+      }
+    } catch (e) {
+      console.error(e)
+    }
+  }
+
+  const handleSendReply = (feedbackId: string) => {
+    setFeedbacks(feedbacks.map(f => {
+      if (f.id === feedbackId && f.replyInput.trim()) {
+        return {
+          ...f,
+          replies: [...f.replies, `Admin: ${f.replyInput.trim()}`],
+          replyInput: ""
+        }
+      }
+      return f
+    }))
+  }
+
+  const handleAiSuggestReply = async (feedbackId: string, userMessage: string) => {
+    setFeedbacks(feedbacks.map(f => f.id === feedbackId ? { ...f, aiLoading: true } : f))
+    
+    try {
+      const prompt = `Write a short, highly professional academic support response (maximum 2 sentences) replying to this feedback: "${userMessage}".`
+      const res = await fetch("/api/guider", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          messages: [{ text: prompt, isAi: false }]
+        })
+      })
+      const data = await res.json()
+      
+      if (res.ok && data.text) {
+        setFeedbacks(feedbacks.map(f => {
+          if (f.id === feedbackId) {
+            return {
+              ...f,
+              replyInput: data.text,
+              aiLoading: false
+            }
+          }
+          return f
+        }))
+      } else {
+        throw new Error(data.error || "Failed suggestion")
+      }
+    } catch (err) {
+      console.warn("AI Reply generation failed. Using local template:", err)
+      setFeedbacks(feedbacks.map(f => {
+        if (f.id === feedbackId) {
+          return {
+            ...f,
+            replyInput: "Thank you for sharing your feedback with the academic board! We have recorded this and will update our database shortly.",
+            aiLoading: false
+          }
+        }
+        return f
+      }))
+    }
   }
 
   return (
     <div className="container mx-auto py-12 animate-in slide-in-from-bottom-10 duration-700">
-      <div className="flex justify-between items-center mb-8">
-        <h1 className="text-4xl font-black tracking-tight flex items-center gap-3">
-          <ShieldCheck className="w-10 h-10 text-primary" /> 
-          ADMIN COMMAND CENTER
-        </h1>
-        <Badge variant="outline" className="h-8 px-4 font-bold border-primary text-primary">POLICY ENFORCER ENABLED</Badge>
+      <div className="flex flex-col md:flex-row md:justify-between md:items-center gap-4 mb-8">
+        <div>
+          <h1 className="text-4xl font-black tracking-tight flex items-center gap-3">
+            <ShieldCheck className="w-10 h-10 text-primary animate-pulse" /> 
+            ADMIN COMMAND CENTER
+          </h1>
+          <p className="text-sm font-bold text-muted-foreground uppercase tracking-widest mt-1">Superuser Security & Access Console</p>
+        </div>
+        <Badge variant="outline" className="h-8 px-4 font-bold border-primary text-primary w-fit">POLICY ENFORCER ENABLED</Badge>
+      </div>
+
+      {/* Tabs Switcher */}
+      <div className="flex flex-wrap border-b-2 border-muted mb-8 gap-2 pb-2">
+        <button 
+          onClick={() => setActiveTab("users")} 
+          className={`px-6 py-3 font-bold text-sm uppercase tracking-wider rounded-xl transition-all ${activeTab === "users" ? "bg-primary text-primary-foreground shadow-lg" : "text-muted-foreground hover:bg-muted/10"}`}
+        >
+          User Base Control
+        </button>
+        <button 
+          onClick={() => setActiveTab("credentials")} 
+          className={`px-6 py-3 font-bold text-sm uppercase tracking-wider rounded-xl transition-all ${activeTab === "credentials" ? "bg-primary text-primary-foreground shadow-lg" : "text-muted-foreground hover:bg-muted/10"}`}
+        >
+          Credentials Vault
+        </button>
+        <button 
+          onClick={() => setActiveTab("feedback")} 
+          className={`px-6 py-3 font-bold text-sm uppercase tracking-wider rounded-xl transition-all ${activeTab === "feedback" ? "bg-primary text-primary-foreground shadow-lg" : "text-muted-foreground hover:bg-muted/10"}`}
+        >
+          Active Feedback Center
+        </button>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-        <Card className="lg:col-span-2 border-2 shadow-2xl">
-          <CardHeader className="bg-muted/30 border-b">
-            <CardTitle className="flex items-center gap-2">
-              <Users className="w-6 h-6" /> User Base Management
-            </CardTitle>
-            <CardDescription>Control account activation and system access</CardDescription>
-          </CardHeader>
-          <CardContent className="p-0">
-            <div className="divide-y-2">
-              {users.map(user => (
-                <div key={user.id} className="flex items-center justify-between p-6 hover:bg-muted/10 transition-colors">
-                  <div className="flex items-center gap-4">
-                    <div className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center font-bold text-primary">
-                      {user.name[0]}
-                    </div>
-                    <div>
-                      <p className="font-black text-lg">{user.name}</p>
-                      <p className="text-xs text-muted-foreground font-bold uppercase">Member Tier: {user.rank}</p>
-                    </div>
+        <div className="lg:col-span-2 space-y-6">
+          {activeTab === "users" && (
+            <Card className="border-2 shadow-2xl overflow-hidden glass-morphism">
+              <CardHeader className="bg-muted/30 border-b">
+                <CardTitle className="flex items-center gap-2">
+                  <Users className="w-6 h-6" /> User Base Management
+                </CardTitle>
+                <CardDescription>Control account activation and system access</CardDescription>
+              </CardHeader>
+              <CardContent className="p-0">
+                {loading ? (
+                  <div className="p-8 text-center text-muted-foreground font-bold">Loading User Database...</div>
+                ) : users.length === 0 ? (
+                  <div className="p-8 text-center text-muted-foreground">No users found. Ensure MongoDB is connected.</div>
+                ) : (
+                  <div className="divide-y-2">
+                    {users.map(user => (
+                      <div key={user._id} className="flex items-center justify-between p-6 hover:bg-muted/10 transition-colors">
+                        <div className="flex items-center gap-4">
+                          <div className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center font-bold text-primary uppercase">
+                            {user.name?.[0] || "?"}
+                          </div>
+                          <div>
+                            <p className="font-black text-lg">{user.name}</p>
+                            <p className="text-xs text-muted-foreground font-bold uppercase">Tier: {user.rank || 'Bronze'} | Points: {user.points || 0}</p>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-6">
+                          <Badge className={(user.status || "Active") === "Active" ? "bg-green-500 text-white" : "bg-destructive text-white"}>
+                            {user.status || "Active"}
+                          </Badge>
+                          <div className="flex flex-col gap-2">
+                            <div className="flex items-center justify-between gap-4">
+                              <Label className="text-xs font-bold uppercase tracking-widest">{(user.status || "Active") === "Active" ? "Lock" : "Unlock"}</Label>
+                              <Switch checked={(user.status || "Active") === "Active"} onCheckedChange={() => toggleStatus(user._id, user.status || "Active")} />
+                            </div>
+                            <div className="flex items-center justify-between gap-4">
+                              <Label className="text-[10px] font-bold text-indigo-500 uppercase">Lab Access</Label>
+                              <Switch checked={user.isLabApproved || false} onCheckedChange={() => toggleLabAccess(user._id, user.isLabApproved || false)} />
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
                   </div>
-                  <div className="flex items-center gap-6">
-                    <Badge className={user.status === "Active" ? "bg-green-500" : "bg-destructive"}>
-                      {user.status}
-                    </Badge>
-                    <div className="flex items-center gap-2">
-                      <Label className="text-xs font-bold uppercase tracking-widest">{user.status === "Active" ? "Lock" : "Unlock"}</Label>
-                      <Switch checked={user.status === "Active"} onCheckedChange={() => toggleStatus(user.id)} />
-                    </div>
+                )}
+              </CardContent>
+            </Card>
+          )}
+
+          {activeTab === "credentials" && (
+            <Card className="border-2 shadow-2xl overflow-hidden glass-morphism">
+              <CardHeader className="bg-muted/30 border-b">
+                <CardTitle className="flex items-center gap-2">
+                  <Lock className="w-6 h-6 text-indigo-500" /> Credentials Vault
+                </CardTitle>
+                <CardDescription>View User IDs, Gmail addresses, and Password Hashes stored in MongoDB</CardDescription>
+              </CardHeader>
+              <CardContent className="p-6">
+                {loading ? (
+                  <div className="text-center font-bold text-muted-foreground">Loading Vault...</div>
+                ) : users.length === 0 ? (
+                  <div className="text-center text-muted-foreground">No credentials found in database.</div>
+                ) : (
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-sm text-left text-muted-foreground border-collapse">
+                      <thead className="text-xs text-foreground uppercase bg-muted/50 border-b font-black">
+                        <tr>
+                          <th className="py-3 px-4">Name</th>
+                          <th className="py-3 px-4">Gmail Address</th>
+                          <th className="py-3 px-4">User ID (Unique)</th>
+                          <th className="py-3 px-4">Password Hash</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y border-b">
+                        {users.map(u => (
+                          <tr key={u._id} className="hover:bg-muted/5 transition-colors text-foreground font-medium">
+                            <td className="py-4 px-4 font-black">{u.name}</td>
+                            <td className="py-4 px-4 font-bold text-blue-500">{u.email}</td>
+                            <td className="py-4 px-4 font-mono text-[10px] bg-muted/20">{u._id}</td>
+                            <td className="py-4 px-4">
+                              <code className="text-xs font-mono text-purple-600 truncate max-w-[200px] block" title={u.password || "Secure Hashed"}>
+                                {u.password ? u.password.substring(0, 18) + "..." : "[$2a$10$hashed...]"}
+                              </code>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
                   </div>
-                </div>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
+                )}
+              </CardContent>
+            </Card>
+          )}
+
+          {activeTab === "feedback" && (
+            <Card className="border-2 shadow-2xl overflow-hidden glass-morphism">
+              <CardHeader className="bg-muted/30 border-b">
+                <CardTitle className="flex items-center gap-2">
+                  <MessageSquare className="w-6 h-6 text-green-500" /> Active Feedback & Discussion Reply
+                </CardTitle>
+                <CardDescription>Reply directly to student concerns or get instant AI-suggested responses</CardDescription>
+              </CardHeader>
+              <CardContent className="p-6 space-y-6">
+                {feedbacks.map(f => (
+                  <Card key={f.id} className="border p-4 bg-muted/5 rounded-xl space-y-4">
+                    <div className="flex justify-between items-start">
+                      <div>
+                        <h4 className="font-black text-foreground">{f.user}</h4>
+                        <p className="text-sm font-medium text-muted-foreground mt-1">"{f.message}"</p>
+                      </div>
+                      <Badge variant="outline" className="text-[10px]">{f.time}</Badge>
+                    </div>
+
+                    {f.replies.length > 0 && (
+                      <div className="pl-4 border-l-4 border-primary space-y-2 bg-muted/10 p-3 rounded-r-lg">
+                        {f.replies.map((rep, idx) => (
+                          <p key={idx} className="text-xs font-bold text-primary">{rep}</p>
+                        ))}
+                      </div>
+                    )}
+
+                    <div className="flex gap-2">
+                      <Input 
+                        placeholder={f.aiLoading ? "AI is generating a draft..." : "Write a professional feedback reply..."} 
+                        value={f.replyInput}
+                        onChange={(e) => setFeedbacks(feedbacks.map(item => item.id === f.id ? { ...item, replyInput: e.target.value } : item))}
+                        disabled={f.aiLoading}
+                        className="flex-1 h-10 border-2"
+                      />
+                      <Button 
+                        onClick={() => handleAiSuggestReply(f.id, f.message)} 
+                        disabled={f.aiLoading}
+                        variant="secondary" 
+                        className="h-10 text-xs font-black gap-1"
+                      >
+                        <Sparkles className="w-3.5 h-3.5 text-indigo-500 animate-spin" /> AI Assist
+                      </Button>
+                      <Button 
+                        onClick={() => handleSendReply(f.id)} 
+                        disabled={!f.replyInput.trim()} 
+                        className="h-10 text-xs font-black bg-primary text-white"
+                      >
+                        Send Reply
+                      </Button>
+                    </div>
+                  </Card>
+                ))}
+              </CardContent>
+            </Card>
+          )}
+        </div>
 
         <div className="space-y-8">
           <Card className="border-2 shadow-xl bg-primary text-primary-foreground">

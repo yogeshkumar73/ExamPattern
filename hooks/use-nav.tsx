@@ -2,7 +2,7 @@
 
 import React, { createContext, useContext, useState } from "react"
 
-type Step = "onboarding" | "upload" | "analyze" | "predict" | "admin" | "community" | "policy" | "chat"
+type Step = "onboarding" | "upload" | "analyze" | "predict" | "admin" | "community" | "policy" | "chat" | "profile" | "developer" | "lab" | "guider"
 
 interface NavContextType {
   currentStep: Step
