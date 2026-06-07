@@ -2,18 +2,53 @@
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
-import { Github, Twitter, Linkedin, Code2, Terminal, Cpu } from "lucide-react"
+import { Github, Twitter, Linkedin, Instagram, MessageCircle, Code2, Cpu } from "lucide-react"
 
 export function DeveloperSection() {
+
   const developers = [
     {
-      name: "Alex Rivera",
-      role: "Lead Full-Stack Engineer",
-      avatar: "https://i.pravatar.cc/150?u=alex",
-      bio: "Specializes in Next.js, AI Integration, and highly scalable cloud architectures.",
-      skills: ["React", "Node.js", "MongoDB", "AI Prompts"],
-      github: "#",
-      twitter: "#"
+      
+      name: "Devvrat Prajapatee",
+      role: " Admin & Head of project",
+      avatar: "https://i.ibb.co/tpxG7Pzt/Whats-App-Image-2026-06-07-at-1-29-03-PM.jpg",
+      bio: "Technology leader with expertise in System Design, Full-Stack Development, AI Architecture, Product Strategy, and Team Leadership, delivering innovative solutions through strategic thinking, problem-solving, and cross-domain experience.",
+      skills: ["System Design", "Full-Stack Development", "Ai Architecture", "Project Management", "Product Strategy", "Team Leadership", "Multiple Field Knowledge Holding", "Problem Solving", "Expreance in multiple field"],
+      twitter: "#",
+      linkedin: "#",
+      github: "#"
+      },
+      {
+      name: "Yogesh Kumar",
+     role: "Lead Full-Stack Engineer",
+    avatar: "https://i.ibb.co/1ffSb34W/Image-vf0km5vf0km5vf0k.png",
+      bio: "Full-Stack Developer specializing in React, Node.js, MongoDB, Python, and AI technologies, with experience in NLP, LangChain, TensorFlow, and modern UI/UX design. Passionate about building scalable, intelligent, and user-focused solutions through innovation and problem-solving.",
+     skills: ["React", "Node.js", "MongoDB", "AI Prompts","Python", "TensorFlow", "NLP", "LangChain", "Figma", "TailwindCSS", "Framer Motion","Problem Solving"],
+     github: "https://github.com/yogeshkumar73",
+     twitter: "#",
+     linkedin: "www.linkedin.com/in/yogesh-kumar-824264253",
+     whatsapp: "https://wa.me/message/QOZSUIA3FH4XH1"
+    },
+    {
+     name: "Kuldeep Prajapatee",
+     role: "Management  Head",
+      avatar: "https://i.ibb.co/bMZRLtr2/Whats-App-Image-2025-11-03-at-12-39-19-PM-1.jpg",
+      bio: "Experienced and versatile professional with strong expertise in Leadership, Strategic Planning, Management, AI Ethics, Communication, Problem Solving, and Team Coaching. Known for driving organizational growth, building high-performing teams, and delivering innovative solutions across multiple domains including technology, education, and business.",
+     skills: ["Leadership", "Strategy", "Management", "AI Ethics","Communicater", "Problem Solving", "Team Coaching", "Multiple Field Knowledge Holding"],
+      linkedin: "#",
+      instagram: "instagram.com/kdsingh9140",
+      whatsapp: "#"
+
+    },
+    {
+      name: "Abhishek Prajapatee",
+     role: "HelpSupport Head",
+      avatar: "https://i.ibb.co/0RHdHkCq/Whats-App-Image-2026-06-07-at-5-11-25-PM.jpg",
+      bio: "Customer-focused professional specializing in Technical Support, AI Troubleshooting, Problem Solving, Communication, and User Experience Enhancement. Experienced in leading teams, analyzing customer feedback, and supporting marketing and sales initiatives to improve customer satisfaction and business performance.",
+     skills: ["Customer Support", "Technical Assistance", "Problem Solving", "Communication","Team Leadership", "AI Troubleshooting", "User Experience Enhancement", "Feedback Analysis","Marketing and Sales Support"],
+      linkedin: "#",
+      instagram: "https://www.instagram.com/abhishek_daksh9",
+      whatsapp: "#"
     },
     {
       name: "Samantha Lee",
@@ -65,6 +100,9 @@ export function DeveloperSection() {
               <p className="text-sm text-muted-foreground font-medium px-4">
                 "{dev.bio}"
               </p>
+              <p className="text-sm text-muted-foreground font-medium px-4">
+                {dev.bio}
+              </p>
               <div className="flex flex-wrap justify-center gap-2">
                 {dev.skills.map(skill => (
                   <Badge key={skill} variant="secondary" className="bg-muted/50 font-bold">{skill}</Badge>
@@ -74,6 +112,8 @@ export function DeveloperSection() {
                 {dev.github && <a href={dev.github} className="text-muted-foreground hover:text-primary transition-colors"><Github className="w-5 h-5" /></a>}
                 {dev.twitter && <a href={dev.twitter} className="text-muted-foreground hover:text-[#1DA1F2] transition-colors"><Twitter className="w-5 h-5" /></a>}
                 {dev.linkedin && <a href={dev.linkedin} className="text-muted-foreground hover:text-[#0077B5] transition-colors"><Linkedin className="w-5 h-5" /></a>}
+                {dev.whatsapp && <a href={dev.whatsapp} className="text-muted-foreground hover:text-[#25D366] transition-colors"><MessageCircle className="w-5 h-5" /></a>}
+                {dev.instagram && <a href={dev.instagram} className="text-muted-foreground hover:text-[#E1306C] transition-colors"><Instagram className="w-5 h-5" /></a>}
               </div>
             </CardContent>
           </Card>

@@ -76,7 +76,7 @@ export function GuiderAgent() {
                 <div className="w-8 h-8 rounded-full bg-background border shadow-sm flex items-center justify-center flex-shrink-0">
                   {m.isAi ? <Bot className="w-4 h-4 text-green-500" /> : <div className="w-4 h-4 bg-primary rounded-full" />}
                 </div>
-                <div className={`p-4 rounded-2xl text-sm font-medium shadow-sm ${m.isAi ? "bg-white border text-foreground" : "bg-primary text-primary-foreground"}`}>
+                <div className={`p-4 rounded-2xl text-sm font-medium shadow-sm ${m.isAi ? "bg-muted border text-foreground" : "bg-primary text-primary-foreground"}`}>
                   {m.text}
                 </div>
               </div>
@@ -88,7 +88,7 @@ export function GuiderAgent() {
                 <div className="w-8 h-8 rounded-full bg-background border shadow-sm flex items-center justify-center flex-shrink-0 animate-bounce">
                   <Bot className="w-4 h-4 text-green-500" />
                 </div>
-                <div className="p-4 rounded-2xl text-sm font-medium shadow-sm bg-white border text-muted-foreground flex gap-1 items-center">
+                <div className="p-4 rounded-2xl text-sm font-medium shadow-sm bg-muted border text-muted-foreground flex gap-1 items-center">
                   <span className="w-2 h-2 rounded-full bg-green-500 animate-bounce delay-100"></span>
                   <span className="w-2 h-2 rounded-full bg-green-500 animate-bounce delay-200"></span>
                   <span className="w-2 h-2 rounded-full bg-green-500 animate-bounce delay-300"></span>

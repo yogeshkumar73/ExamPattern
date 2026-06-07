@@ -1,16 +1,12 @@
 "use client"
 
-import { useState, useEffect, useRef } from "react"
+import { useState, useEffect, useRef, useCallback } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
 import { Progress } from "@/components/ui/progress"
-import { 
-  Gamepad2, Trophy, Swords, Zap, HelpCircle, 
-  RefreshCw, TrendingUp, CheckCircle, XCircle, 
-  ChevronRight, CircleDot, Play, User, Bot, AlertTriangle 
-} from "lucide-react"
+import { Gamepad2, Trophy, Swords, Clock, AlertTriangle, CheckCircle, XCircle, Bot, User, Play, Loader2 } from "lucide-react"
+import Editor from "@monaco-editor/react"
 
 interface LabGamesProps {
   points: number;
@@ -19,41 +15,42 @@ interface LabGamesProps {
   userEmail: string | null;
 }
 
+interface GeneratedQuestion {
+  title: string;
+  description: string;
+  category: string;
+  difficulty: "Easy" | "Medium" | "Hard";
+  tags: string[];
+  boilerplate?: string;
+  testCases?: Array<{ input: string; output: string }>;
+}
+
+const mockBattleQuestions: GeneratedQuestion[] = [
+  { id: "b1", title: "Two Sum", difficulty: "Easy", description: "Given an array of integers nums and an integer target, return indices of the two numbers such that they add up to target.", boilerplate: "function twoSum(nums, target) {\n  \n}", category: "Array", tags: ["Array", "Hash Table"] },
+  { id: "b2", title: "Reverse String", difficulty: "Easy", description: "Write a function that reverses a string. The input string is given as an array of characters s.", boilerplate: "function reverseString(s) {\n  \n}", category: "String", tags: ["String", "Two Pointers"] },
+  { id: "b3", title: "Max Subarray", difficulty: "Medium", description: "Given an integer array nums, find the contiguous subarray (containing at least one number) which has the largest sum and return its sum.", boilerplate: "function maxSubArray(nums) {\n  \n}", category: "Array", tags: ["Array", "Dynamic Programming"] }
+]
+
 export function LabGames({ points, onUpdatePoints, userId, userEmail }: LabGamesProps) {
-  const [activeGame, setActiveGame] = useState<"math" | "word" | "prob" | "calc" | "balloon" | null>(null)
-  const [gameState, setGameState] = useState<"idle" | "playing" | "finished">("idle")
-  const [playerScore, setPlayerScore] = useState(0)
-  const [botScore, setBotScore] = useState(0)
+  const [gameState, setGameState] = useState<"lobby" | "matching" | "playing" | "finished">("lobby")
+  const [mode, setMode] = useState<"pvp" | "pve">("pve")
+  const [question, setQuestion] = useState<GeneratedQuestion>(mockBattleQuestions[0])
+  const [code, setCode] = useState("")
+  const [timeLeft, setTimeLeft] = useState(300) // 5 minutes
+  
+  const [playerProgress, setPlayerProgress] = useState(0)
+  const [opponentProgress, setOpponentProgress] = useState(0)
   const [gameResult, setGameResult] = useState<"win" | "loss" | "draw" | null>(null)
-  
-  // Game 1: Math Speed state
-  const [mathQuestion, setMathQuestion] = useState({ q: "", ans: 0 })
-  const [mathInput, setMathInput] = useState("")
-  
-  // Game 2: Word Battle state
-  const [wordClue, setWordClue] = useState({ clue: "", scrambled: "", original: "" })
-  const [wordInput, setWordInput] = useState("")
-
-  // Game 3: Probability state
-  const [probQuestion, setProbQuestion] = useState({ q: "", options: [] as number[], correct: 0 })
-  
-  // Game 4: Derivative combination state
-  const [calcPair, setCalcPair] = useState({ f: "", df: "", options: [] as string[] })
-
-  // Game 5: Balloon Math state
-  const [balloons, setBalloons] = useState<Array<{ id: number; val: string; isCorrect: boolean; popped: boolean }>>([])
-  const [balloonTarget, setBalloonTarget] = useState("")
-
-  // Common timers
-  const [timeLeft, setTimeLeft] = useState(30)
-  const timerRef = useRef<NodeJS.Timeout | null>(null)
-  const botTimerRef = useRef<NodeJS.Timeout | null>(null)
-
-  // Leaderboard data
+  const [isExecuting, setIsExecuting] = useState(false)
   const [leaderboard, setLeaderboard] = useState<any[]>([])
-  
+  const [isLoadingQuestions, setIsLoadingQuestions] = useState(false)
+  const [questionsError, setQuestionsError] = useState<string | null>(null)
+
+  const timerRef = useRef<NodeJS.Timeout | null>(null)
+  const opponentTimerRef = useRef<NodeJS.Timeout | null>(null)
+
   useEffect(() => {
-    // Load mock leaderboard or live users
+    // Load real leaderboard from users API
     fetch("/api/users")
       .then(res => res.json())
       .then(data => {
@@ -62,348 +59,214 @@ export function LabGames({ points, onUpdatePoints, userId, userEmail }: LabGames
           setLeaderboard(sorted)
         }
       })
-      .catch(() => {
-        // Fallback leaderboard
-        setLeaderboard([
-          { name: "Kabir Sharma", points: 540, rank: "Gold" },
-          { name: "Alice Vance", points: 150, rank: "Bronze" },
-          { name: "Rohan Gupta", points: 120, rank: "Bronze" }
-        ])
-      })
+      .catch(err => console.error("Failed to fetch leaderboard:", err))
   }, [points])
 
-  // Timer hook
   useEffect(() => {
     if (gameState === "playing" && timeLeft > 0) {
       timerRef.current = setTimeout(() => setTimeLeft(timeLeft - 1), 1000)
     } else if (gameState === "playing" && timeLeft === 0) {
-      endGame()
+      endBattle("loss") // Timeout
     }
     return () => {
       if (timerRef.current) clearTimeout(timerRef.current)
     }
   }, [gameState, timeLeft])
 
-  // Bot Competitor simulation hook
   useEffect(() => {
     if (gameState === "playing") {
-      const interval = activeGame === "balloon" ? 2200 : 3500 // Bot speeds based on game type
-      botTimerRef.current = setInterval(() => {
-        // Simulating Bot answering correctly or popping balloon 70% probability
-        if (Math.random() < 0.7) {
-          setBotScore(prev => prev + 10)
-          if (activeGame === "balloon") {
-            // Bot pops one correct balloon
-            setBalloons(prev => {
-              const correctUnpopped = prev.find(b => b.isCorrect && !b.popped)
-              if (correctUnpopped) {
-                return prev.map(b => b.id === correctUnpopped.id ? { ...b, popped: true } : b)
-              }
-              return prev
-            })
+      // Simulate opponent progress
+      const intervalMs = mode === "pve" ? 5000 : 8000 // Bot is faster in PvE
+      opponentTimerRef.current = setInterval(() => {
+        setOpponentProgress(prev => {
+          const increment = Math.floor(Math.random() * 20) + 10;
+          const next = prev + increment;
+          if (next >= 100) {
+            endBattle("loss") // Opponent wins
+            return 100;
           }
-        }
-      }, interval)
+          return next;
+        })
+      }, intervalMs)
     }
     return () => {
-      if (botTimerRef.current) clearInterval(botTimerRef.current)
+      if (opponentTimerRef.current) clearInterval(opponentTimerRef.current)
     }
-  }, [gameState, activeGame])
+  }, [gameState, mode])
 
-  const startGame = (game: "math" | "word" | "prob" | "calc" | "balloon") => {
-    setActiveGame(game)
-    setGameState("playing")
-    setPlayerScore(0)
-    setBotScore(0)
-    setTimeLeft(30)
-    setGameResult(null)
-
-    if (game === "math") generateMathQuestion()
-    else if (game === "word") generateWordQuestion()
-    else if (game === "prob") generateProbQuestion()
-    else if (game === "calc") generateCalcQuestion()
-    else if (game === "balloon") generateBalloons()
-  }
-
-  const endGame = async () => {
-    setGameState("finished")
-    if (timerRef.current) clearTimeout(timerRef.current)
-    if (botTimerRef.current) clearInterval(botTimerRef.current)
-
-    let outcome: "win" | "loss" | "draw" = "draw"
-    let pointDelta = 0
-
-    if (playerScore > botScore) {
-      outcome = "win"
-      pointDelta = 50
-    } else if (playerScore < botScore) {
-      outcome = "loss"
-      pointDelta = -20
-    }
-
-    setGameResult(outcome)
-
-    // Update Profile points securely on server
-    if (userId && userEmail && pointDelta !== 0) {
-      onUpdatePoints(pointDelta)
-      try {
-        await fetch("/api/profile", {
-          method: "PUT",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            userId,
-            email: userEmail,
-            points: Math.max(0, points + pointDelta)
-          })
+  /**
+   * Fetch dynamic questions from AI API with RAG
+   */
+  const fetchDynamicQuestions = useCallback(async (difficulty: "Easy" | "Medium" | "Hard") => {
+    setIsLoadingQuestions(true)
+    setQuestionsError(null)
+    try {
+      const response = await fetch("/api/ai/content-generation", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "generate-questions",
+          topic: "Coding Interview",
+          difficulty,
+          category: "Algorithm",
+          count: 1
         })
-      } catch (err) {
-        console.warn("Could not sync points with server:", err)
+      })
+
+      if (!response.ok) {
+        throw new Error(`API error: ${response.status}`)
       }
+
+      const data = await response.json()
+      if (data.success && data.data.questions.length > 0) {
+        const generatedQuestion = data.data.questions[0]
+        setQuestion({
+          title: generatedQuestion.title,
+          description: generatedQuestion.description,
+          category: generatedQuestion.category,
+          difficulty: generatedQuestion.difficulty,
+          tags: generatedQuestion.tags || [],
+          boilerplate: generatedQuestion.boilerplate || "",
+          testCases: generatedQuestion.testCases || []
+        })
+        setCode(generatedQuestion.boilerplate || "")
+      } else {
+        throw new Error("No questions generated")
+      }
+    } catch (error) {
+      console.warn("Failed to fetch dynamic questions, using mock:", error)
+      setQuestionsError("Using cached questions")
+      // Fallback to mock questions
+      const mockQ = mockBattleQuestions[Math.floor(Math.random() * mockBattleQuestions.length)]
+      setQuestion(mockQ)
+      setCode(mockQ.boilerplate || "")
+    } finally {
+      setIsLoadingQuestions(false)
     }
-  }
+  }, [])
 
-  // --- GAME GENERATORS & ACTIONS ---
-
-  // Game 1: Logic & Speed Math
-  const generateMathQuestion = () => {
-    const num1 = Math.floor(Math.random() * 20) + 5
-    const num2 = Math.floor(Math.random() * 15) + 3
-    const operators = ["+", "-", "*"]
-    const op = operators[Math.floor(Math.random() * operators.length)]
+  const startMatchmaking = useCallback(async (selectedMode: "pvp" | "pve") => {
+    setMode(selectedMode)
+    setGameState("matching")
     
-    let ans = 0
-    if (op === "+") ans = num1 + num2
-    else if (op === "-") ans = num1 - num2
-    else if (op === "*") ans = num1 * num2
+    // Determine difficulty based on player's current rank
+    let difficulty: "Easy" | "Medium" | "Hard" = "Easy"
+    if (points >= 500) difficulty = "Hard"
+    else if (points >= 200) difficulty = "Medium"
 
-    setMathQuestion({ q: `${num1} ${op} ${num2}`, ans })
-    setMathInput("")
-  }
+    // Fetch questions while matchmaking
+    await fetchDynamicQuestions(difficulty)
 
-  const submitMathAnswer = () => {
-    if (parseInt(mathInput) === mathQuestion.ans) {
-      setPlayerScore(prev => prev + 10)
-      generateMathQuestion()
-    } else {
-      setPlayerScore(prev => Math.max(0, prev - 5))
-    }
-  }
+    // Simulate matchmaking delay
+    setTimeout(() => {
+      setPlayerProgress(0)
+      setOpponentProgress(0)
+      setTimeLeft(300)
+      setGameState("playing")
+    }, 2500)
+  }, [points, fetchDynamicQuestions])
 
-  // Game 2: Logical Word Decipher
-  const generateWordQuestion = () => {
-    const database = [
-      { original: "ALGORITHM", clue: "A step-by-step procedure for solving a problem." },
-      { original: "COMPILER", clue: "Translates high-level source code to machine code." },
-      { original: "DATABASE", clue: "Structured set of data stored in a computer." },
-      { original: "RECURSION", clue: "A function calling itself to solve subproblems." },
-      { original: "VARIABLES", clue: "Container used to store data values." }
-    ]
-    const selected = database[Math.floor(Math.random() * database.length)]
-    const scrambled = selected.original.split('').sort(() => Math.random() - 0.5).join('')
+  const endBattle = (result: "win" | "loss" | "draw") => {
+    setGameState("finished")
+    setGameResult(result)
+    if (timerRef.current) clearTimeout(timerRef.current)
+    if (opponentTimerRef.current) clearInterval(opponentTimerRef.current)
     
-    setWordClue({ clue: selected.clue, scrambled, original: selected.original })
-    setWordInput("")
-  }
-
-  const submitWordAnswer = () => {
-    if (wordInput.toUpperCase() === wordClue.original) {
-      setPlayerScore(prev => prev + 15)
-      generateWordQuestion()
-    } else {
-      setPlayerScore(prev => Math.max(0, prev - 5))
-    }
-  }
-
-  // Game 3: Mathematical Probability
-  const generateProbQuestion = () => {
-    const probabilityQuestions = [
-      { q: "What is the probability of rolling a sum of 7 with two fair 6-sided dice? (x / 36)", options: [4, 6, 8], correct: 6 },
-      { q: "If you draw 1 card from standard deck, what is the probability it is an Ace? (x / 52)", options: [2, 4, 13], correct: 4 },
-      { q: "A bag has 3 red and 7 blue marbles. What is the probability of picking red? (%)", options: [30, 50, 70], correct: 30 },
-      { q: "Probability of flipping 3 heads in a row with fair coin? (1 / x)", options: [4, 6, 8], correct: 8 }
-    ]
-    const selected = probabilityQuestions[Math.floor(Math.random() * probabilityQuestions.length)]
-    setProbQuestion(selected)
-  }
-
-  const submitProbAnswer = (selectedOpt: number) => {
-    if (selectedOpt === probQuestion.correct) {
-      setPlayerScore(prev => prev + 10)
-    } else {
-      setPlayerScore(prev => Math.max(0, prev - 5))
-    }
-    generateProbQuestion()
-  }
-
-  // Game 4: Logarithmic Derivative Combinations
-  const generateCalcQuestion = () => {
-    const calculusDatabase = [
-      { f: "log_e(x)", df: "1 / x" },
-      { f: "x^3", df: "3x^2" },
-      { f: "e^(2x)", df: "2e^(2x)" },
-      { f: "sin(x)", df: "cos(x)" },
-      { f: "cos(x)", df: "-sin(x)" }
-    ]
-    const selected = calculusDatabase[Math.floor(Math.random() * calculusDatabase.length)]
+    let pointDelta = 0;
+    if (result === "win") pointDelta = 100;
+    if (result === "loss") pointDelta = -30;
     
-    // Mix options
-    const allOptions = Array.from(new Set([
-      selected.df, 
-      "3x^2", "1 / x", "e^x", "cos(x)", "-sin(x)", "2e^(2x)"
-    ])).slice(0, 3)
-    if (!allOptions.includes(selected.df)) {
-      allOptions[0] = selected.df
+    if (pointDelta !== 0 && userId) {
+      onUpdatePoints(pointDelta)
+      // Sync with server if needed
     }
-
-    setCalcPair({ 
-      f: selected.f, 
-      df: selected.df, 
-      options: allOptions.sort(() => Math.random() - 0.5) 
-    })
   }
 
-  const submitCalcAnswer = (selectedDf: string) => {
-    if (selectedDf === calcPair.df) {
-      setPlayerScore(prev => prev + 20)
-    } else {
-      setPlayerScore(prev => Math.max(0, prev - 5))
-    }
-    generateCalcQuestion()
-  }
-
-  // Game 5: Balloon Math POP
-  const generateBalloons = () => {
-    const mathPuzzles = [
-      { target: "Find target equal to 8", correctVal: "2^3", options: ["2^3", "2+3", "9-2", "log_2(8)"] },
-      { target: "Find derivative of x^2", correctVal: "2x", options: ["2x", "x", "2x^2", "x^2"] },
-      { target: "Find value of log_3(9)", correctVal: "2", options: ["2", "3", "9", "1"] }
-    ]
-    const selected = mathPuzzles[Math.floor(Math.random() * mathPuzzles.length)]
-    setBalloonTarget(selected.target)
-
-    const mappedBalloons = selected.options.map((opt, i) => ({
-      id: i,
-      val: opt,
-      isCorrect: opt === selected.correctVal,
-      popped: false
-    })).sort(() => Math.random() - 0.5)
-
-    setBalloons(mappedBalloons)
-  }
-
-  const popBalloon = (balloonId: number) => {
-    setBalloons(prev => prev.map(b => {
-      if (b.id === balloonId) {
-        if (b.isCorrect) {
-          setPlayerScore(score => score + 25)
-          setTimeout(() => generateBalloons(), 800)
-        } else {
-          setPlayerScore(score => Math.max(0, score - 10))
+  const handleRunCode = async () => {
+    setIsExecuting(true)
+    // Simulate local execution
+    setTimeout(() => {
+      setIsExecuting(false)
+      const randomProgress = Math.floor(Math.random() * 50) + 20;
+      setPlayerProgress(prev => {
+        const next = prev + randomProgress;
+        if (next >= 100) {
+          endBattle("win");
+          return 100;
         }
-        return { ...b, popped: true }
-      }
-      return b
-    }))
+        return next;
+      })
+    }, 1500)
+  }
+
+  const formatTime = (sec: number) => {
+    const m = Math.floor(sec / 60)
+    const s = sec % 60
+    return `${m}:${s < 10 ? "0" : ""}${s}`
   }
 
   return (
     <div className="space-y-8 animate-in fade-in slide-in-from-bottom-5 duration-700">
       
-      {gameState === "idle" && (
+      {gameState === "lobby" && (
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-          {/* Main Select Arena */}
           <div className="lg:col-span-2 space-y-6">
             <Card className="border-2 border-indigo-500/20 shadow-2xl glass-morphism">
               <CardHeader className="bg-indigo-500/10 border-b border-indigo-500/20">
                 <CardTitle className="flex items-center gap-2 text-2xl font-black text-indigo-500">
-                  <Gamepad2 className="w-8 h-8" /> LAB BATTLE ARENA
+                  <Swords className="w-8 h-8" /> CODING BATTLE ARENA
                 </CardTitle>
                 <CardDescription className="font-bold text-muted-foreground">
-                  Challenge Bot competitors in logic games. Win to upgrade your ranking!
+                  Race against AI or real players to solve algorithms.
                 </CardDescription>
               </CardHeader>
               <CardContent className="p-6 grid grid-cols-1 md:grid-cols-2 gap-4">
-                {[
-                  {
-                    id: "math",
-                    title: "Logic Speed Math",
-                    desc: "Quickly match operators and solve logical arithmetic equations.",
-                    icon: <Zap className="w-8 h-8 text-yellow-500" />
-                  },
-                  {
-                    id: "word",
-                    title: "Term Battle Decipher",
-                    desc: "Deduce terms, scramble logic, and identify missing sequences.",
-                    icon: <Swords className="w-8 h-8 text-rose-500" />
-                  },
-                  {
-                    id: "prob",
-                    title: "Probability Matrix",
-                    desc: "Calculate real-time dice and card probability matrices.",
-                    icon: <CircleDot className="w-8 h-8 text-emerald-500" />
-                  },
-                  {
-                    id: "calc",
-                    title: "Logarithmic Derivative Combinator",
-                    desc: "Match dynamic limits, logarithm properties, and derivatives.",
-                    icon: <TrendingUp className="w-8 h-8 text-cyan-500" />
-                  },
-                  {
-                    id: "balloon",
-                    title: "Balloon POP Mathematics",
-                    desc: "Pop math balloons containing correct derivative/limit targets.",
-                    icon: <Play className="w-8 h-8 text-indigo-500 animate-pulse" />
-                  }
-                ].map(game => (
-                  <Card key={game.id} className="border hover:border-indigo-500 hover:shadow-xl transition-all overflow-hidden flex flex-col justify-between">
-                    <CardHeader className="pb-3">
-                      <div className="flex justify-between items-start">
-                        <div className="p-3 bg-muted/40 rounded-xl mb-2">{game.icon}</div>
-                        <Badge variant="outline" className="text-[10px] uppercase font-bold text-indigo-500 border-indigo-500/20">AI vs Player</Badge>
-                      </div>
-                      <CardTitle className="text-lg font-black">{game.title}</CardTitle>
-                      <CardDescription className="text-xs">{game.desc}</CardDescription>
-                    </CardHeader>
-                    <CardFooter className="pt-0">
-                      <Button onClick={() => startGame(game.id as any)} className="w-full bg-indigo-500 hover:bg-indigo-600 font-bold gap-2 text-white">
-                        <Play className="w-4 h-4" /> Start Battle
-                      </Button>
-                    </CardFooter>
-                  </Card>
-                ))}
+                <Card className="border hover:border-rose-500 hover:shadow-xl transition-all flex flex-col justify-between">
+                  <CardHeader>
+                    <div className="p-3 bg-rose-500/10 rounded-xl mb-2 w-max text-rose-500"><Bot className="w-8 h-8" /></div>
+                    <CardTitle className="text-lg font-black text-rose-500">AI Boss Battle</CardTitle>
+                    <CardDescription>Challenge an intelligent bot to a coding duel. Higher stakes, faster opponent.</CardDescription>
+                  </CardHeader>
+                  <CardFooter>
+                    <Button onClick={() => startMatchmaking("pve")} className="w-full bg-rose-500 hover:bg-rose-600 font-bold gap-2">
+                      <Play className="w-4 h-4" /> Start PvE Match
+                    </Button>
+                  </CardFooter>
+                </Card>
+                <Card className="border hover:border-indigo-500 hover:shadow-xl transition-all flex flex-col justify-between">
+                  <CardHeader>
+                    <div className="p-3 bg-indigo-500/10 rounded-xl mb-2 w-max text-indigo-500"><User className="w-8 h-8" /></div>
+                    <CardTitle className="text-lg font-black text-indigo-500">Ranked 1v1</CardTitle>
+                    <CardDescription>Enter the matchmaking queue to face a player of similar skill.</CardDescription>
+                  </CardHeader>
+                  <CardFooter>
+                    <Button onClick={() => startMatchmaking("pvp")} className="w-full bg-indigo-500 hover:bg-indigo-600 font-bold gap-2">
+                      <Swords className="w-4 h-4" /> Find Opponent
+                    </Button>
+                  </CardFooter>
+                </Card>
               </CardContent>
             </Card>
           </div>
-
-          {/* Leaderboard Column */}
+          
           <div className="space-y-6">
             <Card className="border-2 border-yellow-500/20 shadow-2xl glass-morphism">
               <CardHeader className="bg-yellow-500/10 border-b border-yellow-500/20">
                 <CardTitle className="flex items-center gap-2 text-xl font-black text-yellow-600">
-                  <Trophy className="w-6 h-6" /> GLOBAL LEADERBOARD
+                  <Trophy className="w-6 h-6" /> ARENA LEADERBOARD
                 </CardTitle>
-                <CardDescription className="text-xs">Top ranking experimenters in the lab</CardDescription>
               </CardHeader>
               <CardContent className="p-4 divide-y">
                 {leaderboard.map((u, i) => (
                   <div key={i} className="flex justify-between items-center py-4">
                     <div className="flex items-center gap-3">
-                      <div className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-sm ${
-                        i === 0 ? "bg-yellow-500 text-black font-black" :
-                        i === 1 ? "bg-slate-300 text-black font-black" :
-                        i === 2 ? "bg-amber-600 text-white font-black" :
-                        "bg-muted text-muted-foreground"
-                      }`}>
-                        {i + 1}
-                      </div>
+                      <div className="w-8 h-8 rounded-full bg-yellow-500 text-black flex items-center justify-center font-black">{i + 1}</div>
                       <div>
-                        <p className="font-bold text-sm text-foreground">{u.name}</p>
-                        <p className="text-[10px] text-muted-foreground uppercase font-black">Tier: {u.rank || "Bronze"}</p>
+                        <p className="font-bold text-sm">{u.name}</p>
+                        <p className="text-[10px] text-muted-foreground uppercase font-black">{u.rank}</p>
                       </div>
                     </div>
-                    <Badge className="bg-yellow-500/20 text-yellow-600 border border-yellow-500/30 text-xs font-bold">
-                      {u.points} PTS
-                    </Badge>
+                    <Badge className="bg-yellow-500/20 text-yellow-600">{u.points} PTS</Badge>
                   </div>
                 ))}
               </CardContent>
@@ -412,204 +275,136 @@ export function LabGames({ points, onUpdatePoints, userId, userEmail }: LabGames
         </div>
       )}
 
-      {/* --- PLAYING STATE SCREEN --- */}
-      {gameState === "playing" && (
-        <Card className="border-4 border-indigo-500 shadow-2xl overflow-hidden glass-morphism max-w-4xl mx-auto">
-          {/* Battle Header */}
-          <CardHeader className="bg-indigo-500/10 border-b border-indigo-500/20 flex flex-row justify-between items-center px-6 py-4">
-            <div className="flex items-center gap-2">
-              <Swords className="w-6 h-6 text-indigo-500 animate-pulse" />
-              <CardTitle className="text-lg font-black uppercase text-indigo-500">Live AI Duel</CardTitle>
-            </div>
-            <div className="flex gap-4 items-center">
-              <Badge variant="outline" className="text-lg py-1 px-3 border-indigo-500 text-indigo-500 animate-pulse">
-                ⏰ {timeLeft}s Left
-              </Badge>
-              <Button variant="destructive" size="sm" onClick={endGame} className="font-bold">Surrender</Button>
-            </div>
-          </CardHeader>
-
-          {/* Scores Panel */}
-          <div className="grid grid-cols-2 divide-x border-b bg-muted/20">
-            <div className="p-4 text-center">
-              <div className="flex items-center justify-center gap-2 mb-1">
-                <User className="w-5 h-5 text-indigo-500" />
-                <span className="text-xs uppercase font-black text-muted-foreground">Your Score</span>
-              </div>
-              <h3 className="text-3xl font-black text-indigo-500">{playerScore}</h3>
-            </div>
-            <div className="p-4 text-center">
-              <div className="flex items-center justify-center gap-2 mb-1">
-                <Bot className="w-5 h-5 text-rose-500" />
-                <span className="text-xs uppercase font-black text-muted-foreground">QuantumBot AI</span>
-              </div>
-              <h3 className="text-3xl font-black text-rose-500">{botScore}</h3>
-            </div>
-          </div>
-
-          <CardContent className="p-8">
-            {/* Game 1: Logic Math */}
-            {activeGame === "math" && (
-              <div className="space-y-6 max-w-md mx-auto text-center">
-                <Badge className="bg-yellow-500 text-black font-black uppercase">LOGIC ARITHMETIC DRILL</Badge>
-                <h3 className="text-5xl font-black tracking-widest bg-muted/40 py-6 rounded-2xl border-2">
-                  {mathQuestion.q} = ?
-                </h3>
-                <div className="flex gap-2">
-                  <Input 
-                    type="number" 
-                    value={mathInput}
-                    onChange={(e) => setMathInput(e.target.value)}
-                    onKeyDown={(e) => e.key === "Enter" && submitMathAnswer()}
-                    placeholder="Type answer and press Enter..."
-                    className="h-14 text-xl text-center border-2"
-                  />
-                  <Button onClick={submitMathAnswer} className="h-14 px-8 bg-indigo-500 hover:bg-indigo-600 text-white font-black text-lg">
-                    SUBMIT
-                  </Button>
-                </div>
-              </div>
-            )}
-
-            {/* Game 2: Scrambled Word Battle */}
-            {activeGame === "word" && (
-              <div className="space-y-6 max-w-lg mx-auto text-center">
-                <Badge className="bg-rose-500 text-white font-black uppercase">TERM DECIPHER CHALLENGE</Badge>
-                <div className="bg-muted/40 p-6 rounded-2xl border-2 space-y-3">
-                  <h3 className="text-3xl font-black tracking-widest text-indigo-500 uppercase">{wordClue.scrambled}</h3>
-                  <p className="text-sm font-medium text-muted-foreground">{wordClue.clue}</p>
-                </div>
-                <div className="flex gap-2">
-                  <Input 
-                    value={wordInput}
-                    onChange={(e) => setWordInput(e.target.value)}
-                    onKeyDown={(e) => e.key === "Enter" && submitWordAnswer()}
-                    placeholder="Decipher logic term..."
-                    className="h-14 text-xl text-center border-2 uppercase"
-                  />
-                  <Button onClick={submitWordAnswer} className="h-14 px-8 bg-indigo-500 hover:bg-indigo-600 text-white font-black text-lg">
-                    SOLVE
-                  </Button>
-                </div>
-              </div>
-            )}
-
-            {/* Game 3: Probability Matrix */}
-            {activeGame === "prob" && (
-              <div className="space-y-6 max-w-lg mx-auto text-center">
-                <Badge className="bg-emerald-500 text-white font-black uppercase">PROBABILITY PREDICTOR</Badge>
-                <div className="bg-muted/40 p-6 rounded-2xl border-2">
-                  <h3 className="text-xl font-black leading-relaxed">{probQuestion.q}</h3>
-                </div>
-                <div className="grid grid-cols-3 gap-4">
-                  {probQuestion.options.map((opt, i) => (
-                    <Button 
-                      key={i} 
-                      onClick={() => submitProbAnswer(opt)}
-                      className="h-16 text-lg font-black bg-indigo-500 hover:bg-indigo-600 text-white rounded-xl"
-                    >
-                      {opt}
-                    </Button>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {/* Game 4: Log Derivative Combinations */}
-            {activeGame === "calc" && (
-              <div className="space-y-6 max-w-lg mx-auto text-center">
-                <Badge className="bg-cyan-500 text-white font-black uppercase">CALCULUS COMBINATOR</Badge>
-                <div className="bg-muted/40 p-6 rounded-2xl border-2 space-y-2">
-                  <p className="text-xs font-bold text-indigo-500 uppercase tracking-widest">Find Derivative of</p>
-                  <h3 className="text-4xl font-black">{calcPair.f}</h3>
-                </div>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                  {calcPair.options.map((opt, i) => (
-                    <Button 
-                      key={i} 
-                      onClick={() => submitCalcAnswer(opt)}
-                      className="h-16 text-md font-black bg-indigo-500 hover:bg-indigo-600 text-white rounded-xl border-none"
-                    >
-                      {opt}
-                    </Button>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {/* Game 5: Balloon POP Math */}
-            {activeGame === "balloon" && (
-              <div className="space-y-6 max-w-xl mx-auto text-center">
-                <Badge className="bg-indigo-500 text-white font-black uppercase">BALLOON MATHEMATICS POP</Badge>
-                <div className="bg-indigo-500/10 p-4 rounded-xl border-2 border-dashed border-indigo-500/30">
-                  <p className="text-sm font-black text-indigo-600">{balloonTarget}</p>
-                </div>
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-4 pt-4">
-                  {balloons.map((b) => (
-                    <button
-                      key={b.id}
-                      disabled={b.popped}
-                      onClick={() => popBalloon(b.id)}
-                      className={`h-28 rounded-full flex flex-col items-center justify-center font-black transition-all shadow-lg ${
-                        b.popped 
-                          ? "bg-muted text-muted-foreground scale-95 border-2 border-dashed" 
-                          : "bg-gradient-to-b from-indigo-400 to-indigo-600 text-white hover:scale-105 border-none cursor-pointer"
-                      }`}
-                    >
-                      {b.popped ? "💥 POP" : b.val}
-                    </button>
-                  ))}
-                </div>
+      {gameState === "matching" && (
+        <Card className="border-2 border-indigo-500/20 shadow-2xl glass-morphism max-w-xl mx-auto py-20 text-center animate-pulse">
+          <CardContent className="space-y-6 flex flex-col items-center">
+            <div className="w-24 h-24 rounded-full border-4 border-indigo-500 border-t-transparent animate-spin" />
+            <h2 className="text-3xl font-black text-indigo-500 tracking-widest">MATCHMAKING...</h2>
+            <p className="text-muted-foreground font-medium uppercase">Finding a worthy opponent in the {mode === "pve" ? "AI Matrix" : "Global Queue"}...</p>
+            {isLoadingQuestions && (
+              <div className="pt-4 border-t border-indigo-500/20 w-full">
+                <p className="text-sm text-indigo-500 flex items-center justify-center gap-2">
+                  <Loader2 className="w-4 h-4 animate-spin" /> Generating AI questions...
+                </p>
               </div>
             )}
           </CardContent>
         </Card>
       )}
 
-      {/* --- RESULTS SCREEN --- */}
+      {gameState === "playing" && (
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 h-[75vh]">
+          {/* Left Panel: Problem & Progress */}
+          <Card className="flex flex-col border-2 border-indigo-500 shadow-2xl glass-morphism overflow-hidden">
+            <div className="bg-indigo-500/10 p-4 border-b border-indigo-500/20 flex justify-between items-center">
+              <Badge variant="outline" className="text-xl px-4 py-1 border-indigo-500 text-indigo-500 font-mono font-black animate-pulse">
+                <Clock className="w-5 h-5 inline mr-2" /> {formatTime(timeLeft)}
+              </Badge>
+              <Button variant="destructive" size="sm" onClick={() => endBattle("loss")} className="font-bold uppercase">Surrender</Button>
+            </div>
+            
+            <div className="flex-1 p-6 space-y-6 overflow-y-auto">
+              <div className="space-y-2">
+                <div className="flex justify-between items-start">
+                  <h2 className="text-2xl font-black text-foreground">{question.title}</h2>
+                  <Badge variant={question.difficulty === "Easy" ? "secondary" : "destructive"}>{question.difficulty}</Badge>
+                </div>
+                <p className="text-muted-foreground font-medium">{question.description}</p>
+                {question.tags && question.tags.length > 0 && (
+                  <div className="flex gap-2 flex-wrap pt-2">
+                    {question.tags.map(tag => (
+                      <Badge key={tag} variant="outline" className="text-xs">{tag}</Badge>
+                    ))}
+                  </div>
+                )}
+                {questionsError && (
+                  <div className="text-xs text-yellow-600 bg-yellow-500/10 p-2 rounded border border-yellow-500/30 flex items-center gap-1">
+                    <AlertTriangle className="w-3 h-3" /> {questionsError}
+                  </div>
+                )}
+              </div>
+              
+              <div className="space-y-8 pt-8 border-t">
+                <div className="space-y-2">
+                  <div className="flex justify-between items-center text-sm font-black uppercase text-indigo-500">
+                    <span>You</span>
+                    <span>{playerProgress}%</span>
+                  </div>
+                  <Progress value={playerProgress} className="h-4 bg-indigo-500/20" />
+                </div>
+                
+                <div className="space-y-2">
+                  <div className="flex justify-between items-center text-sm font-black uppercase text-rose-500">
+                    <span>{mode === "pve" ? "AI Overlord" : "Opponent"}</span>
+                    <span>{opponentProgress}%</span>
+                  </div>
+                  <Progress value={opponentProgress} className="h-4 bg-rose-500/20" />
+                </div>
+              </div>
+            </div>
+          </Card>
+
+          {/* Right Panel: Editor */}
+          <Card className="flex flex-col border-2 border-slate-700 shadow-2xl overflow-hidden">
+            <div className="h-full relative">
+              {isLoadingQuestions ? (
+                <div className="w-full h-full flex items-center justify-center bg-slate-950">
+                  <div className="text-center">
+                    <Loader2 className="w-8 h-8 animate-spin text-indigo-500 mx-auto mb-2" />
+                    <p className="text-sm text-muted-foreground">Generating question...</p>
+                  </div>
+                </div>
+              ) : (
+                <>
+                  <Editor
+                    height="100%"
+                    language="javascript"
+                    theme="vs-dark"
+                    value={code}
+                    onChange={(v) => setCode(v || "")}
+                    options={{ minimap: { enabled: false }, fontSize: 16, padding: { top: 20 } }}
+                  />
+                  <div className="absolute bottom-4 right-4 z-10">
+                    <Button 
+                      size="lg" 
+                      className="bg-indigo-500 hover:bg-indigo-600 font-black gap-2 shadow-xl"
+                      onClick={handleRunCode}
+                      disabled={isExecuting}
+                    >
+                      {isExecuting ? <><Loader2 className="w-5 h-5 animate-spin" /> EXECUTING...</> : <><Play className="w-5 h-5" /> SUBMIT SOLUTION</>}
+                    </Button>
+                  </div>
+                </>
+              )}
+            </div>
+          </Card>
+        </div>
+      )}
+
       {gameState === "finished" && (
-        <Card className="border-4 border-indigo-500 shadow-2xl overflow-hidden glass-morphism max-w-md mx-auto text-center">
+        <Card className="border-4 border-indigo-500 shadow-2xl glass-morphism max-w-md mx-auto text-center mt-20">
           <CardHeader className="bg-indigo-500/10 border-b border-indigo-500/20 py-8">
             <div className="flex justify-center mb-4">
               {gameResult === "win" ? (
                 <div className="w-20 h-20 bg-green-500/20 border-2 border-green-500 rounded-full flex items-center justify-center text-green-500 animate-bounce">
                   <CheckCircle className="w-12 h-12" />
                 </div>
-              ) : gameResult === "loss" ? (
+              ) : (
                 <div className="w-20 h-20 bg-destructive/20 border-2 border-destructive rounded-full flex items-center justify-center text-destructive animate-pulse">
                   <XCircle className="w-12 h-12" />
-                </div>
-              ) : (
-                <div className="w-20 h-20 bg-yellow-500/20 border-2 border-yellow-500 rounded-full flex items-center justify-center text-yellow-500">
-                  <AlertTriangle className="w-12 h-12" />
                 </div>
               )}
             </div>
             <CardTitle className="text-3xl font-black">
-              {gameResult === "win" ? "🏆 VICTORY!" : gameResult === "loss" ? "💔 DEFEAT!" : "🤝 DRAW MATCH!"}
+              {gameResult === "win" ? "🏆 VICTORY!" : "💔 DEFEAT!"}
             </CardTitle>
             <CardDescription className="font-bold text-sm uppercase mt-2">
-              {gameResult === "win" ? "+50 Points earned" : gameResult === "loss" ? "-20 Points deducted" : "No point change"}
+              {gameResult === "win" ? "+100 Rating Points" : "-30 Rating Points"}
             </CardDescription>
           </CardHeader>
-          
-          <CardContent className="p-6 space-y-4">
-            <div className="flex justify-between items-center bg-muted/40 p-4 rounded-xl">
-              <span className="font-black text-sm uppercase">Your Final Score</span>
-              <Badge className="bg-indigo-500 font-bold">{playerScore}</Badge>
-            </div>
-            <div className="flex justify-between items-center bg-muted/40 p-4 rounded-xl">
-              <span className="font-black text-sm uppercase">QuantumBot AI Score</span>
-              <Badge variant="destructive" className="font-bold">{botScore}</Badge>
-            </div>
-          </CardContent>
-
-          <CardFooter className="bg-muted/10 border-t p-4 flex gap-3">
-            <Button onClick={() => startGame(activeGame!)} className="flex-1 bg-indigo-500 hover:bg-indigo-600 font-black gap-2 text-white">
-              <RefreshCw className="w-4 h-4" /> Rematch
-            </Button>
-            <Button onClick={() => setGameState("idle")} variant="outline" className="flex-1 font-black">
-              Arena Lobby
+          <CardFooter className="bg-muted/10 p-4 flex gap-3">
+            <Button onClick={() => setGameState("lobby")} className="flex-1 bg-indigo-500 hover:bg-indigo-600 font-black">
+              Return to Arena
             </Button>
           </CardFooter>
         </Card>

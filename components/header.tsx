@@ -3,9 +3,12 @@
 import { Menubar, MenubarContent, MenubarItem, MenubarMenu, MenubarSeparator, MenubarTrigger } from "@/components/ui/menubar"
 import { 
   Brain, FileText, Settings, HelpCircle, User, LogOut, ChevronLeft, ChevronRight, 
-  Home, Trophy, Video, Mail, Smartphone, UserPlus, ShieldCheck, Globe, Scale, MessageSquare, Sparkles 
+  Home, Trophy, Video, Mail, Smartphone, UserPlus, ShieldCheck, Globe, Scale, MessageSquare, Sparkles,
+  Swords
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { useNav } from "@/hooks/use-nav"
 import Link from "next/link"
 import { useState, useEffect } from "react"
@@ -15,6 +18,37 @@ export function Header() {
   const { currentStep, setStep, isRegistered, isAdmin, setAdmin, setRegistered } = useNav()
   const [session, setSession] = useState<any>(null)
   const [userId, setUserId] = useState<string | null>(null)
+  const [isAdminDialogOpen, setAdminDialogOpen] = useState(false)
+  const [adminPasswordInput, setAdminPasswordInput] = useState("")
+  const [adminAuthMessage, setAdminAuthMessage] = useState("")
+  const [adminAuthLoading, setAdminAuthLoading] = useState(false)
+
+  const handleAdminUnlock = () => {
+    if (adminPasswordInput === "b6001d1fe29d165a0") {
+      setAdminAuthLoading(true)
+      setAdminAuthMessage("Verifying...")
+      setTimeout(() => {
+        setAdmin(true)
+        setAdminAuthMessage("Successfully unlocked!")
+        setTimeout(() => {
+          setAdminDialogOpen(false)
+          setAdminPasswordInput("")
+          setAdminAuthMessage("")
+          setAdminAuthLoading(false)
+          setStep("admin")
+        }, 600)
+      }, 300)
+    } else {
+      setAdminAuthMessage("Invalid password. Try again.")
+      setAdminPasswordInput("")
+    }
+  }
+
+  const handleAdminPasswordKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter' && !adminAuthLoading) {
+      handleAdminUnlock()
+    }
+  }
 
   useEffect(() => {
     const syncSession = () => {
@@ -123,13 +157,7 @@ export function Header() {
                   if (isAdmin) {
                     setAdmin(false);
                   } else {
-                    const pass = prompt("Enter Admin Password:");
-                    if (pass === "admin123") {
-                      setAdmin(true);
-                      alert("Admin Access Granted!");
-                    } else if (pass !== null) {
-                      alert("Incorrect Password!");
-                    }
+                    setAdminDialogOpen(true);
                   }
                 }} className="gap-2">
                   <ShieldCheck className="w-4 h-4 text-primary" /> {isAdmin ? "Lock Admin" : "Unlock Admin"}
@@ -140,6 +168,43 @@ export function Header() {
                 </MenubarItem>
               </MenubarContent>
             </MenubarMenu>
+
+            <Dialog open={isAdminDialogOpen} onOpenChange={(open) => {
+              if (!open && !adminAuthLoading) {
+                setAdminDialogOpen(open)
+                setAdminPasswordInput("")
+                setAdminAuthMessage("")
+              }
+            }}>
+              <DialogContent>
+                <DialogHeader>
+                  <DialogTitle>Admin Access</DialogTitle>
+                  <DialogDescription>Enter the admin password to unlock admin features.</DialogDescription>
+                </DialogHeader>
+                <div className="grid gap-4 py-4">
+                  <Input
+                    type="password"
+                    value={adminPasswordInput}
+                    placeholder="Admin Password"
+                    onChange={(e) => setAdminPasswordInput(e.target.value)}
+                    onKeyDown={handleAdminPasswordKeyDown}
+                    disabled={adminAuthLoading}
+                    autoFocus
+                  />
+                  {adminAuthMessage && (
+                    <p className={`text-sm font-semibold ${adminAuthMessage.includes("Successfully") || adminAuthMessage.includes("Verifying") ? "text-emerald-600" : "text-rose-600"}`}>
+                      {adminAuthMessage}
+                    </p>
+                  )}
+                </div>
+                <DialogFooter>
+                  <Button variant="secondary" onClick={() => setAdminDialogOpen(false)} disabled={adminAuthLoading}>Cancel</Button>
+                  <Button onClick={handleAdminUnlock} disabled={adminAuthLoading}>
+                    {adminAuthLoading ? "Verifying..." : "Submit"}
+                  </Button>
+                </DialogFooter>
+              </DialogContent>
+            </Dialog>
 
             {isAdmin && (
               <MenubarMenu>
@@ -168,6 +233,12 @@ export function Header() {
             </MenubarMenu>
 
             <MenubarMenu>
+              <MenubarTrigger onClick={() => setStep("arena")} className="cursor-pointer font-bold text-rose-500 hover:text-rose-600 transition-colors">
+                <Swords className="w-4 h-4 mr-2" /> Battle Arena
+              </MenubarTrigger>
+            </MenubarMenu>
+
+            <MenubarMenu>
               <MenubarTrigger onClick={() => setStep("guider")} className="cursor-pointer font-bold text-green-500 hover:text-green-600 transition-colors">
                 <Sparkles className="w-4 h-4 mr-2" /> AI Guider
               </MenubarTrigger>
@@ -185,13 +256,18 @@ export function Header() {
               </MenubarTrigger>
               <MenubarContent>
                 <MenubarItem asChild>
-                  <a href="mailto:help@gmail.com" className="flex items-center gap-2">
-                    <Mail className="w-4 h-4" /> Email: help@gmail.com
+                  <a href="mailto:helpsupport9452@gmail.com?subject=User%20Query&body=Please%20describe%20your%20query%20below%20and%20we%20will%20respond%20shortly.%0D%0A%0D%0AQuery:%20" className="flex items-center gap-2">
+                    <Mail className="w-4 h-4" /> Email: helpsupport9452@gmail.com
                   </a>
                 </MenubarItem>
                 <MenubarItem asChild>
-                  <a href="tel:+91123456789" className="flex items-center gap-2">
-                    <Smartphone className="w-4 h-4" /> Phone: +91 123456789
+                  <a href="tel:+917379307099" className="flex items-center gap-2">
+                    <Smartphone className="w-4 h-4" /> Contact: +91 73793 07099
+                  </a>
+                </MenubarItem>
+                <MenubarItem asChild>
+                  <a href="tel:+919532415871" className="flex items-center gap-2">
+                    <Smartphone className="w-4 h-4" /> Contact: +91 95324 15871
                   </a>
                 </MenubarItem>
                 <MenubarItem>Documentation</MenubarItem>

@@ -34,6 +34,8 @@ import { StudentProfile } from "@/components/student-profile"
 import { DeveloperSection } from "@/components/developer-section"
 import { SmartLab } from "@/components/smart-lab"
 import { GuiderAgent } from "@/components/guider-agent"
+import { BattleArena } from "@/components/battle-arena/battle-arena"
+import { StudentArenaRequest } from "@/components/student-arena-request"
 import { Spinner } from "@/components/ui/spinner"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
@@ -56,7 +58,7 @@ export type AnalysisResult = {
 }
 
 export default function ExamAnalyzer() {
-  const { currentStep, setStep, isRegistered } = useNav()
+  const { currentStep, setStep, isRegistered, sessionUser, isAdmin } = useNav()
   const [syllabusText, setSyllabusText] = useState<string>("")
   const [oldPaperText, setOldPaperText] = useState<string>("")
   const [requirements, setRequirements] = useState<string>("")
@@ -94,6 +96,9 @@ export default function ExamAnalyzer() {
     }
   }, [syllabusText, oldPaperText, analysisResult])
 
+  // isAdmin comes from useNav context — set by the password unlock flow in header.tsx
+  // sessionUser?.role === "admin" is a secondary check for arena access only
+
   const clearSession = () => {
     localStorage.removeItem("aura_syllabus")
     localStorage.removeItem("aura_old_paper")
@@ -104,9 +109,17 @@ export default function ExamAnalyzer() {
     setStep("upload")
   }
 
-  // --- RENDER ROUTING ---
+  // --- RENDER ROUTING WITH AUTHORIZATION ---
   if (currentStep === "onboarding") return <UserOnboarding />
-  if (currentStep === "admin") return <AdminPanel />
+  
+  // Admin-only: Allow access if isAdmin flag is true (set via password unlock in header)
+  if (currentStep === "admin") {
+    if (!isAdmin) {
+      return <StudentProfile />
+    }
+    return <AdminPanel />
+  }
+  
   if (currentStep === "community") return <PaperRepository />
   if (currentStep === "policy") return <PolicySection />
   if (currentStep === "chat") return <CommunityChat />
@@ -114,6 +127,24 @@ export default function ExamAnalyzer() {
   if (currentStep === "developer") return <DeveloperSection />
   if (currentStep === "lab") return <SmartLab />
   if (currentStep === "guider") return <GuiderAgent />
+  
+  // Arena: Show request form for students, battle arena for approved
+  if (currentStep === "arena") {
+    const isArenaAdmin = isAdmin || sessionUser?.role === "admin"
+    const isApproved = sessionUser?.arenaApprovalStatus === "approved"
+    
+    // Admins bypass approval checks
+    if (isArenaAdmin) {
+      return <BattleArena userId={sessionUser?.id || null} userEmail={sessionUser?.email || null} isAdmin={true} />
+    }
+    
+    // Non-admins: if approved, show arena; otherwise show request form
+    if (isApproved) {
+      return <BattleArena userId={sessionUser?.id || null} userEmail={sessionUser?.email || null} isAdmin={false} />
+    } else {
+      return <StudentArenaRequest />
+    }
+  }
 
   const toggleOutputType = (type: string) => {
     setOutputTypes(prev => 

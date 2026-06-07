@@ -1,12 +1,12 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Badge } from "@/components/ui/badge"
-import { ShieldCheck, User, Users, Lock, Unlock, Phone, CheckCircle2, Download, Upload, FileText, Globe, Scale, ArrowRight, ShieldAlert, Brain, MessageSquare, Send, Sparkles } from "lucide-react"
+import { ShieldCheck, User, Users, Lock, Unlock, Phone, CheckCircle2, Download, Upload, FileText, Globe, Scale, ArrowRight, ShieldAlert, Brain, MessageSquare, Send, Sparkles, Activity, Zap, Trophy, Target, CheckSquare, XSquare } from "lucide-react"
 import { useNav } from "@/hooks/use-nav"
 import { Switch } from "@/components/ui/switch"
 // import { signIn, useSession } from "next-auth/react" // Removed due to environment restrictions
@@ -17,6 +17,7 @@ export function UserOnboarding() {
   const [mode, setMode] = useState<"login" | "register">("register")
   const [formData, setFormData] = useState({ name: "", email: "", phone: "", password: "" })
   const [loading, setLoading] = useState(false)
+  
 
   useEffect(() => {
     const saved = localStorage.getItem("aura_session")
@@ -26,26 +27,30 @@ export function UserOnboarding() {
     }
   }, [setRegistered, setStep])
 
+  // Captcha removed: handlers intentionally omitted
+
   const handleRegister = async () => {
     if (!formData.name || !formData.email || !formData.phone || !formData.password) {
       alert("Please fill in all details.")
       return
     }
+
+
     setLoading(true)
     try {
       const res = await fetch("/api/auth/register", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          name: formData.name,
-          email: formData.email,
-          phone: formData.phone,
-          password: formData.password
-        })
+            name: formData.name,
+            email: formData.email,
+            phone: formData.phone,
+            password: formData.password
+          })
       })
       const data = await res.json()
       
-      if (res.status === 400 && data.message?.toLowerCase().includes("exists")) {
+      if (res.status === 409) {
         alert("Account already exists! Redirecting to Login to enter your credentials...")
         setMode("login")
       } else if (res.ok) {
@@ -156,7 +161,7 @@ export function UserOnboarding() {
               </>
             )}
 
-            <div className="space-y-2">
+              <div className="space-y-2">
               <Label className="font-bold">Gmail Address</Label>
               <Input 
                 type="email" 
@@ -179,13 +184,16 @@ export function UserOnboarding() {
             </div>
 
             {mode === "register" ? (
-              <Button 
-                onClick={handleRegister} 
-                disabled={loading} 
-                className="w-full h-14 text-lg font-black bg-primary rounded-xl shadow-xl hover:scale-102 transition-transform mt-4 text-white"
-              >
-                {loading ? "REGISTERING..." : "CREATE ACCOUNT"} <ArrowRight className="ml-2 w-5 h-5" />
-              </Button>
+              <>
+                <Button 
+                  onClick={handleRegister} 
+                  disabled={loading} 
+                  className="w-full h-14 text-lg font-black bg-primary rounded-xl shadow-xl hover:scale-102 transition-transform mt-4 text-white"
+                >
+                  {loading ? "REGISTERING..." : "CREATE ACCOUNT"} <ArrowRight className="ml-2 w-5 h-5" />
+                </Button>
+                
+              </>
             ) : (
               <Button 
                 onClick={handleLogin} 
@@ -207,7 +215,16 @@ export function AdminPanel() {
   const { setAdmin, isAdmin } = useNav()
   const [users, setUsers] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
-  const [activeTab, setActiveTab] = useState<"users" | "credentials" | "feedback">("users")
+  const [activeTab, setActiveTab] = useState<"users" | "credentials" | "activity" | "feedback" | "arena">("users")
+  const [selectedUserId, setSelectedUserId] = useState<string>("")
+  
+  // Arena Approvals States
+  const [arenaApprovals, setArenaApprovals] = useState<any[]>([])
+  const [arenaLoading, setArenaLoading] = useState(false)
+  const [arenaFilterStatus, setArenaFilterStatus] = useState<"pending" | "approved" | "rejected" | "all">("pending")
+  const [selectedArenaUsers, setSelectedArenaUsers] = useState<string[]>([])
+  const [rejectReason, setRejectReason] = useState("")
+  const [rejectingUserId, setRejectingUserId] = useState<string | null>(null)
   
   // Feedback states
   const [feedbacks, setFeedbacks] = useState([
@@ -243,6 +260,19 @@ export function AdminPanel() {
         setLoading(false)
       })
   }, [])
+
+  // Fetch Arena Approvals
+  useEffect(() => {
+    if (activeTab === "arena") {
+      fetchArenaApprovals()
+    }
+  }, [activeTab, arenaFilterStatus])
+
+  useEffect(() => {
+    if (!selectedUserId && users.length) {
+      setSelectedUserId(users[0]._id)
+    }
+  }, [users, selectedUserId])
 
   const toggleStatus = async (id: string, currentStatus: string) => {
     const nextStatus = currentStatus === "Active" ? "Inactive" : "Active"
@@ -331,6 +361,184 @@ export function AdminPanel() {
     }
   }
 
+  // Arena Approval Handlers
+  // Build admin identity for API headers: prefer real session, fall back to password-unlocked admin
+  const getAdminUserObj = () => {
+    const raw = localStorage.getItem('aura_session')
+    if (raw) {
+      try {
+        const parsed = JSON.parse(raw)
+        if (parsed?.user) {
+          // Ensure role is set for API header
+          return { ...parsed.user, role: parsed.user.role || 'admin' }
+        }
+      } catch {}
+    }
+    // Password-unlocked admin with no session: use a minimal identity
+    return { id: 'admin', name: 'Admin', email: 'admin@aura', role: 'admin' }
+  }
+
+  const fetchArenaApprovals = async () => {
+    // Gate on the context flag set by the password-unlock flow
+    if (!isAdmin) {
+      console.warn('fetchArenaApprovals: not admin, skipping')
+      return
+    }
+    try {
+      setArenaLoading(true)
+      const adminUser = getAdminUserObj()
+
+      const response = await fetch(
+        `/api/admin/arena-approvals?status=${arenaFilterStatus}&page=1&limit=50`,
+        {
+          headers: {
+            'Content-Type': 'application/json',
+            'x-session-user': encodeURIComponent(JSON.stringify(adminUser)),
+          },
+        }
+      )
+
+      if (response.status === 401) {
+        console.error('API returned 401 - admin auth failed')
+        setArenaApprovals([])
+        setArenaLoading(false)
+        return
+      }
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}))
+        throw new Error(errorData.error || `API Error: ${response.status}`)
+      }
+
+      const data = await response.json()
+      setArenaApprovals(data.data || [])
+    } catch (error: any) {
+      console.error('Arena approval fetch error:', error.message)
+      setArenaApprovals([])
+    } finally {
+      setArenaLoading(false)
+    }
+  }
+
+  const handleArenaApprove = async (userId: string) => {
+    if (!isAdmin) { alert('Admin access required'); return }
+    try {
+      setArenaLoading(true)
+      const adminUser = getAdminUserObj()
+
+      const response = await fetch('/api/admin/arena-approvals', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-session-user': encodeURIComponent(JSON.stringify(adminUser)),
+        },
+        body: JSON.stringify({ userId, action: 'approve' }),
+      })
+
+      const responseData = await response.json().catch(() => ({}))
+      if (!response.ok) {
+        throw new Error(responseData.error || `Failed to approve (${response.status})`)
+      }
+
+      setArenaApprovals(arenaApprovals.filter(a => a._id !== userId))
+      setSelectedArenaUsers(selectedArenaUsers.filter(id => id !== userId))
+      alert('Approved successfully!')
+    } catch (error: any) {
+      console.error('Arena approval error:', error.message)
+      alert('Failed to approve: ' + error.message)
+    } finally {
+      setArenaLoading(false)
+    }
+  }
+
+  const handleArenaReject = async (userId: string) => {
+    if (!rejectReason.trim()) {
+      alert('Please provide a rejection reason')
+      return
+    }
+    if (!isAdmin) { alert('Admin access required'); return }
+
+    try {
+      setArenaLoading(true)
+      const adminUser = getAdminUserObj()
+
+      const response = await fetch('/api/admin/arena-approvals', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-session-user': encodeURIComponent(JSON.stringify(adminUser)),
+        },
+        body: JSON.stringify({ userId, action: 'reject', reason: rejectReason }),
+      })
+
+      const responseData = await response.json().catch(() => ({}))
+      if (!response.ok) {
+        throw new Error(responseData.error || `Failed to reject (${response.status})`)
+      }
+
+      setArenaApprovals(arenaApprovals.filter(a => a._id !== userId))
+      setRejectReason('')
+      setRejectingUserId(null)
+      setSelectedArenaUsers(selectedArenaUsers.filter(id => id !== userId))
+      alert('Rejected successfully!')
+    } catch (error: any) {
+      console.error('Arena rejection error:', error.message)
+      alert('Failed to reject: ' + error.message)
+    } finally {
+      setArenaLoading(false)
+    }
+  }
+
+  const handleBulkArenaApprove = async () => {
+    if (selectedArenaUsers.length === 0) {
+      alert('Please select users to approve')
+      return
+    }
+    if (!isAdmin) { alert('Admin access required'); return }
+
+    try {
+      setArenaLoading(true)
+      const adminUser = getAdminUserObj()
+
+      const response = await fetch('/api/admin/arena-approvals', {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-session-user': encodeURIComponent(JSON.stringify(adminUser)),
+        },
+        body: JSON.stringify({ userIds: selectedArenaUsers, action: 'approve' }),
+      })
+
+      const data = await response.json().catch(() => ({}))
+      if (!response.ok) {
+        throw new Error(data.error || `Failed to approve (${response.status})`)
+      }
+
+      setArenaApprovals(arenaApprovals.filter(a => !selectedArenaUsers.includes(a._id)))
+      setSelectedArenaUsers([])
+      alert(`Approved ${data.modifiedCount || selectedArenaUsers.length} users successfully!`)
+    } catch (error: any) {
+      console.error('Bulk approval error:', error.message)
+      alert('Failed to approve: ' + error.message)
+    } finally {
+      setArenaLoading(false)
+    }
+  }
+
+  const toggleArenaUserSelection = (userId: string) => {
+    setSelectedArenaUsers(prev =>
+      prev.includes(userId) ? prev.filter(id => id !== userId) : [...prev, userId]
+    )
+  }
+
+  const toggleSelectAllArena = () => {
+    if (selectedArenaUsers.length === arenaApprovals.length) {
+      setSelectedArenaUsers([])
+    } else {
+      setSelectedArenaUsers(arenaApprovals.map(a => a._id))
+    }
+  }
+
   return (
     <div className="container mx-auto py-12 animate-in slide-in-from-bottom-10 duration-700">
       <div className="flex flex-col md:flex-row md:justify-between md:items-center gap-4 mb-8">
@@ -359,10 +567,22 @@ export function AdminPanel() {
           Credentials Vault
         </button>
         <button 
+          onClick={() => setActiveTab("activity")} 
+          className={`px-6 py-3 font-bold text-sm uppercase tracking-wider rounded-xl transition-all ${activeTab === "activity" ? "bg-primary text-primary-foreground shadow-lg" : "text-muted-foreground hover:bg-muted/10"}`}
+        >
+          Activity Monitor
+        </button>
+        <button 
           onClick={() => setActiveTab("feedback")} 
           className={`px-6 py-3 font-bold text-sm uppercase tracking-wider rounded-xl transition-all ${activeTab === "feedback" ? "bg-primary text-primary-foreground shadow-lg" : "text-muted-foreground hover:bg-muted/10"}`}
         >
           Active Feedback Center
+        </button>
+        <button 
+          onClick={() => setActiveTab("arena")} 
+          className={`px-6 py-3 font-bold text-sm uppercase tracking-wider rounded-xl transition-all flex items-center gap-2 ${activeTab === "arena" ? "bg-orange-500 text-white shadow-lg" : "text-muted-foreground hover:bg-muted/10"}`}
+        >
+          <Zap className="w-4 h-4" /> Arena Services
         </button>
       </div>
 
@@ -462,6 +682,89 @@ export function AdminPanel() {
             </Card>
           )}
 
+          {activeTab === "activity" && (
+            <Card className="border-2 shadow-2xl overflow-hidden glass-morphism">
+              <CardHeader className="bg-muted/30 border-b">
+                <CardTitle className="flex items-center gap-2">
+                  <Activity className="w-6 h-6 text-emerald-500" /> Student Activity Monitor
+                </CardTitle>
+                <CardDescription>Inspect game participation, battle results, and profile activity for any student.</CardDescription>
+              </CardHeader>
+              <CardContent className="p-6 space-y-6">
+                <div className="grid gap-4 md:grid-cols-[1fr_auto] items-end">
+                  <div>
+                    <Label className="text-xs uppercase tracking-widest font-black text-muted-foreground">Select student</Label>
+                    <select
+                      className="w-full rounded-2xl border-2 border-muted/40 bg-background px-4 py-3 text-sm text-foreground"
+                      value={selectedUserId}
+                      onChange={(e) => setSelectedUserId(e.target.value)}
+                    >
+                      {users.map(user => (
+                        <option key={user._id} value={user._id}>{user.name} — {user.email}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="rounded-2xl border border-muted/40 bg-muted/10 p-4">
+                    <p className="text-xs uppercase tracking-widest text-muted-foreground font-bold">Live summary</p>
+                    <p className="text-lg font-black mt-2">{selectedUserId ? users.find(u => u._id === selectedUserId)?.name : "No student selected"}</p>
+                    <p className="text-xs text-muted-foreground mt-1">Use this view to manage game activity and user status.</p>
+                  </div>
+                </div>
+
+                {selectedUserId ? (
+                  (() => {
+                    const selected = users.find(u => u._id === selectedUserId)
+                    if (!selected) return <p className="text-muted-foreground">Selected user not found.</p>
+
+                    return (
+                      <div className="space-y-6">
+                        <div className="grid gap-4 md:grid-cols-2">
+                          {[
+                            { label: 'Total Battles', value: selected.totalBattles ?? 0 },
+                            { label: 'Wins', value: selected.wins ?? 0 },
+                            { label: 'Losses', value: selected.losses ?? 0 },
+                            { label: 'Win Rate', value: `${selected.winRate ?? 0}%` },
+                            { label: 'Arena Rank', value: selected.arenaRank || 'Unranked' },
+                            { label: 'Arena Points', value: selected.arenaPoints ?? 0 },
+                          ].map(item => (
+                            <div key={item.label} className="rounded-2xl border border-muted/40 bg-muted/10 p-4">
+                              <p className="text-xs uppercase tracking-widest text-muted-foreground font-bold">{item.label}</p>
+                              <p className="text-2xl font-black mt-2">{item.value}</p>
+                            </div>
+                          ))}
+                        </div>
+
+                        <div className="rounded-3xl border border-muted/30 bg-background/80 p-6">
+                          <h3 className="font-black text-lg mb-4">Recent Battle Activity</h3>
+                          {selected.battleHistory && selected.battleHistory.length > 0 ? (
+                            <div className="space-y-4">
+                              {selected.battleHistory.slice(0, 6).map((battle: any, index: number) => (
+                                <div key={battle.battleId || index} className="rounded-2xl border border-muted/40 bg-muted/5 p-4">
+                                  <div className="flex flex-wrap items-center justify-between gap-2">
+                                    <p className="font-black">{battle.mode?.toUpperCase() || 'GAME'} {battle.difficulty?.toUpperCase() || ''}</p>
+                                    <Badge className={battle.result === 'win' ? 'bg-emerald-500 text-white' : battle.result === 'loss' ? 'bg-destructive text-white' : 'bg-slate-500 text-white'}>
+                                      {battle.result?.toUpperCase()}
+                                    </Badge>
+                                  </div>
+                                  <p className="text-xs text-muted-foreground mt-2">Opponent: {battle.opponentName || 'Unknown'} • Score: {battle.score ?? 0} • Acc: {battle.accuracy ?? 0}%</p>
+                                  <p className="text-xs text-muted-foreground mt-1">XP: {battle.xpGained ?? 0} • Points: {battle.pointsGained ?? 0}</p>
+                                </div>
+                              ))}
+                            </div>
+                          ) : (
+                            <p className="text-sm text-muted-foreground">No game activity recorded yet for this student.</p>
+                          )}
+                        </div>
+                      </div>
+                    )
+                  })()
+                ) : (
+                  <p className="text-muted-foreground">Waiting for student selection...</p>
+                )}
+              </CardContent>
+            </Card>
+          )}
+
           {activeTab === "feedback" && (
             <Card className="border-2 shadow-2xl overflow-hidden glass-morphism">
               <CardHeader className="bg-muted/30 border-b">
@@ -515,6 +818,182 @@ export function AdminPanel() {
                     </div>
                   </Card>
                 ))}
+              </CardContent>
+            </Card>
+          )}
+
+          {activeTab === "arena" && (
+            <Card className="border-2 shadow-2xl overflow-hidden glass-morphism">
+              <CardHeader className="bg-muted/30 border-b">
+                <CardTitle className="flex items-center gap-2">
+                  <Zap className="w-6 h-6 text-orange-500" /> Arena Services - Access Control
+                </CardTitle>
+                <CardDescription>Approve or reject students requesting battle arena access</CardDescription>
+              </CardHeader>
+              <CardContent className="p-6 space-y-6">
+                {/* Filter Buttons */}
+                <div className="flex flex-wrap gap-2">
+                  {(['pending', 'approved', 'rejected', 'all'] as const).map((status) => (
+                    <button
+                      key={status}
+                      onClick={() => setArenaFilterStatus(status)}
+                      className={`px-4 py-2 rounded-lg font-bold text-sm uppercase transition-all ${
+                        arenaFilterStatus === status
+                          ? 'bg-orange-500 text-white shadow-lg'
+                          : 'bg-muted text-muted-foreground hover:bg-muted/80'
+                      }`}
+                    >
+                      {status.charAt(0).toUpperCase() + status.slice(1)}
+                    </button>
+                  ))}
+                </div>
+
+                {/* Bulk Actions */}
+                {selectedArenaUsers.length > 0 && (
+                  <div className="flex items-center justify-between bg-blue-100 dark:bg-blue-900/30 p-4 rounded-xl border border-blue-300 dark:border-blue-700">
+                    <span className="font-bold text-blue-900 dark:text-blue-100">{selectedArenaUsers.length} selected</span>
+                    <button
+                      onClick={handleBulkArenaApprove}
+                      disabled={arenaLoading}
+                      className="px-4 py-2 bg-green-500 hover:bg-green-600 text-white font-bold rounded-lg disabled:opacity-50 transition-all flex items-center gap-2"
+                    >
+                      <CheckSquare className="w-4 h-4" /> Bulk Approve
+                    </button>
+                  </div>
+                )}
+
+                {/* Approval Requests List */}
+                <div className="space-y-4">
+                  {arenaLoading ? (
+                    <div className="p-8 text-center">
+                      <div className="inline-block animate-spin rounded-full h-8 w-8 border-4 border-orange-500 border-t-transparent" />
+                      <p className="mt-2 text-muted-foreground font-bold">Loading arena requests...</p>
+                    </div>
+                  ) : arenaApprovals.length === 0 ? (
+                    <div className="p-8 text-center bg-muted/20 rounded-xl">
+                      <Trophy className="w-12 h-12 text-muted-foreground/30 mx-auto mb-2" />
+                      <p className="text-muted-foreground font-bold">No {arenaFilterStatus === 'all' ? 'requests' : arenaFilterStatus + ' requests'} found</p>
+                    </div>
+                  ) : (
+                    <>
+                      {/* Select All Checkbox */}
+                      <div className="flex items-center gap-3 p-3 bg-muted/10 rounded-lg border border-muted/40">
+                        <input
+                          type="checkbox"
+                          checked={selectedArenaUsers.length === arenaApprovals.length && arenaApprovals.length > 0}
+                          onChange={toggleSelectAllArena}
+                          className="w-5 h-5 rounded cursor-pointer accent-orange-500"
+                        />
+                        <span className="font-bold text-sm uppercase text-muted-foreground">Select All</span>
+                      </div>
+
+                      {/* Individual Requests */}
+                      {arenaApprovals.map((approval) => (
+                        <div key={approval._id} className="border border-muted/40 rounded-xl p-4 bg-muted/5 space-y-3 hover:bg-muted/10 transition-colors">
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-3 flex-1">
+                              <input
+                                type="checkbox"
+                                checked={selectedArenaUsers.includes(approval._id)}
+                                onChange={() => toggleArenaUserSelection(approval._id)}
+                                className="w-5 h-5 rounded cursor-pointer accent-orange-500"
+                              />
+                              <div className="w-12 h-12 rounded-full bg-orange-100 dark:bg-orange-900/30 flex items-center justify-center font-bold text-orange-600">
+                                {approval.name?.[0] || "?"}
+                              </div>
+                              <div className="flex-1">
+                                <p className="font-black text-lg">{approval.name}</p>
+                                <p className="text-xs text-muted-foreground font-bold">{approval.email}</p>
+                                <p className="text-xs text-muted-foreground mt-1">Requested: {new Date(approval.arenaAccessRequestedAt).toLocaleDateString()}</p>
+                              </div>
+                            </div>
+                            <div className="text-right">
+                              <Badge className={`${
+                                approval.arenaApprovalStatus === 'pending' ? 'bg-yellow-500' :
+                                approval.arenaApprovalStatus === 'approved' ? 'bg-green-500' :
+                                'bg-red-500'
+                              } text-white`}>
+                                {approval.arenaApprovalStatus.toUpperCase()}
+                              </Badge>
+                            </div>
+                          </div>
+
+                          {/* Rejection Reason Display */}
+                          {approval.arenaApprovalReason && (
+                            <div className="text-sm bg-red-100/30 dark:bg-red-900/20 p-3 rounded-lg border border-red-300/50 dark:border-red-800/50">
+                              <p className="text-xs font-bold text-red-700 dark:text-red-300 uppercase">Rejection Reason:</p>
+                              <p className="text-red-600 dark:text-red-400">{approval.arenaApprovalReason}</p>
+                            </div>
+                          )}
+
+                          {/* Action Buttons */}
+                          {approval.arenaApprovalStatus === 'pending' && (
+                            <div className="flex gap-2 pt-2">
+                              <button
+                                onClick={() => handleArenaApprove(approval._id)}
+                                disabled={arenaLoading}
+                                className="flex-1 px-4 py-2 bg-green-500 hover:bg-green-600 text-white font-bold rounded-lg disabled:opacity-50 transition-all flex items-center justify-center gap-2"
+                              >
+                                <CheckCircle2 className="w-4 h-4" /> Approve
+                              </button>
+
+                              {rejectingUserId === approval._id ? (
+                                <>
+                                  <input
+                                    type="text"
+                                    placeholder="Reason..."
+                                    value={rejectReason}
+                                    onChange={(e) => setRejectReason(e.target.value)}
+                                    className="flex-1 px-3 py-2 border border-red-300 dark:border-red-700 rounded-lg dark:bg-gray-800 dark:text-white text-sm"
+                                  />
+                                  <button
+                                    onClick={() => handleArenaReject(approval._id)}
+                                    disabled={arenaLoading || !rejectReason.trim()}
+                                    className="px-4 py-2 bg-red-500 hover:bg-red-600 text-white font-bold rounded-lg disabled:opacity-50 transition-all"
+                                  >
+                                    <XSquare className="w-4 h-4" />
+                                  </button>
+                                  <button
+                                    onClick={() => {
+                                      setRejectingUserId(null)
+                                      setRejectReason('')
+                                    }}
+                                    className="px-4 py-2 bg-gray-400 hover:bg-gray-500 text-white font-bold rounded-lg transition-all"
+                                  >
+                                    Cancel
+                                  </button>
+                                </>
+                              ) : (
+                                <button
+                                  onClick={() => setRejectingUserId(approval._id)}
+                                  className="flex-1 px-4 py-2 bg-red-500 hover:bg-red-600 text-white font-bold rounded-lg transition-all flex items-center justify-center gap-2"
+                                >
+                                  <XSquare className="w-4 h-4" /> Reject
+                                </button>
+                              )}
+                            </div>
+                          )}
+
+                          {approval.arenaApprovalStatus === 'rejected' && (
+                            <button
+                              onClick={() => handleArenaApprove(approval._id)}
+                              className="w-full px-4 py-2 bg-blue-500 hover:bg-blue-600 text-white font-bold rounded-lg transition-all flex items-center justify-center gap-2"
+                            >
+                              <CheckCircle2 className="w-4 h-4" /> Reconsider & Approve
+                            </button>
+                          )}
+
+                          {approval.arenaApprovalStatus === 'approved' && (
+                            <div className="text-sm bg-green-100/30 dark:bg-green-900/20 p-3 rounded-lg border border-green-300/50 dark:border-green-800/50">
+                              <p className="text-green-700 dark:text-green-300 font-bold">✓ Approved</p>
+                              <p className="text-xs text-green-600 dark:text-green-400 mt-1">Approved on: {new Date(approval.arenaApprovedAt).toLocaleDateString()}</p>
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                    </>
+                  )}
+                </div>
               </CardContent>
             </Card>
           )}
@@ -647,15 +1126,47 @@ export function PolicySection() {
   )
 }
 
-// --- COMMUNITY CHAT COMPONENT ---
 export function CommunityChat() {
   const { isRegistered } = useNav()
-  const [messages, setMessages] = useState([
-    { id: 1, user: "Aura AI Bot", text: "Welcome to the verified student chat! How can I help your study group today?", time: "02:40", isAi: true },
-    { id: 2, user: "John Doe", text: "Has anyone uploaded the 2023 GATE papers yet?", time: "02:41", isAi: false },
-    { id: 3, user: "Sarah Smith", text: "Yes, just added them to the Community Archive!", time: "02:42", isAi: false },
-  ])
+  const [activeUsers, setActiveUsers] = useState<any[]>([])
+  const [messages, setMessages] = useState<any[]>([])
   const [newMessage, setNewMessage] = useState("")
+  const chatScrollRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    // Load initial messages from localStorage or use defaults
+    const savedChat = localStorage.getItem("aura_global_chat")
+    if (savedChat) {
+      try {
+        setMessages(JSON.parse(savedChat))
+      } catch (e) {}
+    } else {
+      setMessages([
+        { id: 1, user: "Aura AI Bot", text: "Welcome to the verified student chat! How can I help your study group today?", time: "02:40", isAi: true },
+        { id: 2, user: "John Doe", text: "Has anyone uploaded the 2023 GATE papers yet?", time: "02:41", isAi: false },
+        { id: 3, user: "Sarah Smith", text: "Yes, just added them to the Community Archive!", time: "02:42", isAi: false },
+      ])
+    }
+
+    // Fetch Active Users for Leaderboard integration
+    fetch("/api/users")
+      .then(res => res.json())
+      .then(data => {
+        if (data.users) {
+          const sorted = [...data.users].sort((a, b) => (b.points || 0) - (a.points || 0)).slice(0, 10)
+          setActiveUsers(sorted)
+        }
+      })
+  }, [])
+
+  useEffect(() => {
+    if (messages.length > 0) {
+      localStorage.setItem("aura_global_chat", JSON.stringify(messages))
+    }
+    if (chatScrollRef.current) {
+      chatScrollRef.current.scrollTop = chatScrollRef.current.scrollHeight
+    }
+  }, [messages])
 
   const sendMessage = (e: React.FormEvent) => {
     e.preventDefault()
@@ -693,15 +1204,19 @@ export function CommunityChat() {
             </CardTitle>
           </CardHeader>
           <CardContent className="p-4 space-y-4">
-            {["John Doe", "Sarah Smith", "Alex Johnson", "Aura AI Bot"].map((user, i) => (
+            {activeUsers.length === 0 && <div className="text-muted-foreground text-xs font-bold text-center">Loading users...</div>}
+            {activeUsers.map((u, i) => (
               <div key={i} className="flex items-center gap-3 p-2 rounded-lg hover:bg-primary/5 transition-colors cursor-pointer group">
                 <div className="relative">
-                  <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center font-bold text-primary border-2 border-primary/20">
-                    {user[0]}
+                  <div className={`w-10 h-10 rounded-full flex items-center justify-center font-bold border-2 ${i < 3 ? 'bg-yellow-500/20 text-yellow-600 border-yellow-500/40' : 'bg-primary/10 text-primary border-primary/20'}`}>
+                    {u.name?.[0] || "U"}
                   </div>
                   <div className="absolute bottom-0 right-0 w-3 h-3 bg-green-500 rounded-full border-2 border-background" />
                 </div>
-                <span className="font-bold text-sm group-hover:text-primary transition-colors">{user}</span>
+                <div>
+                  <span className="font-bold text-sm group-hover:text-primary transition-colors block leading-tight">{u.name}</span>
+                  <span className="text-[10px] text-muted-foreground font-bold uppercase">{u.rank || "Bronze"} • {u.points || 0} XP</span>
+                </div>
               </div>
             ))}
           </CardContent>
@@ -720,11 +1235,11 @@ export function CommunityChat() {
             <Badge variant="secondary" className="bg-white/20 text-white border-none">124 Online</Badge>
           </CardHeader>
           
-          <CardContent className="flex-1 overflow-y-auto p-6 space-y-6 scrollbar-hide">
+          <CardContent className="flex-1 overflow-y-auto p-6 space-y-6 scrollbar-hide" ref={chatScrollRef}>
             {messages.map((msg) => (
               <div key={msg.id} className={`flex ${msg.user === "You (Authorized)" ? "justify-end" : "justify-start"} animate-in slide-in-from-bottom-2`}>
                 <div className={`max-w-[80%] space-y-1 ${msg.user === "You (Authorized)" ? "text-right" : "text-left"}`}>
-                  <div className="flex items-center gap-2 mb-1 justify-inherit">
+                  <div className={`flex items-center gap-2 mb-1 ${msg.user === "You (Authorized)" ? "justify-end" : "justify-start"}`}>
                     {msg.user !== "You (Authorized)" && <span className="text-[10px] font-black text-primary uppercase">{msg.user}</span>}
                     <span className="text-[10px] text-muted-foreground">{msg.time}</span>
                   </div>
@@ -733,7 +1248,7 @@ export function CommunityChat() {
                       ? "bg-primary/10 border-primary/20 text-primary" 
                       : msg.user === "You (Authorized)"
                         ? "bg-primary text-primary-foreground border-primary"
-                        : "bg-muted/50 border-muted"
+                        : "bg-muted/50 border-muted text-foreground"
                   }`}>
                     {msg.text}
                   </div>

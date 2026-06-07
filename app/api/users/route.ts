@@ -7,7 +7,7 @@ export async function GET(req: Request) {
   try {
     try {
       await dbConnect();
-      const users = await User.find({}).sort({ createdAt: -1 });
+      const users = await User.find({}).sort({ points: -1, createdAt: -1 });
       return NextResponse.json({ users }, { status: 200 });
     } catch (dbErr) {
       console.warn("MongoDB connection failed for user list, falling back to hybrid mock DB:", dbErr);
