@@ -1,14 +1,5 @@
 import mongoose from 'mongoose';
 
-const MONGODB_URI = process.env.MONGODB_URI;
-
-if (!MONGODB_URI) {
-  throw new Error(
-    'MONGODB_URI environment variable is not defined. ' +
-    'Please set it in your Netlify environment variables.'
-  );
-}
-
 // Cache the connection to reuse across serverless invocations
 interface MongooseCache {
   conn: typeof mongoose | null;
@@ -24,6 +15,15 @@ const cached: MongooseCache = global.mongooseCache ?? { conn: null, promise: nul
 global.mongooseCache = cached;
 
 async function dbConnect(): Promise<typeof mongoose> {
+  // Check at runtime (not module load) so the build doesn't fail when env var is missing
+  const MONGODB_URI = process.env.MONGODB_URI;
+  if (!MONGODB_URI) {
+    throw new Error(
+      'MONGODB_URI environment variable is not defined. ' +
+      'Please set it in your Netlify environment variables.'
+    );
+  }
+
   if (cached.conn) {
     return cached.conn;
   }
@@ -34,7 +34,7 @@ async function dbConnect(): Promise<typeof mongoose> {
       serverSelectionTimeoutMS: 10000,
       maxPoolSize: 10,
     };
-    cached.promise = mongoose.connect(MONGODB_URI!, opts).then((m) => {
+    cached.promise = mongoose.connect(MONGODB_URI, opts).then((m) => {
       console.log('MongoDB Connected Successfully');
       return m;
     });
@@ -52,3 +52,4 @@ async function dbConnect(): Promise<typeof mongoose> {
 }
 
 export default dbConnect;
+
