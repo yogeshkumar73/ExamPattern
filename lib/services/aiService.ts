@@ -14,7 +14,7 @@ const openai = new OpenAI({
   },
 });
 
-const MODEL = 'openai/gpt-3.5-turbo';
+const MODEL = 'google/gemma-4-26b-a4b-it:free';
 
 async function callOpenAI(
   systemPrompt: string,

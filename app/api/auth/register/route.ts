@@ -1,115 +1,84 @@
-import { NextResponse } from "next/server";
-import dbConnect from "@/lib/mongodb";
-import User from "@/models/User";
-import bcrypt from "bcryptjs";
-import { mockUsers } from "@/lib/mockDb";
-import { checkRateLimit, getClientIp } from "@/lib/ratelimit";
+import { NextRequest, NextResponse } from 'next/server';
+import { cookies } from 'next/headers';
+import bcrypt from 'bcryptjs';
+import dbConnect from '@/lib/mongodb';
+import User from '@/models/User';
+import { createSession } from '@/lib/session';
+import { checkRateLimit, getClientIp } from '@/lib/ratelimit';
 
-export async function POST(req: Request) {
+export async function POST(req: NextRequest) {
   try {
-    // Rate limit: 5 registrations per IP per hour
     const ip = getClientIp(req);
-    const rl = checkRateLimit(`register:${ip}`, 5, 60 * 60 * 1000);
+    // Rate limit: 3 registration attempts per minute
+    const rl = checkRateLimit(`register:${ip}`, 3, 60 * 1000);
     if (!rl.allowed) {
       return NextResponse.json(
-        { message: `Too many registration attempts. Try again in ${rl.resetIn}s.` },
+        { error: `Too many registration attempts. Please try again in ${rl.resetIn}s.` },
         { status: 429 }
       );
     }
 
-    const body = await req.json();
-    const { name, email, password, phone } = body;
+    const { name, email, password, phone } = await req.json();
 
-    if (!name || !email || !password || !phone) {
+    if (!name || !email || !password) {
       return NextResponse.json(
-        { message: "Please provide name, email, password, and phone." },
+        { error: 'Name, email, and password are required' },
         { status: 400 }
       );
     }
 
-    // Captcha removed: no captchaRequired check
+    await dbConnect();
 
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-      return NextResponse.json({ message: "Invalid email address." }, { status: 400 });
-    }
-
-    if (password.length < 6) {
+    // Check if email already exists
+    const existingUser = await User.findOne({ email: email.toLowerCase() });
+    if (existingUser) {
       return NextResponse.json(
-        { message: "Password must be at least 6 characters." },
-        { status: 400 }
+        { error: 'An account with this email already exists' },
+        { status: 409 }
       );
     }
 
-    try {
-      await dbConnect();
+    // Hash the password
+    const salt = await bcrypt.genSalt(10);
+    const passwordHash = await bcrypt.hash(password, salt);
 
-      const existingUser = await User.findOne({ email });
-      if (existingUser) {
-        return NextResponse.json({ message: "User already exists" }, { status: 409 });
-      }
+    // Create new User
+    const user = await User.create({
+      name,
+      email: email.toLowerCase(),
+      password: passwordHash,
+      phone: phone || '',
+      role: 'student', // Default role
+      status: 'Active',
+      profileComplete: false,
+    });
 
-      const salt = await bcrypt.genSalt(10);
-      const hashedPassword = await bcrypt.hash(password, salt);
+    // Create session (Auto-login after registration)
+    const sessionId = await createSession(user._id.toString());
 
-      const user = await User.create({
-        name,
-        email,
-        password: hashedPassword,
-        phone: phone || "",
-        isLabApproved: true,
-        status: "Active",
-        role: "student",
-        profileComplete: false, // Mandatory stream setup required
-        // Arena Access Fields
-        arenaApprovalStatus: 'pending',
-        arenaAccessRequestedAt: new Date(),
-        arenaApprovalReason: '',
-        arenaApprovedBy: '',
-        arenaApprovedAt: null,
-        arenaRejectedAt: null,
-      });
+    // Create session cookie
+    const cookieStore = await cookies();
+    cookieStore.set('aura_session', sessionId, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'lax',
+      path: '/',
+    });
 
-      return NextResponse.json(
-        { message: "Registration successful! Please set up your academic profile.", userId: user._id },
-        { status: 201 }
-      );
-    } catch (dbErr) {
-      console.warn("MongoDB unavailable, using mock DB:", dbErr);
-
-      const existingMock = mockUsers.find((u) => u.email === email);
-      if (existingMock) {
-        return NextResponse.json({ message: "User already exists" }, { status: 409 });
-      }
-
-      const mockId = `USR-${Math.random().toString(36).substr(2, 9).toUpperCase()}`;
-      mockUsers.push({
-        _id: mockId,
-        name,
-        email,
-        phone: phone || "",
-        status: "Active",
-        isLabApproved: true,
-        points: 0,
-        rank: "Bronze",
-        role: "student",
-        profileComplete: false,
-        // Arena Access Fields
-        arenaApprovalStatus: 'pending',
-        arenaAccessRequestedAt: new Date().toISOString(),
-        arenaApprovalReason: '',
-        arenaApprovedBy: '',
-        arenaApprovedAt: null,
-        arenaRejectedAt: null,
-        createdAt: new Date().toISOString(),
-      });
-
-      return NextResponse.json(
-        { message: "Registration successful! Please set up your academic profile.", userId: mockId },
-        { status: 201 }
-      );
-    }
+    return NextResponse.json({
+      success: true,
+      user: {
+        id: user._id.toString(),
+        name: user.name,
+        email: user.email,
+        role: user.role,
+      },
+    });
   } catch (error: any) {
-    console.error("Registration Error:", error);
-    return NextResponse.json({ message: "Internal Server Error", error: error.message }, { status: 500 });
+    console.error('Registration error:', error);
+    return NextResponse.json(
+      { error: 'Internal Server Error' },
+      { status: 500 }
+    );
   }
 }
