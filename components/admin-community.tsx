@@ -215,12 +215,14 @@ export function AdminPanel() {
   const { setAdmin, isAdmin } = useNav()
   const [users, setUsers] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
+  const [usersError, setUsersError] = useState<string | null>(null)
   const [activeTab, setActiveTab] = useState<"users" | "credentials" | "activity" | "feedback" | "arena">("users")
   const [selectedUserId, setSelectedUserId] = useState<string>("")
   
   // Arena Approvals States
   const [arenaApprovals, setArenaApprovals] = useState<any[]>([])
   const [arenaLoading, setArenaLoading] = useState(false)
+  const [arenaError, setArenaError] = useState<string | null>(null)
   const [arenaFilterStatus, setArenaFilterStatus] = useState<"pending" | "approved" | "rejected" | "all">("pending")
   const [selectedArenaUsers, setSelectedArenaUsers] = useState<string[]>([])
   const [rejectReason, setRejectReason] = useState("")
@@ -249,6 +251,7 @@ export function AdminPanel() {
   ])
 
   useEffect(() => {
+    setUsersError(null)
     fetch("/api/users")
       .then(res => res.json())
       .then(data => {
@@ -256,7 +259,8 @@ export function AdminPanel() {
         setLoading(false)
       })
       .catch(err => {
-        console.error(err)
+        console.warn('Users fetch failed (DB may be unavailable):', err)
+        setUsersError('Could not connect to database. Showing cached data if available.')
         setLoading(false)
       })
   }, [])
@@ -386,6 +390,7 @@ export function AdminPanel() {
     }
     try {
       setArenaLoading(true)
+      setArenaError(null)
       const adminUser = getAdminUserObj()
 
       const response = await fetch(
@@ -399,7 +404,8 @@ export function AdminPanel() {
       )
 
       if (response.status === 401) {
-        console.error('API returned 401 - admin auth failed')
+        console.warn('Arena approvals: API returned 401 - admin auth failed')
+        setArenaError('Admin authentication failed. Please re-login.')
         setArenaApprovals([])
         setArenaLoading(false)
         return
@@ -413,7 +419,12 @@ export function AdminPanel() {
       const data = await response.json()
       setArenaApprovals(data.data || [])
     } catch (error: any) {
-      console.error('Arena approval fetch error:', error.message)
+      console.warn('Arena approval fetch failed (DB may be unavailable):', error.message)
+      setArenaError(
+        error.message?.includes('connect') || error.message?.includes('MongoDB')
+          ? 'Cannot connect to database. Please whitelist your IP in MongoDB Atlas → Network Access → Add IP Address → Allow from anywhere (0.0.0.0/0).'
+          : `Failed to load approvals: ${error.message}`
+      )
       setArenaApprovals([])
     } finally {
       setArenaLoading(false)
@@ -599,6 +610,18 @@ export function AdminPanel() {
               <CardContent className="p-0">
                 {loading ? (
                   <div className="p-8 text-center text-muted-foreground font-bold">Loading User Database...</div>
+                ) : usersError ? (
+                  <div className="p-8 text-center space-y-3">
+                    <div className="text-red-500 font-bold text-sm bg-red-500/10 border border-red-500/20 rounded-xl p-4">
+                      ⚠️ {usersError}
+                    </div>
+                    <button
+                      onClick={() => { setLoading(true); setUsersError(null); fetch('/api/users').then(r => r.json()).then(d => { if (d.users) setUsers(d.users); setLoading(false) }).catch(e => { setUsersError(e.message); setLoading(false) }) }}
+                      className="px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-bold hover:opacity-90"
+                    >
+                      🔄 Retry Connection
+                    </button>
+                  </div>
                 ) : users.length === 0 ? (
                   <div className="p-8 text-center text-muted-foreground">No users found. Ensure MongoDB is connected.</div>
                 ) : (
@@ -864,7 +887,19 @@ export function AdminPanel() {
 
                 {/* Approval Requests List */}
                 <div className="space-y-4">
-                  {arenaLoading ? (
+                  {arenaError ? (
+                    <div className="p-6 space-y-3">
+                      <div className="text-red-500 font-bold text-sm bg-red-500/10 border border-red-500/20 rounded-xl p-4 leading-relaxed">
+                        ⚠️ {arenaError}
+                      </div>
+                      <button
+                        onClick={fetchArenaApprovals}
+                        className="px-4 py-2 bg-orange-500 text-white rounded-lg text-sm font-bold hover:bg-orange-600 transition-colors"
+                      >
+                        🔄 Retry
+                      </button>
+                    </div>
+                  ) : arenaLoading ? (
                     <div className="p-8 text-center">
                       <div className="inline-block animate-spin rounded-full h-8 w-8 border-4 border-orange-500 border-t-transparent" />
                       <p className="mt-2 text-muted-foreground font-bold">Loading arena requests...</p>
