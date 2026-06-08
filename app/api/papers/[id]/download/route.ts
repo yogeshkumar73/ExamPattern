@@ -15,7 +15,7 @@ function getSessionUser(req: NextRequest) {
 // GET /api/papers/[id]/download
 export async function GET(
   req: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const ip = getClientIp(req);
@@ -32,7 +32,7 @@ export async function GET(
       return NextResponse.json({ message: "Authentication required." }, { status: 401 });
     }
 
-    const { id } = params;
+    const { id } = await params;
 
     try {
       await dbConnect();
