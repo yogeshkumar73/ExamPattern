@@ -1,7 +1,6 @@
 import { type NextRequest, NextResponse } from "next/server"
 import { generateText } from "ai"
-import { createOpenAI } from "@ai-sdk/openai"
-
+import { OpenRouter } from "@openrouter/sdk";     
 // Safe imports for optional dependencies
 let ratelimit: any = null
 try {
@@ -23,7 +22,7 @@ try {
   console.warn("Upstash Redis not installed. Rate limiting disabled.")
 }
 
-const openrouter = createOpenAI({
+const openrouter = new OpenRouter ({
   baseURL: "https://openrouter.ai/api/v1",
   apiKey: process.env.OPENAI_API_KEY,
 })
@@ -71,7 +70,7 @@ DIRECT SESSION ANALYSIS:
 2. Adhere strictly to ${paperFormat} formatting.`
 
     const { text: analysisText } = await generateText({
-      model: openrouter("meta-llama/llama-3.3-70b-instruct"),
+      model: openrouter("google/gemma-4-26b-a4b-it:free"),
       system: `You are a precision Academic Analyzer specialized in the ${paperFormat} format. 
 Your primary goal is to generate questions that match the exact rigor and style of ${paperFormat}.
 ${hybridLogic}

@@ -4,7 +4,7 @@ import {
   checkContentSafety,
   generateRAGQuestions,
 } from "@/lib/services/openRouterService";
-
+import { OpenRouter } from "@openrouter/sdk";
 /**
  * POST /api/ai/content-generation
  * Generate dynamic coding questions using NVIDIA Nemotron 3.5 via Open Router

@@ -19,7 +19,7 @@
   --accent: oklch(0.97 0 0);
   --accent-foreground: oklch(0.205 0 0);
   --destructive: oklch(0.577 0.245 27.325);
-  --destructive-foreground: oklch(0.577 0.245 27.325);
+  --destructive-foreground: oklch(0.985 0 0);
   --border: oklch(0.922 0 0);
   --input: oklch(0.922 0 0);
   --ring: oklch(0.708 0 0);
@@ -55,7 +55,7 @@
   --accent: oklch(0.269 0 0);
   --accent-foreground: oklch(0.985 0 0);
   --destructive: oklch(0.396 0.141 25.723);
-  --destructive-foreground: oklch(0.637 0.237 25.331);
+  --destructive-foreground: oklch(0.985 0 0);
   --border: oklch(0.269 0 0);
   --input: oklch(0.269 0 0);
   --ring: oklch(0.439 0 0);
@@ -373,19 +373,19 @@
 }
 
 /* Mode icon glow effects */
-.mode-coding  { --mode-color: #3b82f6; }
-.mode-puzzle  { --mode-color: #8b5cf6; }
-.mode-math    { --mode-color: #10b981; }
-.mode-gk      { --mode-color: #f59e0b; }
-.mode-prediction { --mode-color: #ec4899; }
-.mode-mixed   { --mode-color: #f97316; }
+.mode-coding  { --mode-color: 59, 130, 246; }
+.mode-puzzle  { --mode-color: 139, 92, 246; }
+.mode-math    { --mode-color: 16, 185, 129; }
+.mode-gk      { --mode-color: 245, 158, 11; }
+.mode-prediction { --mode-color: 236, 72, 153; }
+.mode-mixed   { --mode-color: 249, 115, 22; }
 
 .mode-card {
   border: 1px solid rgba(var(--mode-color), 0.2);
   transition: all 0.3s;
 }
 .mode-card:hover {
-  border-color: var(--mode-color);
+  border-color: rgb(var(--mode-color));
   box-shadow: 0 0 20px rgba(var(--mode-color), 0.2);
   transform: translateY(-4px) scale(1.02);
 }
