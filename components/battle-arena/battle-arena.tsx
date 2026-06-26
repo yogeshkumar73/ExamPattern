@@ -159,7 +159,8 @@ export function BattleArena({ userId, userEmail, isAdmin = false }: BattleArenaP
 
           // Check arena approval status — skip for admins (already approved)
           if (u._id && !isAdmin) {
-            const statusRes = await fetch(`/api/user/arena-status?userId=${u._id}`)
+            const userIdStr = u._id.toString();
+            const statusRes = await fetch(`/api/user/arena-status?userId=${userIdStr}`)
             if (statusRes.ok) {
               const statusData = await statusRes.json()
               setArenaApprovalStatus(statusData.data.arenaApprovalStatus)
@@ -198,17 +199,30 @@ export function BattleArena({ userId, userEmail, isAdmin = false }: BattleArenaP
     return () => clearInterval(interval)
   }, [userId])
 
-  const handleStartBattle = () => {
-    // Check if arena is approved
-    if (arenaApprovalStatus !== 'approved') {
-      alert(
-        arenaApprovalStatus === 'pending'
-          ? 'Your arena access is pending admin approval. Please wait for approval.'
-          : arenaApprovalStatus === 'rejected'
-          ? `Your arena access was rejected. Reason: ${approvalMessage || 'Admin decision'}`
-          : 'You do not have access to the arena. Please request access first.'
-      )
-      return
+  const handleStartBattle = async () => {
+    // Check if arena is approved - fetch fresh status
+    if (arenaUser && !isAdmin) {
+      try {
+        const statusRes = await fetch(`/api/user/arena-status?userId=${arenaUser.id}`);
+        if (statusRes.ok) {
+          const statusData = await statusRes.json();
+          const status = statusData.data.arenaApprovalStatus;
+          setArenaApprovalStatus(status);
+          
+          if (status !== 'approved') {
+            alert(
+              status === 'pending'
+                ? 'Your arena access is pending admin approval. Please wait for approval.'
+                : status === 'rejected'
+                ? `Your arena access was rejected. Reason: ${statusData.data.arenaApprovalReason || 'Admin decision'}`
+                : 'You do not have access to the arena. Please request access first.'
+            );
+            return;
+          }
+        }
+      } catch (e) {
+        console.error('Failed to check arena status:', e);
+      }
     }
 
     setBattleConfig({

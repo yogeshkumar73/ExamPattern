@@ -1,9 +1,19 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef } from "react"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Mic, MicOff, Volume2, PhoneOff, Users, ShieldAlert, Loader2, Sparkles } from "lucide-react"
+import { io } from "socket.io-client"
+
+const ICE_SERVERS = {
+  iceServers: [
+    { urls: 'stun:stun.l.google.com:19302' },
+    { urls: 'stun:stun1.l.google.com:19302' },
+  ],
+}
+
+const socket = io("http://localhost:3000"); // Adjust to your backend URL
 
 interface VoiceRoomProps {
   user: any
@@ -14,45 +24,164 @@ export function VoiceRoom({ user }: VoiceRoomProps) {
   const [isMuted, setIsMuted] = useState(false)
   const [loading, setLoading] = useState(false)
   const [peers, setPeers] = useState<any[]>([])
-  
-  // Mock speaking levels for indicators
-  const [speakingLevels, setSpeakingLevels] = useState<Record<string, number>>({})
+  const [localStream, setLocalStream] = useState<MediaStream | null>(null);
+  const [remoteStreams, setRemoteStreams] = useState<MediaStream[]>([]);
+  const peerConnections = useRef<Record<string, RTCPeerConnection>>({});
+  const roomName = "global-lounge"; // Default room for now
+  const [speakingLevels, setSpeakingLevels] = useState<Record<string, number>>({});
+
+  const createPeerConnection = (peerId: string) => {
+    const pc = new RTCPeerConnection(ICE_SERVERS);
+    peerConnections.current[peerId] = pc;
+
+    if (localStream) {
+      localStream.getTracks().forEach(track => pc.addTrack(track, localStream));
+    }
+
+    pc.onicecandidate = event => {
+      if (event.candidate) {
+        socket.emit("candidate", peerId, event.candidate);
+      }
+    };
+
+    pc.ontrack = event => {
+      const remoteStream = new MediaStream([event.track]);
+      setRemoteStreams(prev => {
+        // Ensure unique remote streams (one per peer)
+        if (!prev.some(stream => stream.id === `remote-${peerId}`)) {
+          return [...prev, { ...remoteStream, id: `remote-${peerId}` }];
+        }
+        return prev;
+      });
+    };
+
+    return pc;
+  };
 
   useEffect(() => {
-    if (!joined) return
-    const interval = setInterval(() => {
-      // Simulate micro-speaking levels for speaking ring indicator
-      const levels: Record<string, number> = {}
-      peers.forEach(p => {
-        levels[p.id] = Math.random() > 0.6 ? Math.floor(Math.random() * 80) + 20 : 0
-      })
-      // Add current user speaking level if not muted
-      if (!isMuted && user) {
-        levels[user.id] = Math.random() > 0.4 ? Math.floor(Math.random() * 90) + 10 : 0
+    socket.on("connect", () => {
+      console.log("Connected to signaling server");
+    });
+
+    socket.on("user-joined", (id: string) => {
+      console.log("User joined:", id);
+      // For simplicity, we'll just add a placeholder peer for now
+      setPeers(currentPeers => [...currentPeers, { id, name: `Peer-${id.substring(0, 4)}`, avatar: "https://ui-avatars.com/api/?name=P&background=random&color=fff" }]);
+      createPeerConnection(id);
+    });
+
+    socket.on("user-left", (id: string) => {
+      console.log("User left:", id);
+      setPeers(currentPeers => currentPeers.filter(p => p.id !== id));
+      if (peerConnections.current[id]) {
+        peerConnections.current[id].close();
+        delete peerConnections.current[id];
       }
-      setSpeakingLevels(levels)
-    }, 400)
+      setRemoteStreams(currentStreams => currentStreams.filter(stream => stream.id !== `remote-${id}`));
+    });
 
-    return () => clearInterval(interval)
-  }, [joined, peers, isMuted, user])
+    socket.on("offer", async (id: string, message: RTCSessionDescriptionInit) => {
+      if (peerConnections.current[id]) {
+        const pc = peerConnections.current[id];
+        await pc.setRemoteDescription(new RTCSessionDescription(message));
+        const answer = await pc.createAnswer();
+        await pc.setLocalDescription(answer);
+        socket.emit("answer", id, pc.localDescription);
+      }
+    });
 
-  const handleJoin = () => {
-    setLoading(true)
-    setTimeout(() => {
-      setPeers([
-        { id: "peer-1", name: "CodeNinja", avatar: "https://ui-avatars.com/api/?name=CodeNinja&background=3b82f6&color=fff", level: 12, rank: "Gold" },
-        { id: "peer-2", name: "AlgoMaster", avatar: "https://ui-avatars.com/api/?name=AlgoMaster&background=8b5cf6&color=fff", level: 24, rank: "Platinum" },
-      ])
-      setJoined(true)
-      setLoading(false)
-    }, 1500)
-  }
+    socket.on("answer", async (id: string, message: RTCSessionDescriptionInit) => {
+      if (peerConnections.current[id]) {
+        const pc = peerConnections.current[id];
+        await pc.setRemoteDescription(new RTCSessionDescription(message));
+      }
+    });
+
+    socket.on("candidate", async (id: string, message: RTCIceCandidateInit) => {
+      if (peerConnections.current[id]) {
+        const pc = peerConnections.current[id];
+        await pc.addIceCandidate(new RTCIceCandidate(message));
+      }
+    });
+
+    socket.on("create-offer", (peerId: string) => {
+      // Existing user needs to create an offer for the new user
+      if (localStream && peerConnections.current[peerId]) {
+        const pc = peerConnections.current[peerId];
+        pc.createOffer().then(offer => {
+          pc.setLocalDescription(offer);
+          socket.emit("offer", peerId, offer);
+        });
+      }
+    });
+
+    return () => {
+      socket.off("connect");
+      socket.off("user-joined");
+      socket.off("user-left");
+      socket.off("offer");
+      socket.off("answer");
+      socket.off("candidate");
+      socket.off("create-offer");
+      if (localStream) {
+        localStream.getTracks().forEach(track => track.stop());
+      }
+      Object.values(peerConnections.current).forEach(pc => pc.close());
+      socket.disconnect();
+    };
+  }, [localStream, user?.id]);
+
+  const handleJoin = async () => {
+    setLoading(true);
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      setLocalStream(stream);
+      setIsMuted(false);
+      setJoined(true);
+      socket.emit("join-voice-room", roomName, user.id);
+
+      // For existing peers in the room, create offers
+      // This will be handled by the user-joined event for new peers
+    } catch (error) {
+      console.error("Error accessing media devices:", error);
+      // Handle error, e.g., show a message to the user
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const handleLeave = () => {
-    setJoined(false)
-    setPeers([])
-    setSpeakingLevels({})
-  }
+    if (localStream) {
+      localStream.getTracks().forEach(track => track.stop());
+      setLocalStream(null);
+    }
+    Object.values(peerConnections.current).forEach(pc => pc.close());
+    peerConnections.current = {};
+    setRemoteStreams([]);
+    setPeers([]);
+    setJoined(false);
+    socket.emit("leave-voice-room", roomName, user.id);
+  };
+
+
+  useEffect(() => {
+    if (!joined) return;
+
+    const interval = setInterval(() => {
+      const levels: Record<string, number> = {};
+      // Simulate micro-speaking levels for speaking ring indicator
+      peers.forEach(p => {
+        levels[p.id] = Math.random() > 0.6 ? Math.floor(Math.random() * 80) + 20 : 0;
+      });
+      // Add current user speaking level if not muted
+      if (!isMuted && user) {
+        levels[user.id] = Math.random() > 0.4 ? Math.floor(Math.random() * 90) + 10 : 0;
+      }
+      setSpeakingLevels(levels);
+    }, 400);
+
+    return () => clearInterval(interval);
+  }, [joined, peers, isMuted, user]);
 
   return (
     <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -88,7 +217,13 @@ export function VoiceRoom({ user }: VoiceRoomProps) {
               <Button
                 variant={isMuted ? "destructive" : "outline"}
                 className={`h-12 w-12 rounded-xl border-white/10 ${!isMuted ? 'text-white' : ''}`}
-                onClick={() => setIsMuted(!isMuted)}
+                onClick={() => {
+                  if (localStream) {
+                    const newState = !isMuted;
+                    setIsMuted(newState);
+                    localStream.getAudioTracks().forEach(track => track.enabled = newState);
+                  }
+                }}
               >
                 {isMuted ? <MicOff className="w-5 h-5" /> : <Mic className="w-5 h-5" />}
               </Button>

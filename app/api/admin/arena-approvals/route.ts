@@ -179,7 +179,15 @@ export async function PUT(request: NextRequest) {
     }
 
     await dbConnect();
-
+// {
+//   "name": "insert_edit_into_file",
+//   "arguments": {
+//     "filePath": "c:\\Local LLM\\app\\api\\admin\\arena-approvals\\route.ts",
+//     "startLine": 1,
+//     "endLine": 20,
+//     "newContent": "import { ArenaApprovalsController } from './arena-approvals.controller';\n\nconst arenaApprovalsRouter = express.Router();\n\n// ...existing code...\n\nexport default arenaApprovalsRouter;\n"
+//   }
+// }
     // Bulk update
     const updateData =
       action === 'approve'

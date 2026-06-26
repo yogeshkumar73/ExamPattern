@@ -200,60 +200,50 @@ app.prepare().then(() => {
       }
     });
 
-    // ---- VOICE ROOM (WebRTC signaling) ----
-    socket.on('join-voice-room', ({ roomId, userId, name }) => {
-      if (!voiceRooms[roomId]) voiceRooms[roomId] = [];
-      voiceRooms[roomId].push({ socketId: socket.id, userId, name });
+    // ---- VOICE ROOM (WebRTC Signaling) ----
+    socket.on('join-voice-room', ({ roomId, userId }) => {
       socket.join(`voice-${roomId}`);
-      
-      // Tell new joiner about existing peers
-      const existingPeers = voiceRooms[roomId].filter(p => p.socketId !== socket.id);
-      socket.emit('voice-peers', { peers: existingPeers });
-      
-      // Tell others about new peer
-      socket.to(`voice-${roomId}`).emit('voice-peer-joined', { socketId: socket.id, userId, name });
+      if (!voiceRooms[roomId]) voiceRooms[roomId] = {};
+      voiceRooms[roomId][socket.id] = userId;
+
+      // Notify others in the room about the new user
+      socket.to(`voice-${roomId}`).emit('user-joined', socket.id);
+      console.log(`[Voice] User ${userId} (${socket.id}) joined room ${roomId}`);
+
+      // For existing users in the room, send offers to the new user
+      Object.keys(voiceRooms[roomId]).forEach(otherSocketId => {
+        if (otherSocketId !== socket.id) {
+          const otherSocket = io.sockets.sockets.get(otherSocketId);
+          if (otherSocket) {
+            otherSocket.emit('create-offer', socket.id); // Ask existing peer to create offer for new user
+          }
+        }
+      });
     });
 
-    socket.on('voice-offer', ({ to, offer, from }) => {
-      io.to(to).emit('voice-offer', { offer, from: socket.id, fromName: socket.data.name });
+    socket.on('offer', ({ targetId, offer }) => {
+      io.to(targetId).emit('offer', socket.id, offer);
     });
 
-    socket.on('voice-answer', ({ to, answer }) => {
-      io.to(to).emit('voice-answer', { answer, from: socket.id });
+    socket.on('answer', ({ targetId, answer }) => {
+      io.to(targetId).emit('answer', socket.id, answer);
     });
 
-    socket.on('voice-ice-candidate', ({ to, candidate }) => {
-      io.to(to).emit('voice-ice-candidate', { candidate, from: socket.id });
+    socket.on('candidate', ({ targetId, candidate }) => {
+      io.to(targetId).emit('candidate', socket.id, candidate);
     });
 
     socket.on('leave-voice-room', ({ roomId, userId }) => {
       socket.leave(`voice-${roomId}`);
       if (voiceRooms[roomId]) {
-        voiceRooms[roomId] = voiceRooms[roomId].filter(p => p.socketId !== socket.id);
-      }
-      socket.to(`voice-${roomId}`).emit('voice-peer-left', { socketId: socket.id, userId });
-    });
-
-    socket.on('voice-mute-toggle', ({ roomId, userId, isMuted }) => {
-      socket.to(`voice-${roomId}`).emit('voice-peer-muted', { socketId: socket.id, userId, isMuted });
-    });
-
-    // ---- LEADERBOARD BROADCAST ----
-    socket.on('request-leaderboard', () => {
-      // Trigger leaderboard push from server
-      socket.emit('leaderboard-ping');
-    });
-
-    // ---- CHALLENGE FRIEND ----
-    socket.on('challenge-friend', ({ targetUserId, challengerName, mode, difficulty }) => {
-      // Find target socket
-      const sockets = io.sockets.sockets;
-      for (const [sid, s] of sockets) {
-        if (s.data.userId === targetUserId) {
-          io.to(sid).emit('battle-challenge', { challengerName, mode, difficulty });
-          break;
+        delete voiceRooms[roomId][socket.id];
+        if (Object.keys(voiceRooms[roomId]).length === 0) {
+          delete voiceRooms[roomId];
         }
       }
+      // Notify others in the room about the user leaving
+      socket.to(`voice-${roomId}`).emit('user-left', socket.id);
+      console.log(`[Voice] User ${userId} (${socket.id}) left room ${roomId}`);
     });
 
     // ---- DISCONNECT ----
@@ -268,12 +258,13 @@ app.prepare().then(() => {
       
       // Clean up voice rooms
       Object.keys(voiceRooms).forEach(roomId => {
-        const before = voiceRooms[roomId].length;
-        voiceRooms[roomId] = voiceRooms[roomId].filter(p => p.socketId !== socket.id);
-        if (voiceRooms[roomId].length < before) {
-          io.to(`voice-${roomId}`).emit('voice-peer-left', { socketId: socket.id, userId });
+        if (voiceRooms[roomId] && voiceRooms[roomId][socket.id]) {
+          delete voiceRooms[roomId][socket.id];
+          socket.to(`voice-${roomId}`).emit('user-left', socket.id);
+          if (Object.keys(voiceRooms[roomId]).length === 0) {
+            delete voiceRooms[roomId];
+          }
         }
-        if (voiceRooms[roomId].length === 0) delete voiceRooms[roomId];
       });
 
       // Update lobby count
