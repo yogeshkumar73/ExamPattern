@@ -10,7 +10,10 @@ const VALID_STREAMS = ["class10","class11","class12","ssc","upsc","gate","jee","
 function getSessionUser(req: NextRequest) {
   try {
     const header = req.headers.get("x-session-user");
-    if (header) return JSON.parse(decodeURIComponent(header));
+    if (header) {
+      const parsed = JSON.parse(decodeURIComponent(header));
+      return parsed?.user || parsed;
+    }
   } catch {}
   return null;
 }

@@ -44,7 +44,7 @@ Response includes arena status:
     "email": "john@example.com",
     ...
     "arenaApprovalStatus": "pending",  // "pending" | "approved" | "rejected"
-    "arenaCanAccess": false             // true only if status === "approved"
+    "arenaCanAccess": true             // true only if status === "approved"
   }
 }
 ```
@@ -72,6 +72,7 @@ Response includes arena status:
     "arenaApprovedAt": null,
     "arenaRejectedAt": null,
     "arenaAccessRequestedAt": "2026-06-07T10:30:00Z",
+    "arenaAccessRequest": true'
     "isApproved": false,
     "isRejected": false,
     "isPending": true
@@ -146,6 +147,7 @@ Response includes arena status:
     "email": "john@example.com",
     "arenaApprovalStatus": "approved",
     "arenaApprovedAt": "2026-06-07T11:00:00Z",
+    // "arenaAccessAproved": true,
     "arenaRejectedAt": null,
     "arenaApprovalReason": ""
   }
@@ -289,7 +291,7 @@ if (user.arenaCanAccess) {
   // Show: "Pending Approval - Admin Review In Progress"
 } else if (user.arenaApprovalStatus === 'rejected') {
   // Show: "Rejected: {user.arenaApprovalReason}"
-}
+} else(user.arenaApprovalStatus === 'approve')
 ```
 
 ### Display Arena Status:

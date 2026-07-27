@@ -5,7 +5,7 @@ const next = require('next');
 const { Server } = require('socket.io');
 
 const dev = process.env.NODE_ENV !== 'production';
-const hostname = 'localhost';
+const hostname = process.env.HOST || "0.0.0.0";
 const port = process.env.PORT || 3000;
 
 const app = next({ dev, hostname, port, dir: __dirname });
@@ -23,10 +23,14 @@ app.prepare().then(() => {
     handle(req, res, parsedUrl);
   });
 
-  const io = new Server(httpServer, {
-    cors: { origin: '*', methods: ['GET', 'POST'] },
-    path: '/socket.io',
-  });
+ const io = new Server(httpServer, {
+  cors: {
+    origin: process.env.CLIENT_URL || "http://localhost:3000",
+    methods: ["GET", "POST"],
+    credentials: true,
+  },
+  path: "/socket.io",
+});
 
   // Expose io globally for API routes
   global.io = io;
@@ -54,7 +58,15 @@ app.prepare().then(() => {
       // Remove if already in queue
       matchmakingQueues[queueKey] = matchmakingQueues[queueKey].filter(p => p.userId !== userId);
       
-      const player = { socketId: socket.id, userId, name, avatar, mode, difficulty };
+      const player = {
+  socketId: socket.id,
+  userId,
+  name,
+  avatar,
+  mode,
+ difficulty,
+  battleType,
+};
       matchmakingQueues[queueKey].push(player);
       socket.emit('matchmaking-status', { status: 'searching', queueSize: matchmakingQueues[queueKey].length });
       
@@ -62,7 +74,7 @@ app.prepare().then(() => {
       if (matchmakingQueues[queueKey].length >= 2) {
         const p1 = matchmakingQueues[queueKey].shift();
         const p2 = matchmakingQueues[queueKey].shift();
-        const roomId = `battle-${Date.now()}-${Math.random().toString(36).substr(2,6)}`;
+        const roomId = `battle-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
         
         battleRooms[roomId] = {
           players: [p1, p2],
@@ -201,78 +213,175 @@ app.prepare().then(() => {
     });
 
     // ---- VOICE ROOM (WebRTC Signaling) ----
-    socket.on('join-voice-room', ({ roomId, userId }) => {
-      socket.join(`voice-${roomId}`);
-      if (!voiceRooms[roomId]) voiceRooms[roomId] = {};
-      voiceRooms[roomId][socket.id] = userId;
+    // =======================
+// VOICE ROOM (WebRTC Signaling)
+// =======================
 
-      // Notify others in the room about the new user
-      socket.to(`voice-${roomId}`).emit('user-joined', socket.id);
-      console.log(`[Voice] User ${userId} (${socket.id}) joined room ${roomId}`);
-
-      // For existing users in the room, send offers to the new user
-      Object.keys(voiceRooms[roomId]).forEach(otherSocketId => {
-        if (otherSocketId !== socket.id) {
-          const otherSocket = io.sockets.sockets.get(otherSocketId);
-          if (otherSocket) {
-            otherSocket.emit('create-offer', socket.id); // Ask existing peer to create offer for new user
-          }
-        }
-      });
+socket.on("join-voice-room", ({ roomId, userId }) => {
+  if (!roomId || !userId) {
+    return socket.emit("voice-error", {
+      message: "roomId and userId are required.",
     });
+  }
 
-    socket.on('offer', ({ targetId, offer }) => {
-      io.to(targetId).emit('offer', socket.id, offer);
+  socket.join(`voice-${roomId}`);
+
+  if (!voiceRooms[roomId]) {
+    voiceRooms[roomId] = {};
+  }
+
+  // Remove duplicate sessions for same user
+  Object.keys(voiceRooms[roomId]).forEach((socketId) => {
+    if (
+      voiceRooms[roomId][socketId].userId === userId &&
+      socketId !== socket.id
+    ) {
+      delete voiceRooms[roomId][socketId];
+    }
+  });
+
+  // Save user info
+  voiceRooms[roomId][socket.id] = {
+    socketId: socket.id,
+    userId,
+    name: socket.data.name || "Unknown",
+    avatar: socket.data.avatar || "",
+  };
+
+  // Send acknowledgement to joined client
+  socket.emit("voice-joined", {
+    roomId,
+    socketId: socket.id,
+  });
+
+  // Send already connected users
+  const existingUsers = Object.values(voiceRooms[roomId])
+    .filter((u) => u.socketId !== socket.id)
+    .map((u) => ({
+      socketId: u.socketId,
+      userId: u.userId,
+      name: u.name,
+      avatar: u.avatar,
+    }));
+
+  socket.emit("existing-users", existingUsers);
+
+  // Notify everyone else
+  socket.to(`voice-${roomId}`).emit("user-joined", {
+    socketId: socket.id,
+    userId,
+    name: socket.data.name,
+    avatar: socket.data.avatar,
+  });
+
+  // Ask existing users to create offers
+  existingUsers.forEach((user) => {
+    io.to(user.socketId).emit("create-offer", socket.id);
+  });
+
+  console.log(
+    `[Voice] ${userId} (${socket.id}) joined ${roomId} | Users: ${Object.keys(
+      voiceRooms[roomId]
+    ).length}`
+  );
+});
+
+// -----------------------
+// OFFER
+// -----------------------
+
+socket.on("offer", ({ targetId, offer }) => {
+  if (!targetId || !offer) return;
+
+  io.to(targetId).emit("offer", socket.id, offer);
+});
+
+// -----------------------
+// ANSWER
+// -----------------------
+
+socket.on("answer", ({ targetId, answer }) => {
+  if (!targetId || !answer) return;
+
+  io.to(targetId).emit("answer", socket.id, answer);
+});
+
+// -----------------------
+// ICE Candidate
+// -----------------------
+
+socket.on("candidate", ({ targetId, candidate }) => {
+  if (!targetId || !candidate) return;
+
+  io.to(targetId).emit("candidate", socket.id, candidate);
+});
+
+// -----------------------
+// LEAVE ROOM
+// -----------------------
+
+socket.on("leave-voice-room", ({ roomId, userId }) => {
+  if (!roomId) return;
+
+  socket.leave(`voice-${roomId}`);
+
+  if (voiceRooms[roomId]) {
+    delete voiceRooms[roomId][socket.id];
+
+    socket.to(`voice-${roomId}`).emit("user-left", socket.id);
+
+    if (Object.keys(voiceRooms[roomId]).length === 0) {
+      delete voiceRooms[roomId];
+    }
+  }
+
+  console.log(`[Voice] ${userId} (${socket.id}) left ${roomId}`);
+});
+
+// -----------------------
+// DISCONNECT
+// -----------------------
+
+socket.on("disconnect", () => {
+  console.log(
+    `[Arena] Client disconnected: ${socket.id} (${socket.data.name || "Unknown"})`
+  );
+
+  // Remove from matchmaking
+  Object.keys(matchmakingQueues).forEach((key) => {
+    matchmakingQueues[key] = matchmakingQueues[key].filter(
+      (p) => p.socketId !== socket.id
+    );
+  });
+
+  // Remove from voice rooms
+  Object.keys(voiceRooms).forEach((roomId) => {
+    if (!voiceRooms[roomId]?.[socket.id]) return;
+
+    delete voiceRooms[roomId][socket.id];
+
+    socket.to(`voice-${roomId}`).emit("user-left", socket.id);
+
+    console.log(
+      `[Voice] ${socket.id} disconnected from ${roomId}`
+    );
+
+    if (Object.keys(voiceRooms[roomId]).length === 0) {
+      delete voiceRooms[roomId];
+    }
+  });
+
+  // Update lobby count
+  setTimeout(() => {
+    const onlineCount =
+      io.sockets.adapter.rooms.get("arena-lobby")?.size || 0;
+
+    io.to("arena-lobby").emit("lobby-update", {
+      onlineCount,
     });
+  }, 500);
+});
 
-    socket.on('answer', ({ targetId, answer }) => {
-      io.to(targetId).emit('answer', socket.id, answer);
-    });
-
-    socket.on('candidate', ({ targetId, candidate }) => {
-      io.to(targetId).emit('candidate', socket.id, candidate);
-    });
-
-    socket.on('leave-voice-room', ({ roomId, userId }) => {
-      socket.leave(`voice-${roomId}`);
-      if (voiceRooms[roomId]) {
-        delete voiceRooms[roomId][socket.id];
-        if (Object.keys(voiceRooms[roomId]).length === 0) {
-          delete voiceRooms[roomId];
-        }
-      }
-      // Notify others in the room about the user leaving
-      socket.to(`voice-${roomId}`).emit('user-left', socket.id);
-      console.log(`[Voice] User ${userId} (${socket.id}) left room ${roomId}`);
-    });
-
-    // ---- DISCONNECT ----
-    socket.on('disconnect', () => {
-      const userId = socket.data.userId;
-      console.log(`[Arena] Client disconnected: ${socket.id} (${socket.data.name || 'unknown'})`);
-      
-      // Clean up matchmaking queues
-      Object.keys(matchmakingQueues).forEach(key => {
-        matchmakingQueues[key] = matchmakingQueues[key].filter(p => p.socketId !== socket.id);
-      });
-      
-      // Clean up voice rooms
-      Object.keys(voiceRooms).forEach(roomId => {
-        if (voiceRooms[roomId] && voiceRooms[roomId][socket.id]) {
-          delete voiceRooms[roomId][socket.id];
-          socket.to(`voice-${roomId}`).emit('user-left', socket.id);
-          if (Object.keys(voiceRooms[roomId]).length === 0) {
-            delete voiceRooms[roomId];
-          }
-        }
-      });
-
-      // Update lobby count
-      setTimeout(() => {
-        const onlineCount = io.sockets.adapter.rooms.get('arena-lobby')?.size || 0;
-        io.to('arena-lobby').emit('lobby-update', { onlineCount });
-      }, 500);
-    });
   });
 
   httpServer.listen(port, () => {

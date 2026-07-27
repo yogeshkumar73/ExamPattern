@@ -1,5 +1,4 @@
 import GoogleProvider from "next-auth/providers/google"
-import { NextAuthOptions } from "next-auth"
 import { MongoDBAdapter } from "@auth/mongodb-adapter"
 import { clientPromise } from "./mongodb"
 import bcrypt from "bcryptjs"
@@ -8,7 +7,7 @@ import bcrypt from "bcryptjs"
 const ADMIN_EMAIL = process.env.ADMIN_EMAIL;
 const ADMIN_PASSWORD_HASH = process.env.ADMIN_PASSWORD_HASH;
 
-export const authOptions: NextAuthOptions = {
+export const authOptions: any = {
   adapter: MongoDBAdapter(clientPromise),
   providers: [
     GoogleProvider({
@@ -28,7 +27,7 @@ export const authOptions: NextAuthOptions = {
       }
       return session
     },
-    async jwt({ token, user }) {
+    async jwt({ token, user }: { token: any; user?: any }) {
       if (user) {
         token.role = user.role || "user"
       }
@@ -36,11 +35,8 @@ export const authOptions: NextAuthOptions = {
     },
   },
   events: {
-    async signIn({ user, account }) {
+    async signIn({ user, account }: { user: any; account: any }) {
       console.log(`[AUTH] User signed in: ${user.email} via ${account?.provider}`)
-    },
-    async signIn({ message }) {
-      console.log(`[AUTH] Sign in message:`, message)
     },
   },
 }

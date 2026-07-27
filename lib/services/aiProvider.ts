@@ -161,16 +161,16 @@ Respond in JSON format only.`;
         }),
       });
 
-      if (!response.ok) {
+      if (!res.ok) {
         throw new AIServiceError(
-          `API error: ${response.status}`,
+          `API error: ${res.status}`,
           'API_ERROR',
-          response.status,
-          response.status >= 500
+          res.status,
+          res.status >= 500
         );
       }
 
-      return response;
+      return res;
     },
     aiConfig.AI_MAX_RETRIES,
     aiConfig.AI_TIMEOUT

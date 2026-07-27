@@ -10,7 +10,10 @@ import User from '@/models/User';
 function getSessionUser(req: NextRequest) {
   try {
     const header = req.headers.get('x-session-user');
-    if (header) return JSON.parse(decodeURIComponent(header));
+    if (header) {
+      const parsed = JSON.parse(decodeURIComponent(header));
+      return parsed?.user || parsed;
+    }
   } catch {}
   return null;
 }
@@ -117,16 +120,43 @@ export async function POST(request: NextRequest) {
 
     // Update approval status
     if (action === 'approve') {
-      user.arenaApprovalStatus = 'approved';
-      user.arenaApprovedAt = new Date();
-      user.arenaApprovedBy = sessionUser?.name || 'Admin'; // Store admin name
-      user.arenaApprovalReason = '';
-    } else if (action === 'reject') {
-      user.arenaApprovalStatus = 'rejected';
-      user.arenaRejectedAt = new Date();
-      user.arenaApprovalReason = reason || 'Rejected by admin';
-    }
+      user.arenaApprovalStatus = "approved";
+user.isLabApproved = true;
+if (!user.arenaAccess) {
+    user.arenaAccess = {
+        status: "pending",
+        approved: false,
+        approvedAt: null,
+        rejectedAt: null,
+    };
+}
 
+user.arenaAccess.status = "approved";
+user.arenaAccess.approved = true;
+user.arenaAccess.approvedAt = new Date();
+user.arenaAccess.rejectedAt = null;
+
+user.arenaApprovedAt = new Date();
+user.arenaApprovedBy = sessionUser?.name || "Admin";
+user.arenaApprovalReason = "";
+
+user.markModified("arenaAccess");
+    } else if (action === 'reject') {
+      user.arenaApprovalStatus = "rejected";
+user.isLabApproved = false;
+
+user.arenaAccess.status = "rejected";
+user.arenaAccess.approved = false;
+user.arenaAccess.approvedAt = null;
+user.arenaAccess.rejectedAt = new Date();
+
+user.arenaRejectedAt = new Date();
+user.arenaApprovalReason =
+  reason || "Rejected by admin";
+
+user.markModified("arenaAccess");
+
+    }
     await user.save();
 
     return NextResponse.json({
@@ -138,7 +168,7 @@ export async function POST(request: NextRequest) {
         email: user.email,
         arenaApprovalStatus: user.arenaApprovalStatus,
         arenaApprovedAt: user.arenaApprovedAt,
-        arenaRejectedAt: user.arenaRejectedAt,
+        arenaRejectedAt: user.arenaRejectedAt,  
         arenaApprovalReason: user.arenaApprovalReason,
       },
     });
@@ -156,67 +186,65 @@ export async function POST(request: NextRequest) {
  */
 export async function PUT(request: NextRequest) {
   try {
-    // Check admin authentication
     const sessionUser = getSessionUser(request);
+
     if (!checkAdminAuth(sessionUser)) {
-      return NextResponse.json({ error: 'Unauthorized - Admin access required' }, { status: 401 });
+      return NextResponse.json(
+        { error: "Unauthorized" },
+        { status: 401 }
+      );
     }
 
     const { userIds, action, reason } = await request.json();
 
-    if (!userIds || !Array.isArray(userIds) || userIds.length === 0) {
-      return NextResponse.json(
-        { error: 'userIds array is required and must not be empty' },
-        { status: 400 }
-      );
-    }
-
-    if (!action || !['approve', 'reject'].includes(action)) {
-      return NextResponse.json(
-        { error: 'action must be "approve" or "reject"' },
-        { status: 400 }
-      );
-    }
-
     await dbConnect();
-// {
-//   "name": "insert_edit_into_file",
-//   "arguments": {
-//     "filePath": "c:\\Local LLM\\app\\api\\admin\\arena-approvals\\route.ts",
-//     "startLine": 1,
-//     "endLine": 20,
-//     "newContent": "import { ArenaApprovalsController } from './arena-approvals.controller';\n\nconst arenaApprovalsRouter = express.Router();\n\n// ...existing code...\n\nexport default arenaApprovalsRouter;\n"
-//   }
-// }
-    // Bulk update
-    const updateData =
-      action === 'approve'
-        ? {
-            arenaApprovalStatus: 'approved',
-            arenaApprovedAt: new Date(),
-            arenaApprovedBy: sessionUser?.name || 'Admin',
-            arenaApprovalReason: '',
-          }
-        : {
-            arenaApprovalStatus: 'rejected',
-            arenaRejectedAt: new Date(),
-            arenaApprovalReason: reason || 'Rejected by admin',
-          };
+
+    const updateData: any = {};
+
+    if (action === "approve") {
+      updateData.arenaApprovalStatus = "approved";
+      updateData.isLabApproved = true;
+      updateData.arenaApprovedAt = new Date();
+      updateData.arenaApprovalReason = "";
+      updateData.arenaRejectedAt = null;
+
+      updateData.arenaAccess = {
+        status: "approved",
+        approved: true,
+        approvedAt: new Date(),
+        rejectedAt: null,
+      };
+    }
+
+    if (action === "reject") {
+      updateData.arenaApprovalStatus = "rejected";
+      updateData.isLabApproved = false;
+      updateData.arenaRejectedAt = new Date();
+      updateData.arenaApprovalReason = reason || "";
+
+      updateData.arenaAccess = {
+        status: "rejected",
+        approved: false,
+        approvedAt: null,
+        rejectedAt: new Date(),
+      };
+    }
 
     const result = await User.updateMany(
       { _id: { $in: userIds } },
-      { $set: updateData }
+      {
+        $set: updateData,
+      }
     );
 
     return NextResponse.json({
       success: true,
-      message: `Arena access ${action}ed for ${result.modifiedCount} users`,
       modifiedCount: result.modifiedCount,
     });
-  } catch (error: any) {
-    console.error('Bulk arena approval error:', error);
+
+  } catch (err: any) {
     return NextResponse.json(
-      { error: error.message || 'Failed to update arena approvals' },
+      { error: err.message },
       { status: 500 }
     );
   }
@@ -249,11 +277,19 @@ export async function DELETE(request: NextRequest) {
       userId,
       {
         $set: {
-          arenaApprovalStatus: 'pending',
-          arenaApprovedAt: null,
-          arenaRejectedAt: null,
-          arenaApprovalReason: '',
-          arenaAccessRequestedAt: new Date(),
+         arenaApprovalStatus: "pending",
+arenaApprovedAt: null,
+arenaRejectedAt: null,
+arenaApprovalReason: "",
+
+isLabApproved: false,
+
+arenaAccess: {
+    status: "pending",
+    approved: false,
+    approvedAt: null,
+    rejectedAt: null,
+},
         },
       },
       { new: true }

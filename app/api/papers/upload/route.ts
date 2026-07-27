@@ -87,7 +87,7 @@ export async function POST(req: NextRequest) {
     }
 
     const client = new MongoClient(mongoUrl);
-    let gridfsId: ObjectId;
+    let gridfsId: ObjectId | null = null;
 
     try {
       await client.connect();
@@ -103,12 +103,13 @@ export async function POST(req: NextRequest) {
         },
       });
 
-      await new Promise((resolve, reject) => {
-        uploadStream.end(Buffer.from(fileBuffer), (err) => {
-          if (err) reject(err);
-          else resolve(gridfsId = uploadStream.id);
+      const gridfsIdVal = await new Promise<any>((resolve, reject) => {
+        uploadStream.on('error', (err) => reject(err));
+        uploadStream.end(Buffer.from(fileBuffer), () => {
+          resolve(uploadStream.id);
         });
       });
+      gridfsId = gridfsIdVal;
     } finally {
       await client.close();
     }

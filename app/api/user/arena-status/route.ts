@@ -18,26 +18,38 @@ async function findUserById(userId: string) {
 
 export async function GET(request: NextRequest) {
   try {
-    // Get user ID from query params or session
-    const searchParams = request.nextUrl.searchParams;
-    const userId = searchParams.get('userId');
+    const userId = request.nextUrl.searchParams.get("userId");
 
     if (!userId) {
       return NextResponse.json(
-        { error: 'userId is required' },
+        { error: "userId is required" },
         { status: 400 }
       );
     }
 
     await dbConnect();
 
-    const user = await findUserById(userId).select(
-      'name email arenaApprovalStatus arenaApprovalReason arenaApprovedAt arenaRejectedAt arenaAccessRequestedAt'
-    );
+    const user = await findUserById(userId);
 
     if (!user) {
-      return NextResponse.json({ error: 'User not found' }, { status: 404 });
+      return NextResponse.json(
+        { error: "User not found" },
+        { status: 404 }
+      );
     }
+
+    // Keep arenaAccess synchronized
+    const arenaAccess = user.arenaAccess ?? {
+      status:
+        user.arenaApprovalStatus === "approved"
+          ? "approved"
+          : user.arenaApprovalStatus === "rejected"
+          ? "rejected"
+          : "pending",
+      approved: user.arenaApprovalStatus === "approved",
+      approvedAt: user.arenaApprovedAt,
+      rejectedAt: user.arenaRejectedAt,
+    };
 
     return NextResponse.json({
       success: true,
@@ -45,25 +57,33 @@ export async function GET(request: NextRequest) {
         userId: user._id,
         name: user.name,
         email: user.email,
+
         arenaApprovalStatus: user.arenaApprovalStatus,
         arenaApprovalReason: user.arenaApprovalReason,
         arenaApprovedAt: user.arenaApprovedAt,
         arenaRejectedAt: user.arenaRejectedAt,
         arenaAccessRequestedAt: user.arenaAccessRequestedAt,
-        isApproved: user.arenaApprovalStatus === 'approved',
-        isRejected: user.arenaApprovalStatus === 'rejected',
-        isPending: user.arenaApprovalStatus === 'pending',
+
+        arenaAccess,
+
+        isApproved: arenaAccess.approved,
+        isPending: arenaAccess.status === "pending",
+        isRejected: arenaAccess.status === "rejected",
       },
     });
   } catch (error: any) {
-    console.error('Arena status check error:', error);
+    console.error(error);
+
     return NextResponse.json(
-      { error: error.message || 'Failed to fetch arena status' },
-      { status: 500 }
+      {
+        error: error.message || "Failed to fetch arena status",
+      },
+      {
+        status: 500,
+      }
     );
   }
 }
-
 export async function POST(request: NextRequest) {
   try {
     const { userId, action } = await request.json();
@@ -96,6 +116,7 @@ export async function POST(request: NextRequest) {
         mockUser.arenaAccessRequestedAt = new Date().toISOString();
         mockUser.arenaApprovalReason = '';
         mockUser.arenaRejectedAt = null;
+        mockUser.arenaAccess = { status: 'pending', approved: false, approvedAt: null, rejectedAt: null };
         return NextResponse.json({
           success: true,
           message: 'Arena access request submitted (mock). Please wait for admin approval.',
@@ -110,46 +131,54 @@ export async function POST(request: NextRequest) {
     }
 
     // If already approved, cannot request again
-    if (user.arenaApprovalStatus === 'approved') {
-      return NextResponse.json(
-        {
-          success: true,
-          message: 'You already have arena access approved',
-          isApproved: true,
-        },
-        { status: 200 }
-      );
-    }
+   if (user.arenaApprovalStatus === "approved") {
+  return NextResponse.json({
+    success: true,
+    message: "Arena access already approved.",
+    data: {
+      arenaApprovalStatus: user.arenaApprovalStatus,
+      arenaAccess: user.arenaAccess,
+    },
+  });
+}
 
     // If already pending, don't create duplicate request
-    if (user.arenaApprovalStatus === 'pending') {
-      return NextResponse.json(
-        {
-          success: true,
-          message: 'Your arena access request is still pending admin review',
-          isPending: true,
-        },
-        { status: 200 }
-      );
-    }
-
+   if (user.arenaApprovalStatus === "pending") {
+  return NextResponse.json({
+    success: true,
+    message: "Arena request already pending.",
+    data: {
+      arenaApprovalStatus: user.arenaApprovalStatus,
+    },
+  });
+} 
     // If rejected, allow to request again
-    user.arenaApprovalStatus = 'pending';
-    user.arenaAccessRequestedAt = new Date();
-    user.arenaApprovalReason = '';
-    user.arenaRejectedAt = null;
+  user.arenaApprovalStatus = "pending";
+user.arenaApprovalReason = "";
+user.arenaApprovedAt = null;
+user.arenaRejectedAt = null;
+user.arenaAccessRequestedAt = new Date();
+
+user.arenaAccess = {
+  status: "pending",
+  approved: false,
+  approvedAt: null,
+  rejectedAt: null,
+};
+
 
     await user.save();
 
     return NextResponse.json({
-      success: true,
-      message: 'Arena access request submitted. Please wait for admin approval.',
-      data: {
-        userId: user._id,
-        name: user.name,
-        arenaApprovalStatus: user.arenaApprovalStatus,
-      },
-    });
+  success: true,
+  message: "Arena request submitted successfully.",
+  data: {
+    userId: user._id,
+    arenaApprovalStatus: user.arenaApprovalStatus,
+    arenaAccess: user.arenaAccess,
+  },
+});
+
   } catch (error: any) {
     console.error('Arena request error:', error);
     return NextResponse.json(

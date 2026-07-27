@@ -154,7 +154,7 @@ Response:
   arenaAccessRequestedAt: '2026-06-07T10:00:00Z',
   isPending: true,
   isApproved: false,
-  isRejected: false
+  isRejected: false,
 }
 ```
 
@@ -162,7 +162,7 @@ Response:
 **Endpoint**: `POST /api/user/arena-status`
 
 ```javascript
-Body: { request: true }
+Body: { request: true ,access: true }
 
 Response:
 {
@@ -179,12 +179,14 @@ Response:
 Body: {
   userId: 'USER_ID',
   action: 'approve'
+  access: 'approved'
 }
 
 Response:
 {
   arenaApprovalStatus: 'approved',
   arenaApprovedAt: '2026-06-07T10:05:00Z'
+  arenaAccessStatus: 'approved'
 }
 ```
 

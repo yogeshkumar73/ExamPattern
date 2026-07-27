@@ -95,12 +95,12 @@ Format: ["topic1", "topic2", ...]`,
 export async function generateDynamicQuestions(
   request: QuestionGenerationRequest
 ): Promise<GeneratedQuestion[]> {
+  const { mode, difficulty, topic, count = 5 } = request;
   if (!process.env.OPENAI_API_KEY) {
-    return getDefaultQuestions(request.mode, request.difficulty);
+    return getDefaultQuestions(mode, difficulty);
   }
 
   try {
-    const { mode, difficulty, topic, count = 5 } = request;
 
     const systemPrompts: Record<string, string> = {
       coding: `You are a coding instructor. Generate ${count} ${difficulty} level coding questions${topic ? ` about ${topic}` : ''}. 

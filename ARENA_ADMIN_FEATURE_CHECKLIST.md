@@ -140,7 +140,7 @@
   name: string;
   email: string;
   photoUrl: string;
-  arenaApprovalStatus: 'pending' | 'approved' | 'rejected';
+  arenaApprovalStatus: 'pending' | 'approved' | 'rejected' | 'access';
   arenaApprovalReason: string;
   arenaApprovedAt: Date | null;
   arenaRejectedAt: Date | null;

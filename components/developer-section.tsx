@@ -27,7 +27,7 @@ export function DeveloperSection() {
      github: "https://github.com/yogeshkumar73",
      twitter: "#",
      linkedin: "www.linkedin.com/in/yogesh-kumar-824264253",
-     whatsapp: "https://wa.me/message/QOZSUIA3FH4XH1"
+     whatsapp: ""
     },
     {
      name: "Kuldeep Prajapatee",

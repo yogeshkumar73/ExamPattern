@@ -60,21 +60,51 @@ export function AICoach({ userEmail, userStats }: AICoachProps) {
     fetchCoachAdvice();
   }, [userStats]);
 
-  const handleSpeak = async (tip: CoachAdvice, index: number) => {
-    setSpeakingTip(index);
-    try {
-      // Use Web Speech API for voice
-      const utterance = new SpeechSynthesisUtterance(tip.tip);
-      utterance.rate = 0.9;
-      utterance.pitch = 1;
-      utterance.onend = () => setSpeakingTip(null);
-      window.speechSynthesis.speak(utterance);
-    } catch (error) {
-      console.error('Speech synthesis failed:', error);
-      setSpeakingTip(null);
+  const handleSpeak = (tip: CoachAdvice, index: number) => {
+    if (!("speechSynthesis" in window)) {
+        console.warn("Speech synthesis is not supported.");
+        return;
     }
-  };
 
+    if (!tip.tip.trim()) return;
+
+    window.speechSynthesis.cancel();
+
+    const utterance = new SpeechSynthesisUtterance(tip.tip);
+
+    utterance.rate = 0.95;
+    utterance.pitch = 1;
+    utterance.volume = 1;
+
+    const voices = speechSynthesis.getVoices();
+
+utterance.voice =
+voices.find(v =>
+    v.lang.startsWith("en")
+) ?? voices[0];
+
+    const preferredVoice =
+        voices.find(v => v.lang.startsWith("en-IN")) ||
+        voices.find(v => v.lang.startsWith("en-US")) ||
+        voices[0];
+
+    if (preferredVoice) {
+        utterance.voice = preferredVoice;
+    }
+
+    setSpeakingTip(index);
+
+    utterance.onend = () => {
+        setSpeakingTip(null);
+    };
+
+    utterance.onerror = (event) => {
+        console.error("Speech error:", event);
+        setSpeakingTip(null);
+    };
+
+    window.speechSynthesis.speak(utterance);
+};
   const contextIcons: Record<string, typeof Brain> = {
     'Practice Strategy': Target,
     'Learning Strategy': Lightbulb,
@@ -156,7 +186,7 @@ export function AICoach({ userEmail, userStats }: AICoachProps) {
                       }}
                       disabled={speakingTip === idx}
                     >
-                      <Volume2 className={`w-4 h-4 ${speakingTip === idx ? 'animate-pulse text-indigo-400' : ''}`} />
+                      <Volume2 className={`w-4 h-4 ${speakingTip === idx ? 'animate-spin text-indigo-400' : ''}`} />
                     </Button>
                   </div>
                 </div>

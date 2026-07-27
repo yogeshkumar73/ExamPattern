@@ -237,7 +237,7 @@ export function BattleRoom({ config, user, onBattleEnd }: BattleRoomProps) {
       } else {
         setCurrentQ(prev => prev + 1)
         if (questions[currentQ + 1]?.boilerplate) {
-          setCode(questions[currentQ + 1].boilerplate)
+          setCode(questions[currentQ + 1].boilerplate || '')
         }
       }
     }, 1500)

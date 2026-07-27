@@ -1,78 +1,90 @@
-import mongoose from 'mongoose';
-import { MongoClient } from 'mongodb';
-
-// Cache the connection to reuse across serverless invocations
-interface MongooseCache {
-  conn: typeof mongoose | null;
-  promise: Promise<typeof mongoose> | null;
-}
+import mongoose from "mongoose";
+import { MongoClient } from "mongodb";
 
 declare global {
   // eslint-disable-next-line no-var
-  var mongooseCache: MongooseCache | undefined;
-}
+  var mongooseCache:
+    | {
+        conn: typeof mongoose | null;
+        promise: Promise<typeof mongoose> | null;
+      }
+    | undefined;
 
-const cached: MongooseCache = global.mongooseCache ?? { conn: null, promise: null };
-global.mongooseCache = cached;
-
-// MongoDB client for Auth.js adapter
-declare global {
   // eslint-disable-next-line no-var
   var mongoClient: MongoClient | undefined;
 }
 
-let clientPromise: Promise<MongoClient>;
+const cached = global.mongooseCache ?? {
+  conn: null,
+  promise: null,
+};
 
-if (!global.mongoClient) {
-  const MONGODB_URI = process.env.MONGODB_URI;
-  if (!MONGODB_URI) {
-    throw new Error('MONGODB_URI environment variable is not defined');
+global.mongooseCache = cached;
+
+/**
+ * MongoDB Native Client (Auth.js)
+ */
+let clientPromise: Promise<MongoClient> | null = null;
+
+export async function getMongoClient(): Promise<MongoClient> {
+  if (global.mongoClient) {
+    return global.mongoClient;
   }
-  const client = new MongoClient(MONGODB_URI);
+
+  const uri = process.env.MONGODB_URI;
+
+  if (!uri) {
+    throw new Error("MONGODB_URI is not defined.");
+  }
+
+  const client = new MongoClient(uri);
+
   global.mongoClient = client;
+
   clientPromise = client.connect();
-} else {
-  clientPromise = Promise.resolve(global.mongoClient);
+
+  return clientPromise;
 }
 
 export { clientPromise };
 
-async function dbConnect(): Promise<typeof mongoose> {
-  // Check at runtime (not module load) so the build doesn't fail when env var is missing
-  const MONGODB_URI = process.env.MONGODB_URI;
-  if (!MONGODB_URI) {
-    throw new Error(
-      'MONGODB_URI environment variable is not defined. ' +
-      'Please set it in your Netlify environment variables.'
-    );
+/**
+ * Mongoose Connection
+ */
+export default async function dbConnect(): Promise<typeof mongoose> {
+  if (mongoose.connection.readyState === 1) {
+    return mongoose;
   }
 
   if (cached.conn) {
     return cached.conn;
   }
 
+  const uri = process.env.MONGODB_URI;
+
+  if (!uri) {
+    throw new Error("MONGODB_URI is not defined.");
+  }
+
   if (!cached.promise) {
-    const opts = {
+    cached.promise = mongoose.connect(uri, {
       bufferCommands: false,
-      serverSelectionTimeoutMS: 10000,
       maxPoolSize: 10,
-    };
-    cached.promise = mongoose.connect(MONGODB_URI, opts).then((m) => {
-      console.log('MongoDB Connected Successfully');
-      return m;
+      serverSelectionTimeoutMS: 10000,
     });
   }
 
   try {
     cached.conn = await cached.promise;
-  } catch (error) {
+
+    console.log("✅ MongoDB Connected");
+
+    return cached.conn;
+  } catch (err) {
     cached.promise = null;
-    console.error('MongoDB Connection Error:', error);
-    throw error;
+
+    console.error("❌ MongoDB Connection Error:", err);
+
+    throw err;
   }
-
-  return cached.conn;
 }
-
-export default dbConnect;
-

@@ -73,7 +73,7 @@ export async function GET(request: NextRequest) {
     ]);
 
     // Return file as download
-    return new NextResponse(fileBuffer, {
+    return new NextResponse(new Uint8Array(fileBuffer), {
       headers: {
         'Content-Type': paper.fileType || 'application/octet-stream',
         'Content-Disposition': `attachment; filename="${paper.fileName}"`,

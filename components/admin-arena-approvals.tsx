@@ -101,6 +101,7 @@ export default function AdminArenaApprovals() {
         body: JSON.stringify({
           userId,
           action: 'approve',
+          
         }),
       });
 

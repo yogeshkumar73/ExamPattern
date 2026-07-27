@@ -1,19 +1,66 @@
+'use client'
+
 import * as React from 'react'
 
-const MOBILE_BREAKPOINT = 768
+/**
+ * Responsive Breakpoints
+ * xs : < 640px
+ * sm : 640px
+ * md : 768px
+ * lg : 1024px
+ * xl : 1280px
+ * 2xl: 1536px
+ */
 
-export function useIsMobile() {
-  const [isMobile, setIsMobile] = React.useState<boolean | undefined>(undefined)
+export const BREAKPOINTS = {
+  xs: 640,
+  sm: 640,
+  md: 768,
+  lg: 1024,
+  xl: 1280,
+  '2xl': 1536,
+} as const
+
+export type ScreenSize =
+  | 'xs'
+  | 'sm'
+  | 'md'
+  | 'lg'
+  | 'xl'
+  | '2xl'
+
+export function useScreen() {
+  const [width, setWidth] = React.useState(0)
 
   React.useEffect(() => {
-    const mql = window.matchMedia(`(max-width: ${MOBILE_BREAKPOINT - 1}px)`)
-    const onChange = () => {
-      setIsMobile(window.innerWidth < MOBILE_BREAKPOINT)
-    }
-    mql.addEventListener('change', onChange)
-    setIsMobile(window.innerWidth < MOBILE_BREAKPOINT)
-    return () => mql.removeEventListener('change', onChange)
+    if (typeof window === 'undefined') return
+
+    const update = () => setWidth(window.innerWidth)
+
+    update()
+
+    window.addEventListener('resize', update)
+
+    return () => window.removeEventListener('resize', update)
   }, [])
 
-  return !!isMobile
+  return {
+    width,
+    isMobile: width < BREAKPOINTS.md,
+    isTablet:
+      width >= BREAKPOINTS.md &&
+      width < BREAKPOINTS.lg,
+    isLaptop:
+      width >= BREAKPOINTS.lg &&
+      width < BREAKPOINTS.xl,
+    isDesktop:
+      width >= BREAKPOINTS.xl &&
+      width < BREAKPOINTS['2xl'],
+    isLargeDesktop:
+      width >= BREAKPOINTS['2xl'],
+  }
+}
+
+export function useIsMobile() {
+  return useScreen().isMobile
 }

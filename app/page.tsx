@@ -82,22 +82,21 @@ export default function Home() {
                 <div className="w-3 h-3 rounded-full bg-yellow-500/50" />
                 <div className="w-3 h-3 rounded-full bg-green-500/50" />
               </div>
-              <pre className="text-slate-300">
-                <code>{`try {
-  // 1. Analyze paper structure
+             <pre className="text-slate-300 overflow-x-auto">
+  <code>{`try {
   const result = await analyzePaper(content);
-  
-  // 2. Validate structural integrity
+
   if (!isValid(result)) {
     throw new ValidationError("Incomplete analysis");
   }
 
   return formatPremiumOutput(result);
+
 } catch (error) {
   console.error("Resilient Mode Engaged:", error);
   return generateVerifiedBackup(content);
 }`}</code>
-              </pre>
+</pre>
               <div className="mt-6 flex items-center gap-2 text-xs text-primary/80 font-bold uppercase tracking-wider">
                 <Sparkles className="w-3 h-3" /> System: Stable 
               </div>

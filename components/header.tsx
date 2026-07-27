@@ -1,62 +1,48 @@
 "use client"
 
-import { Menubar, MenubarContent, MenubarItem, MenubarMenu, MenubarSeparator, MenubarTrigger } from "@/components/ui/menubar"
-import { 
-  Brain, FileText, Settings, HelpCircle, User, LogOut, ChevronLeft, ChevronRight, 
-  Home, Trophy, Video, Mail, Smartphone, UserPlus, ShieldCheck, Globe, Scale, MessageSquare, Sparkles,
-  Swords
+import {
+  Menubar, MenubarContent, MenubarItem, MenubarMenu, MenubarSeparator, MenubarTrigger
+} from "@/components/ui/menubar"
+import {
+  Brain, Settings, HelpCircle, User, LogOut, ChevronLeft, ChevronRight,
+  ShieldCheck, Globe, Scale, MessageSquare, Sparkles, Swords, Mail, Smartphone, UserPlus
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import {
+  Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle
+} from "@/components/ui/dialog"
 import { useNav } from "@/hooks/use-nav"
 import Link from "next/link"
-import { useState, useEffect } from "react"
-// import { useSession, signOut } from "next-auth/react" // Removed due to environment restrictions
+import { useState, useEffect, useCallback } from "react"
+
+type SessionUser = {
+  name?: string
+  email?: string
+}
+
+type Session = {
+  user?: SessionUser
+} | null
 
 export function Header() {
   const { currentStep, setStep, isRegistered, isAdmin, setAdmin, setRegistered } = useNav()
-  const [session, setSession] = useState<any>(null)
+
+  const [session, setSession] = useState<Session>(null)
   const [userId, setUserId] = useState<string | null>(null)
   const [isAdminDialogOpen, setAdminDialogOpen] = useState(false)
   const [adminPasswordInput, setAdminPasswordInput] = useState("")
   const [adminAuthMessage, setAdminAuthMessage] = useState("")
   const [adminAuthLoading, setAdminAuthLoading] = useState(false)
 
-  const handleAdminUnlock = () => {
-    if (adminPasswordInput === "b6001d1fe29d165a0") {
-      setAdminAuthLoading(true)
-      setAdminAuthMessage("Verifying...")
-      setTimeout(() => {
-        setAdmin(true)
-        setAdminAuthMessage("Successfully unlocked!")
-        setTimeout(() => {
-          setAdminDialogOpen(false)
-          setAdminPasswordInput("")
-          setAdminAuthMessage("")
-          setAdminAuthLoading(false)
-          setStep("admin")
-        }, 600)
-      }, 300)
-    } else {
-      setAdminAuthMessage("Invalid password. Try again.")
-      setAdminPasswordInput("")
-    }
-  }
-
-  const handleAdminPasswordKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter' && !adminAuthLoading) {
-      handleAdminUnlock()
-    }
-  }
-
+  // Sync session from localStorage and listen to storage changes
   useEffect(() => {
-    const syncSession = () => {
-      const saved = localStorage.getItem("aura_session")
-      if (saved) {
+    function syncSession() {
+      const storedSession = localStorage.getItem("aura_session")
+      if (storedSession) {
         try {
-          setSession(JSON.parse(saved))
-        } catch (e) {
+          setSession(JSON.parse(storedSession))
+        } catch {
           setSession(null)
         }
       } else {
@@ -68,114 +54,192 @@ export function Header() {
     return () => window.removeEventListener("storage", syncSession)
   }, [])
 
-  const handleSignOut = () => {
+  // Secure admin check simulation - Replace with real secure backend call
+  const verifyAdminPassword = useCallback(async (password: string): Promise<boolean> => {
+    // WARNING: This is placeholder.
+    // Do NOT use client side password validation in production.
+    // Replace this with an API call to your backend for safe validation.
+    return new Promise(resolve => {
+      setTimeout(() => {
+        resolve(password === "b6001d1fe29d165a0") // Example only
+      }, 300)
+    })
+  }, [])
+
+  const handleAdminUnlock = useCallback(async () => {
+    if (!adminPasswordInput.trim()) {
+      setAdminAuthMessage("Please enter the password.")
+      return
+    }
+    setAdminAuthLoading(true)
+    setAdminAuthMessage("Verifying...")
+    const isValid = await verifyAdminPassword(adminPasswordInput.trim())
+    if (isValid) {
+      setAdmin(true)
+      setAdminAuthMessage("Successfully unlocked!")
+      setTimeout(() => {
+        setAdminDialogOpen(false)
+        setAdminPasswordInput("")
+        setAdminAuthMessage("")
+        setAdminAuthLoading(false)
+        setStep("admin")
+      }, 600)
+    } else {
+      setAdminAuthMessage("Invalid password. Try again.")
+      setAdminPasswordInput("")
+      setAdminAuthLoading(false)
+    }
+  }, [adminPasswordInput, setAdmin, setStep, verifyAdminPassword])
+
+  const handleAdminPasswordKeyDown = useCallback(
+    (e: React.KeyboardEvent<HTMLInputElement>) => {
+      if (e.key === "Enter" && !adminAuthLoading) {
+        handleAdminUnlock()
+      }
+    },
+    [adminAuthLoading, handleAdminUnlock]
+  )
+
+  const handleSignOut = useCallback(() => {
     localStorage.removeItem("aura_session")
     setSession(null)
     setRegistered(false)
     setStep("onboarding")
-    window.location.reload() // Force reload to clear all states
-  }
+    window.location.reload()
+  }, [setRegistered, setStep])
 
-  const steps: Array<any> = isRegistered ? ["upload", "analyze", "predict"] : ["onboarding"]
+  // Manage steps for navigation controls
+  const steps = isRegistered ? ["upload", "analyze", "predict"] : ["onboarding"]
   const currentIndex = steps.indexOf(currentStep)
 
-  const handlePrev = () => {
-    if (currentIndex > 0) setStep(steps[currentIndex - 1])
-  }
+  const handlePrev = useCallback(() => {
+    if (currentIndex > 0) {
+      setStep(steps[currentIndex - 1])
+    }
+  }, [currentIndex, setStep, steps])
 
-  const handleNext = () => {
-    if (currentIndex < steps.length - 1) setStep(steps[currentIndex + 1])
-  }
+  const handleNext = useCallback(() => {
+    if (currentIndex < steps.length - 1) {
+      setStep(steps[currentIndex + 1])
+    }
+  }, [currentIndex, setStep, steps])
 
-  const createUserId = () => {
-    const id = "AURA-" + Math.random().toString(36).substr(2, 9).toUpperCase()
+  const createUserId = useCallback(() => {
+    const id = "AURA-" + Math.random().toString(36).slice(2, 11).toUpperCase()
     setUserId(id)
+    // Ideally, replace alert with a nicer UI feedback like toast/snackbar
     alert(`User ID Created: ${id}`)
-  }
+  }, [])
 
   return (
-    <header className="border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 sticky top-0 z-50">
-      <div className="container mx-auto px-4 h-16 flex items-center justify-between">
+    <header className="sticky top-0 z-50 border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
+      <div className="container mx-auto flex h-16 items-center justify-between px-4">
         <div className="flex items-center gap-6">
-          <Link href="/" onClick={() => setStep("onboarding")} className="flex items-center gap-2 font-bold text-xl tracking-tight text-primary hover:opacity-80 transition-all hover:scale-105 group">
-            <div className="p-1.5 bg-primary/10 rounded-lg group-hover:bg-primary/20 transition-colors">
-              <Brain className="w-8 h-8" />
+          <Link
+            href="/"
+            onClick={() => setStep("onboarding")}
+            className="group flex items-center gap-2 font-bold text-xl tracking-tight text-primary transition-transform hover:opacity-80 hover:scale-105"
+          >
+            <div className="rounded-lg bg-primary/10 p-1.5 transition-colors group-hover:bg-primary/20">
+              <Brain className="h-8 w-8" />
             </div>
-            <span className="hidden sm:inline bg-clip-text text-transparent bg-gradient-to-r from-primary to-blue-600">Aura Study AI</span>
+            <span className="hidden bg-clip-text text-transparent bg-gradient-to-r from-primary to-blue-600 sm:inline">
+              Aura Study AI
+            </span>
           </Link>
 
-          {/* Section Numbering for UX */}
           {isRegistered && (
-            <div className="hidden lg:flex items-center gap-2 text-xs font-bold uppercase tracking-tighter text-muted-foreground">
+            <nav className="hidden items-center gap-2 text-xs font-bold uppercase tracking-tighter text-muted-foreground lg:flex">
               <span className={currentStep === "upload" ? "text-primary" : ""}>01. Upload</span>
-              <div className="w-4 h-[1px] bg-border" />
+              <div className="bg-border h-[1px] w-4" />
               <span className={currentStep === "analyze" ? "text-primary" : ""}>02. Configure</span>
-              <div className="w-4 h-[1px] bg-border" />
+              <div className="bg-border h-[1px] w-4" />
               <span className={currentStep === "predict" ? "text-primary" : ""}>03. Results</span>
-            </div>
+            </nav>
           )}
         </div>
 
         <div className="flex items-center gap-4">
-          {/* Navigation Controls */}
           {isRegistered && (
-            <div className="flex items-center bg-muted/30 rounded-xl p-1 border shadow-inner">
-              <Button variant="ghost" size="sm" onClick={handlePrev} disabled={currentIndex <= 0} className="h-8 w-8 p-0 rounded-lg">
-                <ChevronLeft className="w-4 h-4" />
+            <nav className="flex items-center space-x-1.5 rounded-xl border bg-muted/30 p-1 shadow-inner">
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-8 w-8 p-0 rounded-lg"
+                onClick={handlePrev}
+                disabled={currentIndex <= 0}
+                aria-label="Previous Step"
+              >
+                <ChevronLeft className="h-4 w-4" />
               </Button>
-              <div className="px-3 text-[10px] font-black uppercase tracking-widest text-primary min-w-[90px] text-center">
+              <div className="min-w-[90px] px-3 text-center text-[10px] font-black uppercase tracking-widest text-primary">
                 {currentStep}
               </div>
-              <Button variant="ghost" size="sm" onClick={handleNext} disabled={currentIndex === steps.length - 1} className="h-8 w-8 p-0 rounded-lg">
-                <ChevronRight className="w-4 h-4" />
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-8 w-8 p-0 rounded-lg"
+                onClick={handleNext}
+                disabled={currentIndex === steps.length - 1}
+                aria-label="Next Step"
+              >
+                <ChevronRight className="h-4 w-4" />
               </Button>
-            </div>
+            </nav>
           )}
 
-          <Menubar className="border-none bg-transparent shadow-none hidden md:flex hover:rotate-y-12 transition-transform">
+          <Menubar className="hidden md:flex border-none bg-transparent shadow-none hover:rotate-y-12 transition-transform">
             <MenubarMenu>
-              <MenubarTrigger onClick={() => setStep("profile")} className="cursor-pointer font-bold hover:text-primary transition-colors">
-                <User className="w-4 h-4 mr-2" /> {session?.user?.name || "Student Profile"}
+              <MenubarTrigger
+                onClick={() => setStep("profile")}
+                className="cursor-pointer font-bold hover:text-primary transition-colors"
+                aria-label="User Profile"
+              >
+                <User className="mr-2 h-4 w-4" /> {session?.user?.name ?? "Student Profile"}
               </MenubarTrigger>
               <MenubarContent className="w-56">
                 {session?.user ? (
                   <>
-                    <MenubarItem onClick={() => setStep("profile")} className="font-bold text-xs cursor-pointer">{session.user.email}</MenubarItem>
+                    <MenubarItem onClick={() => setStep("profile")} className="cursor-pointer font-bold text-xs">
+                      {session.user.email}
+                    </MenubarItem>
                     <MenubarSeparator />
                   </>
                 ) : userId ? (
                   <>
-                    <MenubarItem onClick={() => setStep("profile")} className="font-mono text-xs cursor-pointer">{userId}</MenubarItem>
+                    <MenubarItem onClick={() => setStep("profile")} className="cursor-pointer font-mono text-xs">
+                      {userId}
+                    </MenubarItem>
                     <MenubarSeparator />
                   </>
                 ) : (
                   <MenubarItem onClick={createUserId} className="gap-2">
-                    <UserPlus className="w-4 h-4" /> Create User ID
+                    <UserPlus className="h-4 w-4" /> Create User ID
                   </MenubarItem>
                 )}
-                <MenubarItem onClick={() => {
-                  if (isAdmin) {
-                    setAdmin(false);
-                  } else {
-                    setAdminDialogOpen(true);
-                  }
-                }} className="gap-2">
-                  <ShieldCheck className="w-4 h-4 text-primary" /> {isAdmin ? "Lock Admin" : "Unlock Admin"}
+                <MenubarItem
+                  onClick={() => (isAdmin ? setAdmin(false) : setAdminDialogOpen(true))}
+                  className="gap-2"
+                >
+                  <ShieldCheck className="text-primary h-4 w-4" /> {isAdmin ? "Lock Admin" : "Unlock Admin"}
                 </MenubarItem>
                 <MenubarSeparator />
-                <MenubarItem onClick={handleSignOut} className="text-destructive gap-2 cursor-pointer">
-                  <LogOut className="w-4 h-4" /> Sign Out
+                <MenubarItem onClick={handleSignOut} className="cursor-pointer gap-2 text-destructive">
+                  <LogOut className="h-4 w-4" /> Sign Out
                 </MenubarItem>
               </MenubarContent>
             </MenubarMenu>
 
-            <Dialog open={isAdminDialogOpen} onOpenChange={(open) => {
-              if (!open && !adminAuthLoading) {
-                setAdminDialogOpen(open)
-                setAdminPasswordInput("")
-                setAdminAuthMessage("")
-              }
-            }}>
+            <Dialog
+              open={isAdminDialogOpen}
+              onOpenChange={(open) => {
+                if (!open && !adminAuthLoading) {
+                  setAdminDialogOpen(open)
+                  setAdminPasswordInput("")
+                  setAdminAuthMessage("")
+                }
+              }}
+            >
               <DialogContent>
                 <DialogHeader>
                   <DialogTitle>Admin Access</DialogTitle>
@@ -184,21 +248,31 @@ export function Header() {
                 <div className="grid gap-4 py-4">
                   <Input
                     type="password"
-                    value={adminPasswordInput}
                     placeholder="Admin Password"
+                    value={adminPasswordInput}
                     onChange={(e) => setAdminPasswordInput(e.target.value)}
                     onKeyDown={handleAdminPasswordKeyDown}
                     disabled={adminAuthLoading}
                     autoFocus
+                    aria-label="Admin Password Input"
                   />
                   {adminAuthMessage && (
-                    <p className={`text-sm font-semibold ${adminAuthMessage.includes("Successfully") || adminAuthMessage.includes("Verifying") ? "text-emerald-600" : "text-rose-600"}`}>
+                    <p
+                      className={`text-sm font-semibold ${
+                        adminAuthMessage.includes("Successfully") || adminAuthMessage.includes("Verifying")
+                          ? "text-emerald-600"
+                          : "text-rose-600"
+                      }`}
+                      role="alert"
+                    >
                       {adminAuthMessage}
                     </p>
                   )}
                 </div>
                 <DialogFooter>
-                  <Button variant="secondary" onClick={() => setAdminDialogOpen(false)} disabled={adminAuthLoading}>Cancel</Button>
+                  <Button variant="secondary" onClick={() => setAdminDialogOpen(false)} disabled={adminAuthLoading}>
+                    Cancel
+                  </Button>
                   <Button onClick={handleAdminUnlock} disabled={adminAuthLoading}>
                     {adminAuthLoading ? "Verifying..." : "Submit"}
                   </Button>
@@ -209,93 +283,111 @@ export function Header() {
             {isAdmin && (
               <MenubarMenu>
                 <MenubarTrigger onClick={() => setStep("admin")} className="cursor-pointer font-bold text-primary">
-                  <ShieldCheck className="w-4 h-4 mr-2" /> Admin
+                  <ShieldCheck className="mr-2 h-4 w-4" /> Admin
                 </MenubarTrigger>
               </MenubarMenu>
             )}
 
             <MenubarMenu>
               <MenubarTrigger onClick={() => setStep("chat")} className="cursor-pointer font-bold">
-                <MessageSquare className="w-4 h-4 mr-2" /> Chat
+                <MessageSquare className="mr-2 h-4 w-4" /> Chat
               </MenubarTrigger>
             </MenubarMenu>
 
             <MenubarMenu>
               <MenubarTrigger onClick={() => setStep("community")} className="cursor-pointer font-bold">
-                <Globe className="w-4 h-4 mr-2" /> Community
+                <Globe className="mr-2 h-4 w-4" /> Community
               </MenubarTrigger>
             </MenubarMenu>
 
             <MenubarMenu>
               <MenubarTrigger onClick={() => setStep("lab")} className="cursor-pointer font-bold text-indigo-500 hover:text-indigo-600 transition-colors">
-                <Brain className="w-4 h-4 mr-2" /> Smart Lab
+                <Brain className="mr-2 h-4 w-4" /> Smart Lab
               </MenubarTrigger>
             </MenubarMenu>
 
             <MenubarMenu>
               <MenubarTrigger onClick={() => setStep("arena")} className="cursor-pointer font-bold text-rose-500 hover:text-rose-600 transition-colors">
-                <Swords className="w-4 h-4 mr-2" /> Battle Arena
+                <Swords className="mr-2 h-4 w-4" /> Battle Arena
               </MenubarTrigger>
             </MenubarMenu>
 
             <MenubarMenu>
               <MenubarTrigger onClick={() => setStep("guider")} className="cursor-pointer font-bold text-green-500 hover:text-green-600 transition-colors">
-                <Sparkles className="w-4 h-4 mr-2" /> AI Guider
+                <Sparkles className="mr-2 h-4 w-4" /> AI Guider
               </MenubarTrigger>
             </MenubarMenu>
 
             <MenubarMenu>
               <MenubarTrigger onClick={() => setStep("policy")} className="cursor-pointer font-bold">
-                <Scale className="w-4 h-4 mr-2" /> Policies
+                <Scale className="mr-2 h-4 w-4" /> Policies
               </MenubarTrigger>
             </MenubarMenu>
 
             <MenubarMenu>
               <MenubarTrigger className="cursor-pointer font-bold">
-                <HelpCircle className="w-4 h-4 mr-2" /> Support
+                <HelpCircle className="mr-2 h-4 w-4" /> Support
               </MenubarTrigger>
               <MenubarContent>
                 <MenubarItem asChild>
-                  <a href="mailto:helpsupport9452@gmail.com?subject=User%20Query&body=Please%20describe%20your%20query%20below%20and%20we%20will%20respond%20shortly.%0D%0A%0D%0AQuery:%20" className="flex items-center gap-2">
-                    <Mail className="w-4 h-4" /> Email: helpsupport9452@gmail.com
+                  <a
+                    href="mailto:helpsupport9452@gmail.com?subject=User%20Query&body=Please%20describe%20your%20query%20below%20and%20we%20will%20respond%20shortly.%0D%0A%0D%0AQuery:%20"
+                    className="flex items-center gap-2"
+                  >
+                    <Mail className="h-4 w-4" /> Email: helpsupport9452@gmail.com
                   </a>
                 </MenubarItem>
                 <MenubarItem asChild>
                   <a href="tel:+917379307099" className="flex items-center gap-2">
-                    <Smartphone className="w-4 h-4" /> Contact: +91 73793 07099
+                    <Smartphone className="h-4 w-4" /> Contact: +91 73793 07099
                   </a>
                 </MenubarItem>
                 <MenubarItem asChild>
                   <a href="tel:+919532415871" className="flex items-center gap-2">
-                    <Smartphone className="w-4 h-4" /> Contact: +91 95324 15871
+                    <Smartphone className="h-4 w-4" /> Contact: +91 95324 15871
                   </a>
                 </MenubarItem>
                 <MenubarItem>Documentation</MenubarItem>
                 <MenubarSeparator />
-                <MenubarItem className="font-bold text-xs text-muted-foreground">v2.0 Stable Build</MenubarItem>
+                <MenubarItem className="text-xs font-bold text-muted-foreground">v2.0 Stable Build</MenubarItem>
               </MenubarContent>
             </MenubarMenu>
 
             <MenubarMenu>
               <MenubarTrigger onClick={() => setStep("developer")} className="cursor-pointer font-bold text-muted-foreground">
-                <Settings className="w-4 h-4 mr-2" /> Developer Section
+                <Settings className="mr-2 h-4 w-4" /> Developer Section
               </MenubarTrigger>
               <MenubarContent className="w-64 p-4">
-                <div className="flex items-center gap-3 mb-3">
-                  <img src="https://ui-avatars.com/api/?name=Dev+Team&background=0D8ABC&color=fff&rounded=true" alt="Developer Avatar" className="w-10 h-10" />
+                <div className="mb-3 flex items-center gap-3">
+                  <img
+                    src="https://ui-avatars.com/api/?name=Dev+Team&background=0D8ABC&color=fff&rounded=true"
+                    alt="Developer Avatar"
+                    className="h-10 w-10"
+                    loading="lazy"
+                  />
                   <div>
                     <h4 className="text-sm font-bold">Aura Core Team</h4>
                     <p className="text-xs text-muted-foreground">Engineers</p>
                   </div>
                 </div>
                 <MenubarSeparator />
-                <div className="space-y-2 mt-3 text-xs text-muted-foreground">
-                  <p><strong className="text-foreground">Status:</strong> All Systems Operational</p>
-                  <p><strong className="text-foreground">Release:</strong> v2.1.4-beta</p>
-                  <p><strong className="text-foreground">Region:</strong> US-East (N. Virginia)</p>
-                  <p><strong className="text-foreground">Uptime:</strong> 99.99%</p>
+                <div className="mt-3 space-y-2 text-xs text-muted-foreground">
+                  <p>
+                    <strong className="text-foreground">Status:</strong> All Systems Operational
+                  </p>
+                  <p>
+                    <strong className="text-foreground">Release:</strong> v2.1.4-beta
+                  </p>
+                  <p>
+                    <strong className="text-foreground">Region:</strong> US-East (N. Virginia)
+                  </p>
+                  <p>
+                    <strong className="text-foreground">Uptime:</strong> 99.99%
+                  </p>
                 </div>
-                <Button onClick={() => setStep("developer")} variant="outline" className="w-full mt-4 text-xs font-bold">View Contributors</Button>
+                <Button onClick={() => setStep("developer")} variant="outline" className="mt-4 w-full text-xs font-bold">
+                  View Contributors
+                </Button>
               </MenubarContent>
             </MenubarMenu>
           </Menubar>
@@ -304,4 +396,3 @@ export function Header() {
     </header>
   )
 }
-

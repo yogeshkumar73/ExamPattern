@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef } from "react"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
-import { Mic, MicOff, Volume2, PhoneOff, Users, ShieldAlert, Loader2, Sparkles } from "lucide-react"
+import { Mic, MicOff, Volume2, PhoneOff, Users, Loader2, Sparkles } from "lucide-react"
 import { io } from "socket.io-client"
 
 const ICE_SERVERS = {
@@ -16,7 +16,7 @@ const ICE_SERVERS = {
 const socket = io("http://localhost:3000"); // Adjust to your backend URL
 
 interface VoiceRoomProps {
-  user: any
+  user: { id: string; name: string; avatar: string; arenaRank?: string }
 }
 
 export function VoiceRoom({ user }: VoiceRoomProps) {
@@ -24,164 +24,193 @@ export function VoiceRoom({ user }: VoiceRoomProps) {
   const [isMuted, setIsMuted] = useState(false)
   const [loading, setLoading] = useState(false)
   const [peers, setPeers] = useState<any[]>([])
-  const [localStream, setLocalStream] = useState<MediaStream | null>(null);
-  const [remoteStreams, setRemoteStreams] = useState<MediaStream[]>([]);
-  const peerConnections = useRef<Record<string, RTCPeerConnection>>({});
-  const roomName = "global-lounge"; // Default room for now
-  const [speakingLevels, setSpeakingLevels] = useState<Record<string, number>>({});
+  const [localStream, setLocalStream] = useState<MediaStream | null>(null)
+  const [remoteStreams, setRemoteStreams] = useState<Record<string, MediaStream>>({})
+  const peerConnections = useRef<Record<string, RTCPeerConnection>>({})
+  const roomName = "global-lounge"
+  const [speakingLevels, setSpeakingLevels] = useState<Record<string, number>>({})
 
+  // Create or get existing PeerConnection for a peer
   const createPeerConnection = (peerId: string) => {
-    const pc = new RTCPeerConnection(ICE_SERVERS);
-    peerConnections.current[peerId] = pc;
-
-    if (localStream) {
-      localStream.getTracks().forEach(track => pc.addTrack(track, localStream));
+    if (peerConnections.current[peerId]) {
+      return peerConnections.current[peerId]
     }
 
-    pc.onicecandidate = event => {
+    const pc = new RTCPeerConnection(ICE_SERVERS)
+    peerConnections.current[peerId] = pc
+
+    // Add local audio tracks to peer connection
+    if (localStream) {
+      localStream.getTracks().forEach(track => pc.addTrack(track, localStream))
+    }
+
+    pc.onicecandidate = (event) => {
       if (event.candidate) {
-        socket.emit("candidate", peerId, event.candidate);
+        socket.emit("candidate", peerId, event.candidate)
       }
-    };
+    }
 
-    pc.ontrack = event => {
-      const remoteStream = new MediaStream([event.track]);
-      setRemoteStreams(prev => {
-        // Ensure unique remote streams (one per peer)
-        if (!prev.some(stream => stream.id === `remote-${peerId}`)) {
-          return [...prev, { ...remoteStream, id: `remote-${peerId}` }];
-        }
-        return prev;
-      });
-    };
+    // Handle multiple tracks from the same peer by adding tracks to the same stream
+    pc.ontrack = (event) => {
+      setRemoteStreams((prev) => {
+        const currentStream = prev[peerId] || new MediaStream()
+        currentStream.addTrack(event.track)
+        return { ...prev, [peerId]: currentStream }
+      })
+    }
 
-    return pc;
-  };
+    return pc
+  }
 
   useEffect(() => {
     socket.on("connect", () => {
-      console.log("Connected to signaling server");
-    });
+      console.log("Connected to signaling server")
+    })
 
     socket.on("user-joined", (id: string) => {
-      console.log("User joined:", id);
-      // For simplicity, we'll just add a placeholder peer for now
-      setPeers(currentPeers => [...currentPeers, { id, name: `Peer-${id.substring(0, 4)}`, avatar: "https://ui-avatars.com/api/?name=P&background=random&color=fff" }]);
-      createPeerConnection(id);
-    });
+      console.log("User joined:", id)
+      setPeers(currentPeers => {
+        if (!currentPeers.some(p => p.id === id)) {
+          return [...currentPeers, { id, name: `Peer-${id.substring(0, 4)}`, avatar: "https://ui-avatars.com/api/?name=P&background=random&color=fff" }]
+        }
+        return currentPeers
+      })
+
+      createPeerConnection(id)
+
+      // Existing users create offers to the joined user
+      if (localStream) {
+        const pc = createPeerConnection(id)
+        pc.createOffer().then(offer => {
+          pc.setLocalDescription(offer)
+          socket.emit("offer", id, offer)
+        })
+      }
+    })
 
     socket.on("user-left", (id: string) => {
-      console.log("User left:", id);
-      setPeers(currentPeers => currentPeers.filter(p => p.id !== id));
+      console.log("User left:", id)
+      setPeers(currentPeers => currentPeers.filter(p => p.id !== id))
+
       if (peerConnections.current[id]) {
-        peerConnections.current[id].close();
-        delete peerConnections.current[id];
+        peerConnections.current[id].close()
+        delete peerConnections.current[id]
       }
-      setRemoteStreams(currentStreams => currentStreams.filter(stream => stream.id !== `remote-${id}`));
-    });
+
+      setRemoteStreams((streams) => {
+        const updated = { ...streams }
+        delete updated[id]
+        return updated
+      })
+    })
 
     socket.on("offer", async (id: string, message: RTCSessionDescriptionInit) => {
-      if (peerConnections.current[id]) {
-        const pc = peerConnections.current[id];
-        await pc.setRemoteDescription(new RTCSessionDescription(message));
-        const answer = await pc.createAnswer();
-        await pc.setLocalDescription(answer);
-        socket.emit("answer", id, pc.localDescription);
+      const pc = createPeerConnection(id)
+      if (!pc.currentRemoteDescription) {
+        await pc.setRemoteDescription(new RTCSessionDescription(message))
+        const answer = await pc.createAnswer()
+        await pc.setLocalDescription(answer)
+        socket.emit("answer", id, pc.localDescription)
       }
-    });
+    })
 
     socket.on("answer", async (id: string, message: RTCSessionDescriptionInit) => {
-      if (peerConnections.current[id]) {
-        const pc = peerConnections.current[id];
-        await pc.setRemoteDescription(new RTCSessionDescription(message));
+      const pc = peerConnections.current[id]
+      if (pc && !pc.currentRemoteDescription) {
+        await pc.setRemoteDescription(new RTCSessionDescription(message))
       }
-    });
+    })
 
     socket.on("candidate", async (id: string, message: RTCIceCandidateInit) => {
-      if (peerConnections.current[id]) {
-        const pc = peerConnections.current[id];
-        await pc.addIceCandidate(new RTCIceCandidate(message));
+      const pc = peerConnections.current[id]
+      if (pc) {
+        try {
+          await pc.addIceCandidate(new RTCIceCandidate(message))
+        } catch (error) {
+          console.error("Error adding received ICE candidate", error)
+        }
       }
-    });
-
-    socket.on("create-offer", (peerId: string) => {
-      // Existing user needs to create an offer for the new user
-      if (localStream && peerConnections.current[peerId]) {
-        const pc = peerConnections.current[peerId];
-        pc.createOffer().then(offer => {
-          pc.setLocalDescription(offer);
-          socket.emit("offer", peerId, offer);
-        });
-      }
-    });
+    })
 
     return () => {
-      socket.off("connect");
-      socket.off("user-joined");
-      socket.off("user-left");
-      socket.off("offer");
-      socket.off("answer");
-      socket.off("candidate");
-      socket.off("create-offer");
+      socket.off("connect")
+      socket.off("user-joined")
+      socket.off("user-left")
+      socket.off("offer")
+      socket.off("answer")
+      socket.off("candidate")
+
+      Object.values(peerConnections.current).forEach(pc => pc.close())
+      peerConnections.current = {}
+
       if (localStream) {
-        localStream.getTracks().forEach(track => track.stop());
+        localStream.getTracks().forEach(track => track.stop())
       }
-      Object.values(peerConnections.current).forEach(pc => pc.close());
-      socket.disconnect();
-    };
-  }, [localStream, user?.id]);
+
+      socket.disconnect()
+    }
+  }, [localStream])
 
   const handleJoin = async () => {
-    setLoading(true);
+    setLoading(true)
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      setLocalStream(stream);
-      setIsMuted(false);
-      setJoined(true);
-      socket.emit("join-voice-room", roomName, user.id);
-
-      // For existing peers in the room, create offers
-      // This will be handled by the user-joined event for new peers
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+      setLocalStream(stream)
+      setIsMuted(false)
+      setJoined(true)
+      socket.emit("join-voice-room", roomName, user.id)
     } catch (error) {
-      console.error("Error accessing media devices:", error);
-      // Handle error, e.g., show a message to the user
+      console.error("Error accessing media devices:", error)
     } finally {
-      setLoading(false);
+      setLoading(false)
     }
-  };
+  }
 
   const handleLeave = () => {
     if (localStream) {
-      localStream.getTracks().forEach(track => track.stop());
-      setLocalStream(null);
+      localStream.getTracks().forEach(track => track.stop())
+      setLocalStream(null)
     }
-    Object.values(peerConnections.current).forEach(pc => pc.close());
-    peerConnections.current = {};
-    setRemoteStreams([]);
-    setPeers([]);
-    setJoined(false);
-    socket.emit("leave-voice-room", roomName, user.id);
-  };
 
+    Object.values(peerConnections.current).forEach(pc => pc.close())
+    peerConnections.current = {}
+
+    setRemoteStreams({})
+    setPeers([])
+    setJoined(false)
+    socket.emit("leave-voice-room", roomName, user.id)
+  }
+
+  // Toggle mute/unmute
+  const toggleMute = () => {
+    if (localStream) {
+      const newMutedState = !isMuted
+      setIsMuted(newMutedState)
+      localStream.getAudioTracks().forEach(track => track.enabled = !newMutedState)
+    }
+  }
 
   useEffect(() => {
-    if (!joined) return;
+    if (!joined) return
 
     const interval = setInterval(() => {
-      const levels: Record<string, number> = {};
-      // Simulate micro-speaking levels for speaking ring indicator
-      peers.forEach(p => {
-        levels[p.id] = Math.random() > 0.6 ? Math.floor(Math.random() * 80) + 20 : 0;
-      });
-      // Add current user speaking level if not muted
-      if (!isMuted && user) {
-        levels[user.id] = Math.random() > 0.4 ? Math.floor(Math.random() * 90) + 10 : 0;
-      }
-      setSpeakingLevels(levels);
-    }, 400);
+      const levels: Record<string, number> = {}
 
-    return () => clearInterval(interval);
-  }, [joined, peers, isMuted, user]);
+      peers.forEach(p => {
+        levels[p.id] = Math.random() > 0.6 ? Math.floor(Math.random() * 80) + 20 : 0
+      })
+
+      if (!isMuted && user) {
+        levels[user.id] = Math.random() > 0.4 ? Math.floor(Math.random() * 90) + 10 : 0
+      } else {
+        levels[user.id] = 0
+      }
+
+      setSpeakingLevels(levels)
+    }, 400)
+
+    return () => clearInterval(interval)
+  }, [joined, peers, isMuted, user])
 
   return (
     <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -217,13 +246,7 @@ export function VoiceRoom({ user }: VoiceRoomProps) {
               <Button
                 variant={isMuted ? "destructive" : "outline"}
                 className={`h-12 w-12 rounded-xl border-white/10 ${!isMuted ? 'text-white' : ''}`}
-                onClick={() => {
-                  if (localStream) {
-                    const newState = !isMuted;
-                    setIsMuted(newState);
-                    localStream.getAudioTracks().forEach(track => track.enabled = newState);
-                  }
-                }}
+                onClick={toggleMute}
               >
                 {isMuted ? <MicOff className="w-5 h-5" /> : <Mic className="w-5 h-5" />}
               </Button>
@@ -304,7 +327,7 @@ export function VoiceRoom({ user }: VoiceRoomProps) {
         </h3>
         <div className="space-y-2">
           {[
-            { name: "Global Lounge", desc: "Open voice chat for all students", count: joined ? 3 : 2, active: true },
+            { name: "Global Lounge", desc: "Open voice chat for all students", count: joined ? peers.length + 1 : 2, active: true },
             { name: "Coding Room 1", desc: "P2P pair programming support", count: 0 },
             { name: "Math Discussion", desc: "Algebra/Geometry problems debate", count: 0 },
             { name: "GK Trivia Group", desc: "Chill and chat general facts", count: 0 },

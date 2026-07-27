@@ -22,7 +22,7 @@ export async function GET(req: NextRequest) {
   const category = searchParams.get('category') || 'global';
   const limit = Math.min(parseInt(searchParams.get('limit') || '50'), 100);
 
-  let sortField: Record<string, number> = { arenaPoints: -1 };
+  let sortField: Record<string, any> = { arenaPoints: -1 };
   if (category === 'coding')     sortField = { 'gameStats.coding.xp': -1 };
   if (category === 'puzzle')     sortField = { 'gameStats.puzzle.xp': -1 };
   if (category === 'math')       sortField = { 'gameStats.math.xp': -1 };

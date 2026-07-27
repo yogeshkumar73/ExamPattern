@@ -242,16 +242,12 @@ const GridSlider: React.FC<{
         className="w-full"
       >
         <div
-          className="grid gap-6"
+          className="grid gap-6 grid-cols-1 sm:grid-cols-[repeat(var(--cols-sm),_1fr)] lg:grid-cols-[repeat(var(--cols-lg),_1fr)]"
           style={{
             gridTemplateColumns: `repeat(auto-fit, minmax(250px, 1fr))`,
-            '@media (min-width: 640px)': {
-              gridTemplateColumns: `repeat(${Math.min(columnsPerPage, 2)}, 1fr)`,
-            },
-            '@media (min-width: 1024px)': {
-              gridTemplateColumns: `repeat(${columnsPerPage}, 1fr)`,
-            },
-          }}
+            ['--cols-sm' as any]: Math.min(columnsPerPage, 2),
+            ['--cols-lg' as any]: columnsPerPage,
+          } as React.CSSProperties}
         >
           {currentProfiles.map((profile, idx) => (
             <motion.div

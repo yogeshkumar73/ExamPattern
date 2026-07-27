@@ -1,66 +1,128 @@
-import { NextResponse } from 'next/server';
-import OpenAI from 'openai';
+import { NextResponse } from "next/server";
+import OpenAI from "openai";
 
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
-  baseURL: 'https://openrouter.ai/api/v1',
-  defaultHeaders: {
-    'HTTP-Referer': process.env.APP_URL || 'http://localhost:3000',
-    'X-Title': 'Smart Lab Voice Interviewer',
-  },
-});
+function getOpenAI() {
+  const apiKey = process.env.OPENAI_API_KEY;
 
-// Voice interview conversation state via POST
+  if (!apiKey) {
+    throw new Error(
+      "OPENAI_API_KEY environment variable is missing."
+    );
+  }
+
+  return new OpenAI({
+    apiKey,
+    baseURL: "https://openrouter.ai/api/v1",
+    defaultHeaders: {
+      "HTTP-Referer":
+        process.env.APP_URL || "http://localhost:3000",
+      "X-Title": "Smart Lab Voice Interviewer",
+    },
+  });
+}
+
 export async function POST(req: Request) {
   try {
     const body = await req.json();
-    const { transcript, conversationHistory, category, difficulty } = body;
 
-    if (!transcript) {
+    const {
+      transcript,
+      conversationHistory = [],
+      category = "General Programming",
+      difficulty = "Intermediate",
+    } = body;
+
+    if (!transcript?.trim()) {
       return NextResponse.json(
-        { success: false, message: 'transcript is required' },
-        { status: 400 }
+        {
+          success: false,
+          message: "Transcript is required.",
+        },
+        {
+          status: 400,
+        }
       );
     }
 
-    const systemPrompt = `You are an AI Voice Interviewer conducting a live technical interview.
-${category ? `Topic: ${category}.` : 'General technical interview.'}
-${difficulty ? `Difficulty: ${difficulty}.` : ''}
+    const openai = getOpenAI();
+
+    const systemPrompt = `
+You are an experienced technical interviewer.
+
+Interview Topic:
+${category}
+
+Difficulty:
+${difficulty}
 
 Rules:
-- Keep responses SHORT (1-2 sentences max) since this is a voice call
-- Be conversational and natural, like a real interviewer
-- Ask ONE follow-up question at a time
-- Start with broad questions, then drill deeper
-- Sound encouraging but professional
-- Do NOT use markdown formatting, lists, or bullets (voice output)
-- React naturally to the candidate's answer before asking the next question`;
 
-    const history = Array.isArray(conversationHistory) ? conversationHistory : [];
+- Speak naturally.
+- Keep replies under 2 sentences.
+- Ask only ONE follow-up question.
+- Encourage the candidate.
+- Never use markdown.
+- Never use bullet points.
+- Keep responses conversational because they are spoken aloud.
+`;
 
-    const completion = await openai.chat.completions.create({
-      model: 'openai/gpt-3.5-turbo',
-      messages: [
-        { role: 'system', content: systemPrompt },
-        ...history.map((m: { role: string; content: string }) => ({
-          role: m.role as 'user' | 'assistant',
+    const messages = [
+      {
+        role: "system",
+        content: systemPrompt,
+      },
+
+      ...conversationHistory
+        .filter(
+          (m: any) =>
+            m &&
+            typeof m.role === "string" &&
+            typeof m.content === "string"
+        )
+        .map((m: any) => ({
+          role: m.role,
           content: m.content,
         })),
-        { role: 'user', content: transcript },
-      ],
-      temperature: 0.8,
-      max_tokens: 150,
+
+      {
+        role: "user",
+        content: transcript,
+      },
+    ];
+
+    const completion =
+      await openai.chat.completions.create({
+        model:
+          "nvidia/llama-3.1-nemotron-70b-instruct:free",
+
+        messages,
+
+        temperature: 0.7,
+
+        max_tokens: 180,
+      });
+
+    const response =
+      completion.choices?.[0]?.message?.content?.trim() ||
+      "Thank you. Can you explain your reasoning in a little more detail?";
+
+    return NextResponse.json({
+      success: true,
+      response,
     });
-
-    const aiResponse = completion.choices[0]?.message?.content || 
-      'Interesting. Can you elaborate a bit more on that approach?';
-
-    return NextResponse.json({ success: true, response: aiResponse }, { status: 200 });
   } catch (error: any) {
-    console.error('Voice interview error:', error);
+    console.error("Voice Interview Error:", error);
+
     return NextResponse.json(
-      { success: false, message: error.message || 'Voice AI failed' },
-      { status: 500 }
+      {
+        success: false,
+        message:
+          error?.message ||
+          "Unable to generate interview response.",
+      },
+      {
+        status: 500,
+      }
     );
   }
 }

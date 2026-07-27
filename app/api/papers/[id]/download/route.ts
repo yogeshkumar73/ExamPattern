@@ -7,7 +7,10 @@ import { checkRateLimit, getClientIp } from "@/lib/ratelimit";
 function getSessionUser(req: NextRequest) {
   try {
     const header = req.headers.get("x-session-user");
-    if (header) return JSON.parse(decodeURIComponent(header));
+    if (header) {
+      const parsed = JSON.parse(decodeURIComponent(header));
+      return parsed?.user || parsed;
+    }
   } catch {}
   return null;
 }

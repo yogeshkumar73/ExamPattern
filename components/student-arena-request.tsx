@@ -25,12 +25,32 @@ export function StudentArenaRequest() {
     return () => clearInterval(interval)
   }, [autoRefresh])
 
-  const loadUserStatus = () => {
+  const loadUserStatus = async () => {
     try {
       const session = localStorage.getItem('aura_session')
       if (session) {
         const parsed = JSON.parse(session)
-        setUser(parsed.user || null)
+        const currentUser = parsed.user || null
+        if (currentUser?.id) {
+          const response = await fetch(`/api/user/arena-status?userId=${currentUser.id}`)
+          if (response.ok) {
+            const data = await response.json()
+            if (data.success && data.data) {
+              const updated = {
+                ...currentUser,
+                arenaApprovalStatus: data.data.arenaApprovalStatus,
+                arenaApprovedAt: data.data.arenaApprovedAt,
+                arenaRejectedAt: data.data.arenaRejectedAt,
+                arenaApprovalReason: data.data.arenaApprovalReason,
+                arenaAccessRequestedAt: data.data.arenaAccessRequestedAt,
+              }
+              localStorage.setItem('aura_session', JSON.stringify({ ...parsed, user: updated }))
+              setUser(updated)
+              return
+            }
+          }
+        }
+        setUser(currentUser)
       }
     } catch (e) {
       console.error('Failed to load user:', e)

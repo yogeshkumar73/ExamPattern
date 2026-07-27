@@ -20,6 +20,37 @@ export interface MockUser {
   role?: "student" | "admin";
   profileComplete?: boolean;
   createdAt: string;
+  
+  // Arena Approval Status
+  arenaApprovalStatus?: 'pending' | 'approved' | 'rejected';
+  arenaApprovalReason?: string;
+  arenaApprovedBy?: string;
+  arenaApprovedAt?: Date | string | null;
+  arenaRejectedAt?: Date | string | null;
+  arenaAccessRequestedAt?: Date | string | null;
+  arenaAccess?: {
+    status: 'pending' | 'approved' | 'rejected';
+    approved: boolean;
+    approvedAt: Date | string | null;
+    rejectedAt: Date | string | null;
+  };
+  
+  // Arena XP & Level System
+  xp?: number;
+  level?: number;
+  coins?: number;
+  arenaPoints?: number;
+  arenaRank?: 'Unranked' | 'Bronze' | 'Silver' | 'Gold' | 'Platinum' | 'Diamond' | 'Master' | 'Grandmaster';
+  
+  // Battle Stats
+  wins?: number;
+  losses?: number;
+  draws?: number;
+  totalBattles?: number;
+  winRate?: number;
+  currentStreak?: number;
+  bestStreak?: number;
+  battleHistory?: any[];
 }
 
 export interface MockPaper {

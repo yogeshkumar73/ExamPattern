@@ -1,7 +1,8 @@
 "use client"
-
+import Image from "next/image";
 import { useState, useEffect, useRef } from "react"
 import { Send, Hash, MessageSquare, Users, Swords, Bot } from "lucide-react"
+import type { LucideIcon } from "lucide-react"
 
 interface Message {
   id: string
@@ -12,49 +13,79 @@ interface Message {
   timestamp: string
   type: string
   isSystem?: boolean
-}
-
-const ROOMS = [
-  { id: 'arena-lobby', label: 'Arena Lobby', icon: Hash, color: '#6366f1' },
-  { id: 'coding-chat', label: 'Coding Hub', icon: MessageSquare, color: '#3b82f6' },
-  { id: 'math-chat',   label: 'Math Hub',   icon: MessageSquare, color: '#10b981' },
-  { id: 'gk-chat',     label: 'GK Hub',     icon: MessageSquare, color: '#f59e0b' },
+}const ROOMS: ChatRoom[] = [
+  {
+    id: "arena-lobby",
+    label: "Arena Lobby",
+    icon: Hash,
+    color: "#6366f1",
+  },
+  {
+    id: "coding-chat",
+    label: "Coding Hub",
+    icon: MessageSquare,
+    color: "#3b82f6",
+  },
+  {
+    id: "math-chat",
+    label: "Math Hub",
+    icon: MessageSquare,
+    color: "#10b981",
+  },
+  {
+    id: "gk-chat",
+    label: "GK Hub",
+    icon: MessageSquare,
+    color: "#f59e0b",
+  },
 ]
-
 // Generate mock messages for demo
 function generateMockMessages(roomId: string, count: number): Message[] {
   const users = [
-    { id: 'u1', name: 'AlgoMaster', avatar: 'https://ui-avatars.com/api/?name=AM&background=6366f1&color=fff' },
-    { id: 'u2', name: 'CodeNinja', avatar: 'https://ui-avatars.com/api/?name=CN&background=8b5cf6&color=fff' },
-    { id: 'u3', name: 'MathGenius', avatar: 'https://ui-avatars.com/api/?name=MG&background=10b981&color=fff' },
-    { id: 'u4', name: 'BrainStorm', avatar: 'https://ui-avatars.com/api/?name=BS&background=f59e0b&color=fff' },
-  ]
-  const messages = [
-    "Anyone up for a 1v1 coding battle? 🎯",
-    "Just hit Diamond rank! 💎",
-    "GK questions in expert mode are brutal 😅",
-    "Who wants to team up for 2v2?",
-    "The prediction puzzles are addictive!",
-    "Just unlocked Arena Champion badge 🏆",
-    "Math battle intermediate = actually hard lol",
-    "Anyone else grinding for Grandmaster?",
-    "gg wp to whoever I just battled",
-    "Love this arena! Best study app ever 🔥",
-    "The XP system is so satisfying",
-    "New tournament starting! Join up 👑",
-  ]
+    {
+      id: "u1",
+      name: "AlgoMaster",
+      avatar: "https://ui-avatars.com/api/?name=AM&background=6366f1&color=fff",
+    },
+    {
+      id: "u2",
+      name: "CodeNinja",
+      avatar: "https://ui-avatars.com/api/?name=CN&background=8b5cf6&color=fff",
+    },
+    {
+      id: "u3",
+      name: "MathGenius",
+      avatar: "https://ui-avatars.com/api/?name=MG&background=10b981&color=fff",
+    },
+    {
+      id: "u4",
+      name: "BrainStorm",
+      avatar: "https://ui-avatars.com/api/?name=BS&background=f59e0b&color=fff",
+    },
+  ];
+
+  const defaultMessages = [
+    "Welcome to the Arena! 👋",
+    "Be respectful to other players.",
+    "Challenge your friends and climb the leaderboard!",
+    "Good luck and have fun! 🚀",
+  ];
+
   return Array.from({ length: count }, (_, i) => {
-    const u = users[i % users.length]
+    const u = users[i % users.length];
+
     return {
       id: `mock-${i}`,
       senderId: u.id,
       senderName: u.name,
       senderAvatar: u.avatar,
-      message: messages[i % messages.length],
-      timestamp: new Date(Date.now() - (count - i) * 90000).toISOString(),
-      type: 'arena',
-    }
-  })
+      message: defaultMessages[i % defaultMessages.length],
+      timestamp: new Date(
+        Date.now() - (count - i) * 90000
+      ).toISOString(),
+      type: "arena",
+    };
+  });
 }
 
 interface ArenaChatProps {
@@ -68,13 +99,28 @@ export function ArenaChat({ user }: ArenaChatProps) {
   const [sending, setSending] = useState(false)
   const [online, setOnline] = useState<string[]>([])
   const bottomRef = useRef<HTMLDivElement>(null)
+  const currentRoom =
+  ROOMS.find((room) => room.id === activeRoom) ?? ROOMS[0];
+
+const getAvatar = (avatar?: string, name?: string) => {
+  if (avatar?.trim()) return avatar;
+
+  return `https://ui-avatars.com/api/?name=${encodeURIComponent(
+    name || "User"
+  )}&background=6366f1&color=ffffff`;
+};
 
   useEffect(() => {
     // Load history
     const loadHistory = async () => {
       try {
-        const res = await fetch(`/api/chat?roomId=${activeRoom}&limit=30`)
-        const data = await res.json()
+       const res = await fetch(
+  `/api/chat?roomId=${activeRoom}`
+);
+
+const data = await res.json();
+
+setMessages(data.messages);
         if (data.messages?.length > 0) {
           setMessages(data.messages)
         } else {
@@ -99,7 +145,7 @@ export function ArenaChat({ user }: ArenaChatProps) {
       id: `local-${Date.now()}`,
       senderId: user.id,
       senderName: user.name,
-      senderAvatar: user.avatar,
+     senderAvatar: getAvatar(user.avatar, user.name),
       message: input.trim(),
       timestamp: new Date().toISOString(),
       type: 'arena',
@@ -164,49 +210,117 @@ export function ArenaChat({ user }: ArenaChatProps) {
           </div>
         </div>
 
-        {/* Messages */}
-        <div className="flex-1 overflow-y-auto p-4 space-y-3">
-          {messages.map((msg, i) => {
-            const isOwn = msg.senderId === user?.id
-            return (
-              <div key={msg.id} className={`flex gap-2 ${isOwn ? 'flex-row-reverse' : 'flex-row'}`}>
-                {!isOwn && (
-                  <img src={msg.senderAvatar} alt={msg.senderName}
-                    className="w-8 h-8 rounded-lg object-cover flex-shrink-0 self-end" />
-                )}
-                <div className={`max-w-[75%] ${isOwn ? 'items-end' : 'items-start'} flex flex-col gap-1`}>
-                  {!isOwn && (
-                    <span className="text-white/50 text-[10px] font-bold px-1">{msg.senderName}</span>
-                  )}
-                  <div className={`px-3 py-2 text-sm ${isOwn ? 'chat-bubble-self text-white' : 'chat-bubble-other text-white/90'}`}>
-                    {msg.message}
-                  </div>
-                  <span className="text-white/20 text-[10px] px-1">{formatTime(msg.timestamp)}</span>
-                </div>
-              </div>
-            )
-          })}
-          <div ref={bottomRef} />
-        </div>
+       {/* Messages */}
+<div className="flex-1 overflow-y-auto p-4 space-y-4">
+  {messages.length === 0 ? (
+    <div className="flex h-full items-center justify-center">
+      <div className="text-center">
+        <MessageSquare className="mx-auto mb-3 h-10 w-10 text-white/20" />
+        <p className="text-sm text-white/50">
+          No messages yet.
+        </p>
+        <p className="text-xs text-white/30">
+          Start the conversation 👋
+        </p>
+      </div>
+    </div>
+  ) : (
+    messages.map((msg, index) => {
+      const isOwn = msg.senderId === user?.id;
 
-        {/* Input */}
-        <div className="p-3 border-t border-white/10 flex gap-2">
-          <input
-            value={input}
-            onChange={e => setInput(e.target.value)}
-            onKeyDown={e => e.key === 'Enter' && !e.shiftKey && sendMessage()}
-            placeholder={user ? `Message #${ROOMS.find(r => r.id === activeRoom)?.label}...` : 'Log in to chat'}
-            disabled={!user || sending}
-            className="flex-1 bg-white/5 border border-white/10 rounded-xl px-4 py-2.5 text-white text-sm placeholder-white/30 focus:outline-none focus:border-indigo-500/50"
-          />
-          <button
-            onClick={sendMessage}
-            disabled={!user || !input.trim() || sending}
-            className="w-10 h-10 rounded-xl bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 flex items-center justify-center transition-all hover:scale-105 active:scale-95"
+      const messageKey =
+        msg.id?.trim() ||
+        `${msg.senderId}-${msg.timestamp}-${index}`;
+
+      return (
+        <div
+          key={messageKey}
+          className={`flex gap-3 ${
+            isOwn ? "justify-end" : "justify-start"
+          }`}
+        >
+          {!isOwn && (
+            <Image
+              src={getAvatar(
+                msg.senderAvatar,
+                msg.senderName
+              )}
+              alt={msg.senderName}
+              width={32}
+              height={32}
+              unoptimized
+              className="h-8 w-8 rounded-lg object-cover flex-shrink-0"
+            />
+          )}
+
+          <div
+            className={`flex max-w-[75%] flex-col ${
+              isOwn ? "items-end" : "items-start"
+            }`}
           >
-            <Send className="w-4 h-4 text-white" />
-          </button>
+            {!isOwn && (
+              <span className="mb-1 px-1 text-[11px] font-semibold text-white/50">
+                {msg.senderName}
+              </span>
+            )}
+
+            <div
+              className={`rounded-2xl px-4 py-2 text-sm break-words whitespace-pre-wrap ${
+                isOwn
+                  ? "chat-bubble-self text-white"
+                  : "chat-bubble-other text-white/90"
+              }`}
+            >
+              {msg.message}
+            </div>
+
+            <span className="mt-1 px-1 text-[10px] text-white/30">
+              {formatTime(msg.timestamp)}
+            </span>
+          </div>
         </div>
+      );
+    })
+  )}
+
+  <div ref={bottomRef} />
+</div>
+
+{/* Input */}
+<div className="flex gap-2 border-t border-white/10 p-3">
+  <input
+    type="text"
+    autoComplete="off"
+    spellCheck={false}
+    maxLength={500}
+    aria-label="Chat message"
+    value={input}
+    onChange={(e) => setInput(e.target.value)}
+    onKeyDown={(e) => {
+      if (e.key === "Enter" && !e.shiftKey) {
+        e.preventDefault();
+        sendMessage();
+      }
+    }}
+    placeholder={
+      user
+        ? `Message #${currentRoom.label}...`
+        : "Sign in to chat"
+    }
+    disabled={!user || sending}
+    className="flex-1 rounded-xl border border-white/10 bg-white/5 px-4 py-2.5 text-sm text-white placeholder-white/30 outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 disabled:cursor-not-allowed disabled:opacity-60"
+  />
+
+  <button
+    type="button"
+    aria-label="Send Message"
+    onClick={sendMessage}
+    disabled={!user || !input.trim() || sending}
+    className="flex h-11 w-11 items-center justify-center rounded-xl bg-indigo-600 transition hover:bg-indigo-500 active:scale-95 disabled:cursor-not-allowed disabled:opacity-50"
+  >
+    <Send className="h-5 w-5 text-white" />
+  </button>
+</div>
       </div>
     </div>
   )

@@ -102,7 +102,7 @@ export function TournamentGame({ tournament, user, onMatchComplete }: Tournament
     setSubmitting(false)
   }
 
-  if (!activeMatch || !tournament?.status === 'active') {
+  if (!activeMatch || tournament?.status !== 'active') {
     return (
       <div className="arena-card rounded-2xl p-6 text-center space-y-3">
         <p className="text-white/60">No active matches for you right now</p>

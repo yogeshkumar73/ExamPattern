@@ -7,6 +7,13 @@ interface ArenaStatus {
   userId: string;
   name: string;
   email: string;
+  arenaAccess: {
+    status: 'pending' | 'approved' | 'rejected';
+    approved: boolean;
+    approvedAt: string | null;
+    rejectedAt: string | null;
+  };
+  // Keep old fields for compatibility during transition, will remove later if not needed
   arenaApprovalStatus: 'pending' | 'approved' | 'rejected';
   arenaApprovalReason: string;
   arenaApprovedAt: string | null;
