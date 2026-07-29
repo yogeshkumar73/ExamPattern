@@ -112,6 +112,41 @@ async function POST(req: NextRequest) {
     else if (user.points >= 200) user.rank = 'Silver';
     else user.rank = 'Bronze';
 
+    // ── 3. Update Python Battle Service ELO/Leaderboard ─────
+    const BATTLE_SERVICE_URL = process.env.BATTLE_SERVICE_URL || 'http://localhost:8001';
+    try {
+      const res = await fetch(`${BATTLE_SERVICE_URL}/api/leaderboard/result`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          player_id: userId,
+          player_name: user.name || 'Player',
+          opponent_id: null,
+          won: result === 'win',
+          mode: mode || 'mixed',
+          difficulty: difficulty || 'beginner',
+          correct_answers: Math.round(((accuracy || 0) / 100) * 5),
+          total_questions: 5,
+          xp_earned: xpGained || 0,
+          coins_earned: Math.floor((xpGained || 0) / 10),
+        }),
+        signal: AbortSignal.timeout(3000), // 3s timeout
+      });
+
+      if (res.ok) {
+        const pyData = await res.json();
+        if (pyData.success && pyData.data) {
+          // Sync Python service's ELO back to local database
+          const newElo = pyData.data.new_elo;
+          user.arenaPoints = newElo;
+          user.arenaRank = computeArenaRank(newElo);
+          console.log(`[BattleRoute] Synced player ${userId} ELO to ${newElo}`);
+        }
+      }
+    } catch (err: any) {
+      console.warn('[BattleRoute] Python Battle Service result update skipped/failed, using local fallback:', err.message);
+    }
+
     // Only save to DB if it's a real user (has _id as ObjectId), not a mock
     if (mongoose.isValidObjectId(user._id)) {
       await user.save();

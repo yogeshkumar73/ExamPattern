@@ -56,9 +56,10 @@ function generateMockLeaderboard(category: string) {
 
 interface ArenaLeaderboardProps {
   currentUserId?: string
+  refreshTrigger?: number
 }
 
-export function ArenaLeaderboard({ currentUserId }: ArenaLeaderboardProps) {
+export function ArenaLeaderboard({ currentUserId, refreshTrigger = 0 }: ArenaLeaderboardProps) {
   const [activeCategory, setActiveCategory] = useState('global')
   const [leaderboard, setLeaderboard] = useState<any[]>([])
   const [loading, setLoading] = useState(false)
@@ -84,7 +85,7 @@ export function ArenaLeaderboard({ currentUserId }: ArenaLeaderboardProps) {
       }
     }
     fetchLeaderboard()
-  }, [activeCategory])
+  }, [activeCategory, refreshTrigger])
 
   const top3 = leaderboard.slice(0, 3)
   const rest = leaderboard.slice(3)

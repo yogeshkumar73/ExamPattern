@@ -1,8 +1,8 @@
 "use client"
 
-import React, { createContext, useContext, useState, useCallback } from "react"
+import React, { createContext, useContext, useState, useCallback, useEffect } from "react"
 
-type Step =
+export type Step =
   | "onboarding"
   | "setup"        // mandatory stream/course setup after registration
   | "upload"
@@ -66,6 +66,28 @@ export function NavProvider({ children }: { children: React.ReactNode }) {
   const [isAdmin, setAdmin] = useState(false)
   const [sessionUser, setSessionUser] = useState<SessionUser | null>(null)
   const [profileComplete, setProfileComplete] = useState(false)
+
+  // Sync global session state from localStorage on client-side mount
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      const saved = localStorage.getItem("aura_session")
+      if (saved) {
+        try {
+          const parsed = JSON.parse(saved)
+          if (parsed?.user) {
+            setSessionUser(parsed.user)
+            setRegistered(true)
+            setProfileComplete(parsed.user.profileComplete || false)
+            if (parsed.user.role === "admin") {
+              setAdmin(true)
+            }
+          }
+        } catch (e) {
+          console.error("Failed to restore session in NavProvider:", e)
+        }
+      }
+    }
+  }, [])
 
   const setStep = useCallback((step: Step) => {
     setCurrentStep(step)

@@ -1,12 +1,14 @@
 "use client"
 
 import { useState, useEffect } from "react"
+import { useNav } from "@/hooks/use-nav"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Zap, Clock, CheckCircle2, XCircle, AlertCircle, RefreshCw } from "lucide-react"
 
 export function StudentArenaRequest() {
+  const { setSessionUser } = useNav()
   const [user, setUser] = useState<any>(null)
   const [loading, setLoading] = useState(true)
   const [requesting, setRequesting] = useState(false)
@@ -46,11 +48,15 @@ export function StudentArenaRequest() {
               }
               localStorage.setItem('aura_session', JSON.stringify({ ...parsed, user: updated }))
               setUser(updated)
+              setSessionUser(updated)
               return
             }
           }
         }
         setUser(currentUser)
+        if (currentUser) {
+          setSessionUser(currentUser)
+        }
       }
     } catch (e) {
       console.error('Failed to load user:', e)
@@ -81,8 +87,14 @@ export function StudentArenaRequest() {
       if (response.ok && data.success) {
         // Update local session
         const updated = { ...user, arenaApprovalStatus: 'pending', arenaAccessRequestedAt: new Date().toISOString() }
-        localStorage.setItem('aura_session', JSON.stringify({ user: updated }))
+        const session = localStorage.getItem('aura_session')
+if (session) {
+  const parsed = JSON.parse(session)
+  localStorage.setItem('aura_session', JSON.stringify({ ...parsed, user: updated }))
+}
+
         setUser(updated)
+        setSessionUser(updated)
         alert('Arena access request sent! Waiting for admin approval.')
       } else {
         alert(data.error || data.message || 'Failed to request access')
@@ -236,11 +248,15 @@ export function StudentArenaRequest() {
 
                 {status === 'approved' && (
                   <Button 
-                    disabled
-                    className="w-full h-12 text-base font-bold bg-emerald-500 text-white"
+                    onClick={() => {
+                      if (user) {
+                        setSessionUser(user)
+                      }
+                    }}
+                    className="w-full h-12 text-base font-bold bg-emerald-500 hover:bg-emerald-600 text-white cursor-pointer"
                   >
                     <CheckCircle2 className="w-5 h-5 mr-2" />
-                    Access Granted - Ready to Battle!
+                    Access Granted - Enter Arena!
                   </Button>
                 )}
 

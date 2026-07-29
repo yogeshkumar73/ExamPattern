@@ -39,6 +39,7 @@ interface ArenaUser {
   gameStats: any
   battleHistory: any[]
   accuracy: number
+  totalBattles?: number
 }
 
 interface BattleArenaProps {
@@ -158,8 +159,9 @@ export function BattleArena({ userId, userEmail, isAdmin = false }: BattleArenaP
           })
 
           // Check arena approval status — skip for admins (already approved)
-          if (u._id && !isAdmin) {
-            const userIdStr = u._id.toString();
+          const currentUserId = u.id || u._id
+          if (currentUserId && !isAdmin) {
+            const userIdStr = currentUserId.toString();
             const statusRes = await fetch(`/api/user/arena-status?userId=${userIdStr}`)
             if (statusRes.ok) {
               const statusData = await statusRes.json()
@@ -238,11 +240,12 @@ export function BattleArena({ userId, userEmail, isAdmin = false }: BattleArenaP
     if (arenaUser && result) {
       const updatedUser = {
         ...arenaUser,
-        xp: arenaUser.xp + (result.xpGained || 0),
-        wins: result.result === 'win' ? arenaUser.wins + 1 : arenaUser.wins,
-        losses: result.result === 'loss' ? arenaUser.losses + 1 : arenaUser.losses,
-        currentStreak: result.result === 'win' ? arenaUser.currentStreak + 1 : 0,
-        arenaPoints: Math.max(0, arenaUser.arenaPoints + (result.pointsGained || 0)),
+        xp: (arenaUser.xp || 0) + (result.xpGained || 0),
+        wins: result.result === 'win' ? (arenaUser.wins || 0) + 1 : (arenaUser.wins || 0),
+        losses: result.result === 'loss' ? (arenaUser.losses || 0) + 1 : (arenaUser.losses || 0),
+        totalBattles: (arenaUser.totalBattles || 0) + 1,
+        currentStreak: result.result === 'win' ? (arenaUser.currentStreak || 0) + 1 : 0,
+        arenaPoints: Math.max(0, (arenaUser.arenaPoints || 0) + (result.pointsGained || 0)),
       }
       setArenaUser(updatedUser)
 
@@ -642,37 +645,37 @@ export function BattleArena({ userId, userEmail, isAdmin = false }: BattleArenaP
 
           {/* ===== LEADERBOARD ===== */}
           <TabsContent value="leaderboard" className="animate-in fade-in duration-300">
-            <ArenaLeaderboard currentUserId={arenaUser?.id} />
+            <ArenaLeaderboard currentUserId={arenaUser?.id} refreshTrigger={arenaUser?.totalBattles || 0} />
           </TabsContent>
 
           {/* ===== PROFILE ===== */}
           <TabsContent value="profile" className="animate-in fade-in duration-300">
-            <ArenaProfile user={arenaUser} onRefresh={() => {}} />
+            {arenaUser && <ArenaProfile user={arenaUser} onRefresh={() => {}} />}
           </TabsContent>
 
           {/* ===== FRIENDS ===== */}
           <TabsContent value="friends" className="animate-in fade-in duration-300">
-            <FriendsPanel currentUser={arenaUser} />
+            {arenaUser && <FriendsPanel currentUser={arenaUser} />}
           </TabsContent>
 
           {/* ===== CHAT ===== */}
           <TabsContent value="chat" className="animate-in fade-in duration-300">
-            <ArenaChat user={arenaUser} />
+            {arenaUser && <ArenaChat user={arenaUser} />}
           </TabsContent>
 
           {/* ===== VOICE ===== */}
           <TabsContent value="voice" className="animate-in fade-in duration-300">
-            <VoiceRoom user={arenaUser} />
+            {arenaUser && <VoiceRoom user={arenaUser} />}
           </TabsContent>
 
           {/* ===== TOURNAMENT ===== */}
           <TabsContent value="tournament" className="animate-in fade-in duration-300">
-            <StudentTournaments user={arenaUser} />
+            {arenaUser && <StudentTournaments user={arenaUser} />}
           </TabsContent>
 
           {/* ===== ACHIEVEMENTS ===== */}
           <TabsContent value="achievements" className="animate-in fade-in duration-300">
-            <AchievementsPanel user={arenaUser} />
+            {arenaUser && <AchievementsPanel user={arenaUser} />}
           </TabsContent>
         </Tabs>
       </div>

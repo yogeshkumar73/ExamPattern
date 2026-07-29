@@ -3,6 +3,12 @@ import Image from "next/image";
 import { useState, useEffect, useRef } from "react"
 import { Send, Hash, MessageSquare, Users, Swords, Bot } from "lucide-react"
 import type { LucideIcon } from "lucide-react"
+import { io, Socket } from "socket.io-client"
+
+let socket: Socket;
+if (typeof window !== "undefined") {
+  socket = io(process.env.NEXT_PUBLIC_SOCKET_URL || "http://localhost:3000", { path: "/socket.io" });
+}
 
 interface Message {
   id: string
@@ -12,8 +18,18 @@ interface Message {
   message: string
   timestamp: string
   type: string
+  roomId?: string
   isSystem?: boolean
-}const ROOMS: ChatRoom[] = [
+}
+
+interface ChatRoom {
+  id: string
+  label: string
+  icon: LucideIcon
+  color: string
+}
+
+const ROOMS: ChatRoom[] = [
   {
     id: "arena-lobby",
     label: "Arena Lobby",
@@ -135,6 +151,26 @@ setMessages(data.messages);
   }, [activeRoom])
 
   useEffect(() => {
+    if (!user?.id || !socket) return;
+    
+    // Join real-time room
+    socket.emit('join-chat-room', { roomId: activeRoom, userId: user.id, name: user.name });
+
+    const handleNewMessage = (msg: Message) => {
+      if (msg.roomId === activeRoom && msg.senderId !== user.id) {
+        setMessages(prev => [...prev, msg]);
+      }
+    };
+
+    socket.on('new-message', handleNewMessage);
+
+    return () => {
+      socket.emit('leave-chat-room', { roomId: activeRoom, userId: user.id });
+      socket.off('new-message', handleNewMessage);
+    };
+  }, [activeRoom, user])
+
+  useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages])
 
@@ -153,6 +189,16 @@ setMessages(data.messages);
     setMessages(prev => [...prev, msg])
     setInput('')
     setSending(false)
+
+    // Live update others via WebSocket
+    socket.emit('send-message', {
+      roomId: activeRoom,
+      userId: user.id,
+      name: user.name,
+      avatar: user.avatar,
+      message: msg.message,
+      type: 'arena'
+    });
 
     // Persist to API
     fetch('/api/chat', {

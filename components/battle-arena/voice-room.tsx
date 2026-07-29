@@ -4,7 +4,7 @@ import { useState, useEffect, useRef } from "react"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Mic, MicOff, Volume2, PhoneOff, Users, Loader2, Sparkles } from "lucide-react"
-import { io } from "socket.io-client"
+import { io, Socket } from "socket.io-client"
 
 const ICE_SERVERS = {
   iceServers: [
@@ -13,7 +13,10 @@ const ICE_SERVERS = {
   ],
 }
 
-const socket = io("http://localhost:3000"); // Adjust to your backend URL
+let socket: Socket;
+if (typeof window !== "undefined") {
+  socket = io(process.env.NEXT_PUBLIC_SOCKET_URL || "http://localhost:3000", { path: "/socket.io" });
+}
 
 interface VoiceRoomProps {
   user: { id: string; name: string; avatar: string; arenaRank?: string }
@@ -46,7 +49,7 @@ export function VoiceRoom({ user }: VoiceRoomProps) {
 
     pc.onicecandidate = (event) => {
       if (event.candidate) {
-        socket.emit("candidate", peerId, event.candidate)
+        socket.emit("candidate", { targetId: peerId, candidate: event.candidate })
       }
     }
 
@@ -67,23 +70,37 @@ export function VoiceRoom({ user }: VoiceRoomProps) {
       console.log("Connected to signaling server")
     })
 
-    socket.on("user-joined", (id: string) => {
+    socket.on("existing-users", (users: any[]) => {
+      setPeers(currentPeers => {
+        const newPeers = [...currentPeers]
+        users.forEach(u => {
+          if (!newPeers.some(p => p.id === u.socketId)) {
+            newPeers.push({ id: u.socketId, name: u.name, avatar: u.avatar })
+          }
+        })
+        return newPeers
+      })
+      users.forEach(u => createPeerConnection(u.socketId))
+    })
+
+    socket.on("user-joined", (userObj: any) => {
+      const id = userObj.socketId
       console.log("User joined:", id)
       setPeers(currentPeers => {
         if (!currentPeers.some(p => p.id === id)) {
-          return [...currentPeers, { id, name: `Peer-${id.substring(0, 4)}`, avatar: "https://ui-avatars.com/api/?name=P&background=random&color=fff" }]
+          return [...currentPeers, { id, name: userObj.name, avatar: userObj.avatar }]
         }
         return currentPeers
       })
-
       createPeerConnection(id)
+    })
 
-      // Existing users create offers to the joined user
+    socket.on("create-offer", (targetId: string) => {
       if (localStream) {
-        const pc = createPeerConnection(id)
+        const pc = createPeerConnection(targetId)
         pc.createOffer().then(offer => {
           pc.setLocalDescription(offer)
-          socket.emit("offer", id, offer)
+          socket.emit("offer", { targetId, offer })
         })
       }
     })
@@ -110,7 +127,7 @@ export function VoiceRoom({ user }: VoiceRoomProps) {
         await pc.setRemoteDescription(new RTCSessionDescription(message))
         const answer = await pc.createAnswer()
         await pc.setLocalDescription(answer)
-        socket.emit("answer", id, pc.localDescription)
+        socket.emit("answer", { targetId: id, answer: pc.localDescription })
       }
     })
 
@@ -134,7 +151,9 @@ export function VoiceRoom({ user }: VoiceRoomProps) {
 
     return () => {
       socket.off("connect")
+      socket.off("existing-users")
       socket.off("user-joined")
+      socket.off("create-offer")
       socket.off("user-left")
       socket.off("offer")
       socket.off("answer")
@@ -158,7 +177,7 @@ export function VoiceRoom({ user }: VoiceRoomProps) {
       setLocalStream(stream)
       setIsMuted(false)
       setJoined(true)
-      socket.emit("join-voice-room", roomName, user.id)
+      socket.emit("join-voice-room", { roomId: roomName, userId: user.id })
     } catch (error) {
       console.error("Error accessing media devices:", error)
     } finally {
@@ -178,7 +197,7 @@ export function VoiceRoom({ user }: VoiceRoomProps) {
     setRemoteStreams({})
     setPeers([])
     setJoined(false)
-    socket.emit("leave-voice-room", roomName, user.id)
+    if (socket) socket.emit("leave-voice-room", { roomId: roomName, userId: user.id })
   }
 
   // Toggle mute/unmute

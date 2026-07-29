@@ -208,35 +208,101 @@ const TIME_MAP: Record<string, number> = {
   beginner: 90, intermediate: 75, advanced: 60, expert: 45, master: 35, grandmaster: 25,
 };
 
+/**
+ * Fetch questions from Python Battle Service (primary) with
+ * MongoDB DB → in-memory bank as fallbacks.
+ *
+ * New query params:
+ *   ?mode=         (alias for category, maps to Python service)
+ *   ?limit=        (replaces count, supports up to 100)
+ *   ?page=         (pagination)
+ *   ?exclude_ids=  (comma-separated IDs to skip, deduplication)
+ *
+ * Legacy ?category= and ?count= still work for backward compat.
+ */
 export async function GET(req: NextRequest) {
+  const { searchParams } = new URL(req.url);
+
+  // Support both old (category/count) and new (mode/limit) params
+  const mode = searchParams.get('mode') || searchParams.get('category') || 'math';
+  const difficulty = searchParams.get('difficulty') || 'beginner';
+  const limit = Math.min(
+    parseInt(searchParams.get('limit') || searchParams.get('count') || '20'),
+    100,
+  );
+  const page = Math.max(1, parseInt(searchParams.get('page') || '1'));
+  const excludeIds = searchParams.get('exclude_ids') || '';
+  const topic = searchParams.get('topic') || '';
+
+  // ── 1. Python Battle Service (primary) ───────────────────
+  const BATTLE_SERVICE_URL = process.env.BATTLE_SERVICE_URL || 'http://localhost:8001';
   try {
-    await dbConnect();
+    const params = new URLSearchParams({
+      mode,
+      difficulty,
+      limit: String(limit),
+      page: String(page),
+      ...(excludeIds && { exclude_ids: excludeIds }),
+      ...(topic && { topic }),
+    });
+
+    const res = await fetch(`${BATTLE_SERVICE_URL}/api/questions/random?${params}`, {
+      signal: AbortSignal.timeout(3000), // 3s timeout — fast fail
+    });
+
+    if (res.ok) {
+      const data = await res.json();
+      if (data?.data?.questions?.length > 0) {
+        // Normalize Python service response to match existing Question shape
+        const questions = data.data.questions.map((q: any) => ({
+          _id: q.id,
+          category: q.mode,
+          difficulty: q.difficulty,
+          title: q.question?.slice(0, 80) || 'Question',
+          description: q.question,
+          options: q.options || [],
+          correctAnswer: q.correct_answer,
+          boilerplate: q.boilerplate || '',
+          xpReward: q.xp || XP_MAP[difficulty] || 50,
+          pointsReward: q.coins ? q.coins * 10 : POINTS_MAP[difficulty] || 100,
+          timeLimit: q.time_limit || TIME_MAP[difficulty] || 60,
+          explanation: q.explanation || '',
+          hint: q.hint || '',
+          tags: q.tags || [],
+        }));
+        return NextResponse.json({
+          questions,
+          source: data.data.source || 'battle-service',
+          total: data.data.total,
+          page: data.data.page,
+        });
+      }
+    }
   } catch (err) {
-    console.error('DB connection failed, using fallback:', err);
+    // Battle service offline — fall through to DB/memory silently
+    console.warn('[Arena] Battle service unavailable, using fallback:', (err as Error).message);
   }
 
-  const { searchParams } = new URL(req.url);
-  const category = searchParams.get('category') || 'math';
-  const difficulty = searchParams.get('difficulty') || 'beginner';
-  const count = parseInt(searchParams.get('count') || '5');
-
-  // Try DB first
+  // ── 2. MongoDB fallback ───────────────────────────────────
   try {
+    await dbConnect();
     const questions = await ArenaQuestion.aggregate([
-      { $match: { category, difficulty } },
-      { $sample: { size: count } },
+      { $match: { category: mode, difficulty } },
+      { $sample: { size: limit } },
     ]);
-    if (questions.length >= count) {
-      return NextResponse.json({ questions, source: 'db' });
+    if (questions.length >= Math.min(limit, 3)) {
+      return NextResponse.json({ questions, source: 'db', total: questions.length, page });
     }
-  } catch (_) {}
+  } catch (_) {
+    console.warn('[Arena] MongoDB unavailable, using in-memory bank.');
+  }
 
-  // Fallback to in-memory bank
-  const bank = (QUESTION_BANK as any)[category]?.[difficulty] || [];
-  const shuffled = [...bank].sort(() => Math.random() - 0.5).slice(0, count);
+  // ── 3. In-memory static bank (always works) ───────────────
+  const bank = (QUESTION_BANK as any)[mode]?.[difficulty] || [];
+  const shuffled = [...bank].sort(() => Math.random() - 0.5).slice(0, limit);
   const questions = shuffled.map((q: any, i: number) => ({
-    _id: `mock-${category}-${difficulty}-${i}`,
-    category,
+    _id: `mock-${mode}-${difficulty}-${Date.now()}-${i}`,
+    category: mode,
     difficulty,
     xpReward: XP_MAP[difficulty] || 50,
     pointsReward: POINTS_MAP[difficulty] || 100,
@@ -244,7 +310,7 @@ export async function GET(req: NextRequest) {
     ...q,
   }));
 
-  return NextResponse.json({ questions, source: 'memory' });
+  return NextResponse.json({ questions, source: 'memory', total: questions.length, page });
 }
 
 export async function POST(req: NextRequest) {

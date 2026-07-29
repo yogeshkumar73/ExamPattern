@@ -94,7 +94,8 @@ export function UserOnboarding() {
           branch: data.user.branch || "",
           bio: data.user.bio || "",
           isLabApproved: data.user.isLabApproved || false,
-          status: data.user.status || "Active"
+          status: data.user.status || "Active",
+          role: data.user.role || "student"
         }
         localStorage.setItem("aura_session", JSON.stringify({ user: sessionUser }))
         setRegistered(true)
@@ -188,7 +189,7 @@ export function UserOnboarding() {
                 <Button 
                   onClick={handleRegister} 
                   disabled={loading} 
-                  className="w-full h-14 text-lg font-black bg-primary rounded-xl shadow-xl hover:scale-102 transition-transform mt-4 text-white"
+                  className="w-full h-14 text-lg font-black bg-primary text-primary-foreground rounded-xl shadow-xl hover:scale-102 transition-transform mt-4"
                 >
                   {loading ? "REGISTERING..." : "CREATE ACCOUNT"} <ArrowRight className="ml-2 w-5 h-5" />
                 </Button>

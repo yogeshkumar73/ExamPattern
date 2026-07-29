@@ -71,80 +71,75 @@ export function BattleRoom({ config, user, onBattleEnd }: BattleRoomProps) {
   const modeConfig = MODE_CONFIG[config.mode] || MODE_CONFIG.math
   const ModeIcon = modeConfig.icon
 
-  // Load questions from OpenAI
+  // Track answered question IDs for deduplication across refetches and sessions
+  const answeredIdsRef = useRef<Set<string>>(new Set())
+
+  useEffect(() => {
+    try {
+      const stored = localStorage.getItem(`answered_qs_${user?.id || 'guest'}`);
+      if (stored) {
+        answeredIdsRef.current = new Set(JSON.parse(stored));
+      }
+    } catch(e) {}
+  }, [user?.id]);
+
+  // Load questions — unified hybrid engine handles all fallback internally
   useEffect(() => {
     const load = async () => {
       try {
-        // Determine actual category (mixed picks random)
-        const categories = ['coding', 'puzzle', 'math', 'gk', 'prediction']
+        // Determine actual mode (mixed picks random)
+        const modes = ['coding', 'puzzle', 'math', 'gk', 'prediction']
         const mode = config.mode === 'mixed'
-          ? categories[Math.floor(Math.random() * categories.length)]
+          ? modes[Math.floor(Math.random() * modes.length)]
           : config.mode
 
-        // Try to get AI-generated questions first
-        try {
-          const res = await fetch('/api/arena/ai-content', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              action: 'generate-questions',
-              mode,
-              difficulty: config.difficulty,
-              count: 5,
-            })
-          })
-          const data = await res.json()
-          if (data.success && data.questions?.length > 0) {
-            const formattedQuestions = data.questions.map((q: any) => ({
-              _id: q.id,
-              category: mode,
-              difficulty: config.difficulty,
-              title: q.title,
-              description: q.description,
-              options: q.options || [],
-              correctAnswer: q.correctAnswer,
-              xpReward: DIFF_XP[config.difficulty] || 50,
-              pointsReward: q.points || 100,
-              timeLimit: q.timeLimit || 60,
-            }))
-            setQuestions(formattedQuestions)
-            if (formattedQuestions[0]?.boilerplate) setCode(formattedQuestions[0].boilerplate)
-            setPhase('countdown')
-            return
-          }
-        } catch (e) {
-          console.warn('AI question generation failed, falling back:', e)
-        }
+        // Build exclude_ids to prevent repeating answered questions (keep last 100 to avoid giant URLs)
+        const excludeParam = answeredIdsRef.current.size > 0
+          ? `&exclude_ids=${[...answeredIdsRef.current].slice(-100).join(',')}`
+          : ''
 
-        // Fallback to traditional API
-        const userQuery = user?.id ? `&userId=${encodeURIComponent(user.id)}` : ''
-        const res = await fetch(`/api/arena/questions?category=${mode}&difficulty=${config.difficulty}&count=5${userQuery}`)
-        if (!res.ok) {
-          throw new Error(`API error: ${res.status}`)
-        }
+        const randomLimit = Math.floor(Math.random() * 11) + 10;
+        // Single unified endpoint — handles Python service → DB → memory internally
+        const res = await fetch(
+          `/api/arena/questions?mode=${mode}&difficulty=${config.difficulty}&limit=${randomLimit}${excludeParam}`,
+          { signal: AbortSignal.timeout(8000) }
+        )
+
+        if (!res.ok) throw new Error(`API error: ${res.status}`)
+
         const data = await res.json()
         if (data.questions?.length > 0) {
-          setQuestions(data.questions)
-          if (data.questions[0].boilerplate) setCode(data.questions[0].boilerplate)
+          // Deduplicate by title to ensure no repeated questions even if API sends duplicates
+          const uniqueQs = Array.from(new Map(data.questions.map((q: any) => [q.title, q])).values()) as any;
+          let qs = uniqueQs;
+          
+          if (qs.length > randomLimit) {
+            qs = qs.slice(0, randomLimit);
+          }
+          
+          setQuestions(qs)
+          if (qs[0]?.boilerplate) setCode(qs[0].boilerplate)
           setPhase('countdown')
           return
         }
 
-        // Last resort fallback
-        setQuestions([{
-          _id: '1', category: 'math', difficulty: config.difficulty,
-          title: 'Quick Calculation', description: 'What is 15 × 7?',
-          options: ['95', '100', '105', '110'], correctAnswer: '105',
-          xpReward: DIFF_XP[config.difficulty] || 50, pointsReward: 100, timeLimit: 60,
-        }])
-        setPhase('countdown')
+        throw new Error('No questions returned')
       } catch (e) {
-        console.error('Load failed:', e)
+        console.error('[BattleRoom] Question load failed, using emergency fallback:', e)
+        // Emergency single question — frontend never shows an empty state
         setQuestions([{
-          _id: '1', category: 'math', difficulty: config.difficulty,
-          title: 'Quick Calculation', description: 'What is 15 × 7?',
-          options: ['95', '100', '105', '110'], correctAnswer: '105',
-          xpReward: DIFF_XP[config.difficulty] || 50, pointsReward: 100, timeLimit: 60,
+          _id: `fallback-${Date.now()}`,
+          category: config.mode,
+          difficulty: config.difficulty,
+          title: 'Quick Math',
+          description: 'What is 15 × 7?',
+          options: ['95', '100', '105', '110'],
+          correctAnswer: '105',
+          explanation: '15 × 7 = 105.',
+          hint: 'Multiply 15 by 7.',
+          xpReward: DIFF_XP[config.difficulty] || 50,
+          pointsReward: 100,
+          timeLimit: TIME_MAP?.[config.difficulty] || 60,
         }])
         setPhase('countdown')
       }
@@ -221,6 +216,17 @@ export function BattleRoom({ config, user, onBattleEnd }: BattleRoomProps) {
     setIsCorrect(correct)
     setShowResult(true)
     setTotalAnswered(prev => prev + 1)
+    
+    // Add to answered list and persist
+    if (q?._id) {
+      answeredIdsRef.current.add(q._id)
+      try {
+        localStorage.setItem(
+          `answered_qs_${user?.id || 'guest'}`, 
+          JSON.stringify([...answeredIdsRef.current])
+        )
+      } catch(e) {}
+    }
 
     if (correct) {
       const xpGain = Math.floor((q?.xpReward || 50) * (questionTimeLeft / (q?.timeLimit || 60)))
@@ -355,10 +361,22 @@ export function BattleRoom({ config, user, onBattleEnd }: BattleRoomProps) {
               ))}
             </div>
 
-            {/* XP Reward */}
-            <div className="flex items-center justify-center gap-2 p-3 bg-indigo-500/10 border border-indigo-500/30 rounded-xl">
-              <Zap className="w-5 h-5 text-indigo-400" />
-              <span className="text-indigo-400 font-black">+{xpGained} XP Earned</span>
+            {/* Rewards */}
+            <div className="flex flex-col gap-2 max-w-xs mx-auto">
+              <div className="flex items-center justify-center gap-2 p-3 bg-indigo-500/10 border border-indigo-500/30 rounded-xl">
+                <Zap className="w-5 h-5 text-indigo-400" />
+                <span className="text-indigo-400 font-black">+{xpGained} XP Earned</span>
+              </div>
+              <div className={`flex items-center justify-center gap-2 p-3 border rounded-xl ${
+                finalResult === 'win' ? 'bg-amber-500/10 border-amber-500/30 text-amber-400' :
+                finalResult === 'draw' ? 'bg-blue-500/10 border-blue-500/30 text-blue-400' :
+                'bg-red-500/10 border-red-500/30 text-red-400'
+              }`}>
+                <Trophy className="w-5 h-5" />
+                <span className="font-black">
+                  {finalResult === 'win' ? '+200' : finalResult === 'draw' ? '+50' : '0'} Rank Points
+                </span>
+              </div>
             </div>
 
             <div className="flex gap-3">
@@ -412,7 +430,7 @@ export function BattleRoom({ config, user, onBattleEnd }: BattleRoomProps) {
       <div className="arena-card p-4 space-y-3">
         <div>
           <div className="flex justify-between text-xs font-bold mb-1.5">
-            <span className="text-indigo-400">YOU — {playerScore} pts</span>
+            <span className="text-indigo-400">YOU — {playerScore} pts (Correct: {playerCorrect}/{totalAnswered})</span>
             <span className="text-indigo-400">{playerProgress}%</span>
           </div>
           <div className="h-3 bg-indigo-500/20 rounded-full overflow-hidden battle-progress">

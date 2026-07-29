@@ -12,13 +12,14 @@ import { Input } from "@/components/ui/input"
 import {
   Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle
 } from "@/components/ui/dialog"
-import { useNav } from "@/hooks/use-nav"
+import { useNav, type Step } from "@/hooks/use-nav"
 import Link from "next/link"
 import { useState, useEffect, useCallback } from "react"
 
 type SessionUser = {
   name?: string
   email?: string
+  role?: string
 }
 
 type Session = {
@@ -41,7 +42,11 @@ export function Header() {
       const storedSession = localStorage.getItem("aura_session")
       if (storedSession) {
         try {
-          setSession(JSON.parse(storedSession))
+          const parsed = JSON.parse(storedSession)
+          setSession(parsed)
+          if (parsed?.user?.role === "admin") {
+            setAdmin(true)
+          }
         } catch {
           setSession(null)
         }
@@ -52,7 +57,7 @@ export function Header() {
     syncSession()
     window.addEventListener("storage", syncSession)
     return () => window.removeEventListener("storage", syncSession)
-  }, [])
+  }, [setAdmin])
 
   // Secure admin check simulation - Replace with real secure backend call
   const verifyAdminPassword = useCallback(async (password: string): Promise<boolean> => {
@@ -109,7 +114,7 @@ export function Header() {
   }, [setRegistered, setStep])
 
   // Manage steps for navigation controls
-  const steps = isRegistered ? ["upload", "analyze", "predict"] : ["onboarding"]
+  const steps: Step[] = isRegistered ? ["upload", "analyze", "predict"] : ["onboarding"]
   const currentIndex = steps.indexOf(currentStep)
 
   const handlePrev = useCallback(() => {
@@ -217,12 +222,15 @@ export function Header() {
                     <UserPlus className="h-4 w-4" /> Create User ID
                   </MenubarItem>
                 )}
-                <MenubarItem
-                  onClick={() => (isAdmin ? setAdmin(false) : setAdminDialogOpen(true))}
-                  className="gap-2"
-                >
-                  <ShieldCheck className="text-primary h-4 w-4" /> {isAdmin ? "Lock Admin" : "Unlock Admin"}
-                </MenubarItem>
+                {/* Only show Admin unlock option if no user is logged in, or the logged in user is an admin */}
+                {(!session?.user || session.user.role === "admin") && (
+                  <MenubarItem
+                    onClick={() => (isAdmin ? setAdmin(false) : setAdminDialogOpen(true))}
+                    className="gap-2"
+                  >
+                    <ShieldCheck className="text-primary h-4 w-4" /> {isAdmin ? "Lock Admin" : "Unlock Admin"}
+                  </MenubarItem>
+                )}
                 <MenubarSeparator />
                 <MenubarItem onClick={handleSignOut} className="cursor-pointer gap-2 text-destructive">
                   <LogOut className="h-4 w-4" /> Sign Out

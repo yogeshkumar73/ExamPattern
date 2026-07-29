@@ -107,6 +107,11 @@ export default function AdminArenaApprovals() {
 
       if (!response.ok) {
         const error = await response.json();
+        // Show the response in the browser console
+    console.log("API Response:", data);
+
+    // Show it in an alert
+    alert(JSON.stringify(data, null, 2));
         throw new Error(error.error || 'Failed to approve arena access');
       }
 

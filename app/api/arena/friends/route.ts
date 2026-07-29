@@ -37,6 +37,7 @@ export async function POST(req: NextRequest) {
     if (!user || !friend) return NextResponse.json({ error: 'User or friend not found' }, { status: 404 });
 
     if (action === 'request') {
+      if (!friend.friendRequests) friend.friendRequests = [];
       if (friend.friendRequests.includes(userId)) {
         return NextResponse.json({ error: 'Request already sent' }, { status: 400 });
       }
@@ -46,6 +47,14 @@ export async function POST(req: NextRequest) {
     }
 
     if (action === 'accept') {
+      if (!user.friendRequests) user.friendRequests = [];
+      if (!user.friends) user.friends = [];
+      if (!friend.friends) friend.friends = [];
+      if (!user.following) user.following = [];
+      if (!friend.following) friend.following = [];
+      if (!user.followers) user.followers = [];
+      if (!friend.followers) friend.followers = [];
+
       // Remove from friend requests
       user.friendRequests = user.friendRequests.filter((id: string) => id !== friendId);
       
@@ -65,12 +74,15 @@ export async function POST(req: NextRequest) {
     }
 
     if (action === 'decline') {
+      if (!user.friendRequests) user.friendRequests = [];
       user.friendRequests = user.friendRequests.filter((id: string) => id !== friendId);
       await user.save();
       return NextResponse.json({ success: true, message: 'Friend request declined' });
     }
 
     if (action === 'remove') {
+      if (!user.friends) user.friends = [];
+      if (!friend.friends) friend.friends = [];
       user.friends = user.friends.filter((id: string) => id !== friendId);
       friend.friends = friend.friends.filter((id: string) => id !== userId);
       await user.save();
