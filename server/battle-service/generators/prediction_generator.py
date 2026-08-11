@@ -133,7 +133,7 @@ class PredictionGenerator(BaseGenerator):
         random.shuffle(options)
 
         return QuestionModel(
-            id=generate_id("pred"),
+            id=generate_id("pred", question_text),
             mode=GameMode.PREDICTION,
             difficulty=difficulty,
             topic=topic,

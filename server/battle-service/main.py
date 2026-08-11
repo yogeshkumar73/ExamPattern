@@ -20,7 +20,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
-from motor.motor_asyncio import AsyncIOMotorClient
+from motor.motor_asyncio import AsyncIOMotorClient  # pyrefly: ignore[missing-import]
 
 from config import settings
 from repositories.question_repo import QuestionRepository
@@ -93,6 +93,7 @@ async def lifespan(app: FastAPI):
     app.state.matchmaking_service = matchmaking_service
     app.state.leaderboard_service = leaderboard_service
     app.state.match_repo = match_repo
+    app.state.player_repo = player_repo
 
     # ── Auto-seed DB if empty ─────────────────────────────────
     try:

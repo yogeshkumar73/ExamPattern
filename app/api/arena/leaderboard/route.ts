@@ -73,9 +73,12 @@ export async function GET(req: NextRequest) {
           });
         }
       }
-    } catch (err: any) {
-      console.warn('[Leaderboard] Battle service unavailable, falling back to local DB:', err.message);
-    }
+    }catch (err: any) {
+  console.error("Battle Service Error");
+  console.error("Message:", err.message);
+  console.error("Cause:", err.cause);
+  console.error(err);
+}
   }
 
   // ── 2. MongoDB Fallback ───────────────────────────────────

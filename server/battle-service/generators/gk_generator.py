@@ -881,12 +881,15 @@ class GKGenerator(BaseGenerator):
 
         questions: list[QuestionModel] = []
         idx = 0
+        max_attempts = len(available) * 10
+        attempts = 0
 
-        while len(questions) < count and idx < len(available) * 3:
+        while len(questions) < count and attempts < max_attempts and available:
             entry = available[idx % len(available)]
             idx += 1
+            attempts += 1
 
-            qid = generate_id("gk")
+            qid = generate_id("gk", entry["q"])
             if qid in exclude:
                 continue
 

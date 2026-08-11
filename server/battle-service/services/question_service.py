@@ -181,6 +181,102 @@ class QuestionService:
             source=source,
         )
 
+    async def get_session_questions(
+        self,
+        mode: str,
+        difficulty: str,
+        limit: int = 20,
+        topic: Optional[str] = None,
+        exclude_ids: Optional[list[str]] = None,
+        user_level: Optional[int] = None,
+    ) -> QuestionBatch:
+        """
+        Fetch exactly `limit` fresh, random, unique questions for a user session.
+
+        Flow:
+        1. MongoDB random sample of a larger pool (100) -> filter exclude_ids -> shuffle.
+        2. AI generation if needed.
+        3. Python generator if needed.
+        Returns exactly `limit` questions.
+        """
+        exclude = set(exclude_ids or [])
+        questions: list[QuestionModel] = []
+        source_label = "db"
+
+        # 1. MongoDB Random Sample (larger pool: 100)
+        try:
+            db_docs = await self._repo.find_random(
+                mode=mode,
+                difficulty=difficulty,
+                limit=100,
+                exclude_ids=list(exclude),
+            )
+            if db_docs:
+                db_questions = self._docs_to_models(db_docs)
+                db_questions = self._shuffle_answers(db_questions)
+                for q in db_questions:
+                    if q.id not in exclude:
+                        questions.append(q)
+                        exclude.add(q.id)
+                random.shuffle(questions)
+        except Exception as exc:
+            logger.warning("MongoDB random sample failed: %s", exc)
+
+        # 2. AI Generation if needed
+        if len(questions) < limit and self._ai.is_available and mode != GameMode.PREDICTION.value:
+            needed = limit - len(questions)
+            previous_generated = [q.question for q in questions]
+            ai_questions = await self._ai.generate_questions(
+                mode=mode,
+                difficulty=difficulty,
+                count=needed,
+                topic=topic,
+                user_level=user_level,
+                previously_used_ids=list(exclude),
+                previous_generated_questions=previous_generated,
+            )
+            if ai_questions:
+                await self._repo.insert_many(ai_questions)
+                for q in ai_questions:
+                    if q.id not in exclude:
+                        questions.append(q)
+                        exclude.add(q.id)
+                source_label += "+ai"
+
+        # 3. Python Generator if needed
+        if len(questions) < limit:
+            needed = limit - len(questions)
+            try:
+                diff_enum = Difficulty(difficulty)
+            except ValueError:
+                diff_enum = Difficulty.BEGINNER
+
+            generator = _GENERATORS.get(mode, _GENERATORS[GameMode.MIXED.value])
+            gen_questions = generator.generate(
+                difficulty=diff_enum,
+                count=needed,
+                topic=topic,
+                exclude_ids=exclude,
+            )
+            if gen_questions:
+                await self._repo.insert_many(gen_questions)
+                for q in gen_questions:
+                    if q.id not in exclude:
+                        questions.append(q)
+                        exclude.add(q.id)
+            source_label += "+generator"
+
+        # Shuffle the final batch
+        random.shuffle(questions)
+        final_questions = questions[:limit]
+
+        return QuestionBatch(
+            questions=final_questions,
+            total=len(final_questions),
+            page=1,
+            limit=limit,
+            source=source_label,
+        )
     async def get_random(
         self,
         limit: int = 20,

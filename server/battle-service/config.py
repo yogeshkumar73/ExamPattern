@@ -58,6 +58,15 @@ class Settings(BaseSettings):
     # ── Questions ─────────────────────────────────────────────
     DEFAULT_QUESTION_LIMIT: int = Field(default=20, ge=1, le=100)
     MAX_QUESTION_LIMIT: int = Field(default=100, ge=1, le=500)
+    LEVEL_DIFFICULTY_MAPPING: dict[str, list[int]] = Field(
+        default={
+            "beginner": [1, 5],
+            "intermediate": [6, 10],
+            "advanced": [11, 20],
+            "expert": [21, 999999]
+        },
+        description="Mapping of difficulty tier to user level range [min_level, max_level]"
+    )
 
     # ── Matchmaking ───────────────────────────────────────────
     MATCHMAKING_TIMEOUT_SECONDS: int = Field(default=60)

@@ -42,6 +42,26 @@ class QuestionQueryParams(BaseModel):
         return [eid.strip() for eid in self.exclude_ids.split(",") if eid.strip()]
 
 
+class StartSessionRequest(BaseModel):
+    user_id: str = Field(..., min_length=1)
+    mode: str = Field(...)
+    topic: Optional[str] = None
+
+    @field_validator("mode")
+    @classmethod
+    def validate_mode(cls, v: str) -> str:
+        if v not in [m.value for m in GameMode]:
+            raise ValueError(f"Invalid mode: {v}")
+        return v
+
+
+class AnswerSessionRequest(BaseModel):
+    user_id: str = Field(..., min_length=1)
+    session_id: str = Field(..., min_length=1)
+    question_id: str = Field(..., min_length=1)
+    answer: str = Field(...)
+
+
 # ── Matchmaking API ───────────────────────────────────────────
 
 class JoinQueueRequest(BaseModel):

@@ -76,11 +76,14 @@ class PuzzleGenerator(BaseGenerator):
 
         questions: list[QuestionModel] = []
         idx = 0
+        max_attempts = len(pool) * 10
+        attempts = 0
 
-        while len(questions) < count and idx < len(pool) * 4:
+        while len(questions) < count and attempts < max_attempts and pool:
             entry = pool[idx % len(pool)]
             idx += 1
-            qid = generate_id("pzl")
+            attempts += 1
+            qid = generate_id("pzl", entry["q"])
             if qid in exclude:
                 continue
 

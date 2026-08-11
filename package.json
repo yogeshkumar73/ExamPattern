@@ -15,6 +15,7 @@
     "@ai-sdk/openai": "^3.0.68",
     "@auth/core": "^0.41.2",
     "@auth/mongodb-adapter": "^3.11.2",
+    "@google/genai": "^2.16.0",
     "@hookform/resolvers": "^3.10.0",
     "@langchain/core": "^1.1.48",
     "@langchain/openai": "^1.4.7",

@@ -4,22 +4,27 @@ import dbConnect from '@/lib/mongodb';
 import User from '@/models/User';
 
 const RANK_THRESHOLDS = [
-  { rank: 'Grandmaster', min: 5000 },
-  { rank: 'Master', min: 3000 },
-  { rank: 'Diamond', min: 2000 },
-  { rank: 'Platinum', min: 1000 },
-  { rank: 'Gold', min: 500 },
-  { rank: 'Silver', min: 200 },
-  { rank: 'Bronze', min: 0 },
+  { rank: "Grandmaster", min: 5000 },
+  { rank: "Master", min: 3000 },
+  { rank: "Diamond", min: 2000 },
+  { rank: "Platinum", min: 1500 },
+  { rank: "Gold", min: 1200 },
+  { rank: "Silver", min: 1000 },
+  { rank: "Bronze", min: 800 },
 ];
 
-function computeArenaRank(ap: number) {
-  return RANK_THRESHOLDS.find(r => ap >= r.min)?.rank || 'Unranked';
+function computeArenaRank(points: number): string {
+  for (const tier of RANK_THRESHOLDS) {
+    if (points >= tier.min) return tier.rank;
+  }
+
+  return "Unranked";
 }
 
-function computeLevel(xp: number) {
-  return Math.floor(Math.sqrt(xp / 100)) + 1;
+function computeLevel(xp: number): number {
+  return Math.max(1, Math.floor(Math.sqrt(xp / 100)) + 1);
 }
+
 
 // POST /api/arena/battle — record battle result and update user stats
 export async function findUserById(userId: string, projection: Record<string, unknown> = {}) {
@@ -29,7 +34,7 @@ export async function findUserById(userId: string, projection: Record<string, un
   return User.findOne({ _id: userId }, projection);
 }
 
-async function POST(req: NextRequest) {
+export async function POST(req: NextRequest) {
   await dbConnect();
   const body = await req.json();
   const { userId, result, mode, difficulty, score, accuracy, xpGained, pointsGained, opponentName, battleId } = body;
@@ -38,7 +43,7 @@ async function POST(req: NextRequest) {
 
   try {
     let user = await findUserById(userId);
-    
+
     // If not found in DB, check mock users
     if (!user) {
       const { mockUsers } = await import('@/lib/mockDb');
@@ -55,31 +60,64 @@ async function POST(req: NextRequest) {
       user = mockUser;
     }
 
-    // Update battle stats
-    user.totalBattles = (user.totalBattles || 0) + 1;
-    if (result === 'win') {
-      user.wins = (user.wins || 0) + 1;
-      user.currentStreak = (user.currentStreak || 0) + 1;
-      user.bestStreak = Math.max(user.bestStreak || 0, user.currentStreak);
-    } else if (result === 'loss') {
-      user.losses = (user.losses || 0) + 1;
-      user.currentStreak = 0;
-    } else {
-      user.draws = (user.draws || 0) + 1;
+    // =====================================================
+    // Battle Statistics
+    // NOTE: totalBattles and winRate are recomputed by the
+    // Mongoose pre-save hook — do NOT set them here.
+    // =====================================================
+
+    switch (result) {
+      case "win":
+        user.wins = (user.wins ?? 0) + 1;
+        user.currentStreak = (user.currentStreak ?? 0) + 1;
+        user.bestStreak = Math.max(
+          user.bestStreak ?? 0,
+          user.currentStreak
+        );
+        break;
+
+      case "loss":
+        user.losses = (user.losses ?? 0) + 1;
+        user.currentStreak = 0;
+        break;
+
+      default:
+        user.draws = (user.draws ?? 0) + 1;
     }
 
-    // Win rate
-    user.winRate = user.totalBattles > 0
-      ? Math.round((user.wins / user.totalBattles) * 100) : 0;
+    // For mock users (no Mongoose pre-save hook), compute derived fields manually.
+    if (typeof (user as any).save !== "function") {
+      user.totalBattles = (user.wins ?? 0) + (user.losses ?? 0) + (user.draws ?? 0);
+      user.winRate = user.totalBattles > 0
+        ? Math.min(100, Number(((user.wins / user.totalBattles) * 100).toFixed(2)))
+        : 0;
+    }
 
-    // XP, Points, Coins
-    user.xp = (user.xp || 0) + (xpGained || 0);
-    user.points = (user.points || 0) + (pointsGained || 0);
-    user.coins = (user.coins || 0) + Math.floor((xpGained || 0) / 10);
-    user.arenaPoints = (user.arenaPoints || 0) + (result === 'win' ? pointsGained || 0 : result === 'loss' ? -Math.floor((pointsGained || 0) * 0.3) : 0);
-    user.arenaPoints = Math.max(0, user.arenaPoints);
-    user.arenaRank = computeArenaRank(user.arenaPoints);
+    // =====================================================
+    // XP
+    // =====================================================
+
+    const earnedXP = Number(xpGained ?? 0);
+
+    user.xp = (user.xp ?? 0) + earnedXP;
+
     user.level = computeLevel(user.xp);
+
+    // =====================================================
+    // Coins
+    // =====================================================
+
+    user.coins =
+      (user.coins ?? 0) +
+      Math.floor(earnedXP / 10);
+
+    // =====================================================
+    // Legacy Points
+    // =====================================================
+
+    user.points =
+      (user.points ?? 0) +
+      Number(pointsGained ?? 0);
 
     // Per-category stats
     if (!user.gameStats) user.gameStats = {};
@@ -91,10 +129,33 @@ async function POST(req: NextRequest) {
     }
 
     // Accuracy tracking
-    user.totalCorrect = (user.totalCorrect || 0) + Math.round(((accuracy || 0) / 100) * 5);
-    user.totalAttempted = (user.totalAttempted || 0) + 5;
-    user.accuracy = user.totalAttempted > 0
-      ? Math.round((user.totalCorrect / user.totalAttempted) * 100) : 0;
+    const totalQuestions =
+      Number(body.totalQuestions ?? 5);
+
+    const correctAnswers =
+      Number(
+        body.correctAnswers ??
+        Math.round((accuracy / 100) * totalQuestions)
+      );
+
+    user.totalCorrect =
+      (user.totalCorrect ?? 0) +
+      correctAnswers;
+
+    user.totalAttempted =
+      (user.totalAttempted ?? 0) +
+      totalQuestions;
+
+    user.accuracy =
+      user.totalAttempted === 0
+        ? 0
+        : Number(
+          (
+            (user.totalCorrect /
+              user.totalAttempted) *
+            100
+          ).toFixed(2)
+        );
 
     // Battle history (keep last 20)
     if (!user.battleHistory) user.battleHistory = [];
@@ -113,43 +174,72 @@ async function POST(req: NextRequest) {
     else user.rank = 'Bronze';
 
     // ── 3. Update Python Battle Service ELO/Leaderboard ─────
-    const BATTLE_SERVICE_URL = process.env.BATTLE_SERVICE_URL || 'http://localhost:8001';
+    const BATTLE_SERVICE_URL =
+      process.env.BATTLE_SERVICE_URL || "http://localhost:8001";
+
     try {
       const res = await fetch(`${BATTLE_SERVICE_URL}/api/leaderboard/result`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
         body: JSON.stringify({
           player_id: userId,
-          player_name: user.name || 'Player',
+          player_name: user.name || "Player",
           opponent_id: null,
-          won: result === 'win',
-          mode: mode || 'mixed',
-          difficulty: difficulty || 'beginner',
-          correct_answers: Math.round(((accuracy || 0) / 100) * 5),
-          total_questions: 5,
+          won: result === "win",
+          mode: mode || "mixed",
+          difficulty: difficulty || "beginner",
+          correct_answers: Math.round(((accuracy || 0) / 100) * 20),
+          total_questions: 20,
           xp_earned: xpGained || 0,
-          coins_earned: Math.floor((xpGained || 0) / 10),
+          coins_earned: Math.floor((xpGained || 0) / 40),
         }),
-        signal: AbortSignal.timeout(3000), // 3s timeout
+        signal: AbortSignal.timeout(3000),
       });
 
-      if (res.ok) {
+      if (!res.ok) {
+        console.warn(
+          `[BattleRoute] Python service returned ${res.status}: ${res.statusText}`
+        );
+      } else {
         const pyData = await res.json();
-        if (pyData.success && pyData.data) {
-          // Sync Python service's ELO back to local database
-          const newElo = pyData.data.new_elo;
-          user.arenaPoints = newElo;
-          user.arenaRank = computeArenaRank(newElo);
-          console.log(`[BattleRoute] Synced player ${userId} ELO to ${newElo}`);
+
+        if (pyData?.success && pyData?.data) {
+          const {
+            new_elo,
+            new_xp,
+            new_coins,
+            new_level,
+            new_streak,
+          } = pyData.data;
+
+          user.arenaPoints = new_elo;
+          user.xp = new_xp;
+          user.coins = new_coins;
+          user.level = new_level;
+          user.currentStreak = new_streak;
+
+          user.arenaRank = computeArenaRank(new_elo);
+
+          console.log(
+            `[BattleRoute] Synced player ${userId} | ELO: ${new_elo} | XP: ${new_xp} | Level: ${new_level}`
+          );
+        } else {
+          console.warn(
+            "[BattleRoute] Python service returned an unexpected response:",
+            pyData
+          );
         }
       }
-    } catch (err: any) {
-      console.warn('[BattleRoute] Python Battle Service result update skipped/failed, using local fallback:', err.message);
-    }
-
-    // Only save to DB if it's a real user (has _id as ObjectId), not a mock
-    if (mongoose.isValidObjectId(user._id)) {
-      await user.save();
+    } catch (err) {
+      console.warn(
+        "[BattleRoute] Python Battle Service result update skipped/failed:",
+        err instanceof Error ? err.message : err
+      );
+    }    // Only save to DB if it's a real user (has _id as ObjectId), not a mock
+    if (typeof (user as any).save === "function") {
+      await (user as any).save();
     }
     // For mock users, data persists in memory in mockUsers array
 
@@ -177,20 +267,20 @@ export async function GET(req: NextRequest) {
 
   try {
     const user = await findUserById(userId, { battleHistory: 1, wins: 1, losses: 1, totalBattles: 1 });
-    
+
     if (!user) {
       // Check if it's a mock user (when MongoDB is unavailable)
       const { mockUsers } = await import('@/lib/mockDb');
       const mockUser = mockUsers.find((u: any) => u._id === userId);
       if (mockUser) {
-        return NextResponse.json({ 
-          battleHistory: mockUser.battleHistory || [], 
-          stats: { wins: mockUser.wins || 0, losses: mockUser.losses || 0, total: mockUser.totalBattles || 0 } 
+        return NextResponse.json({
+          battleHistory: mockUser.battleHistory || [],
+          stats: { wins: mockUser.wins || 0, losses: mockUser.losses || 0, total: mockUser.totalBattles || 0 }
         });
       }
       return NextResponse.json({ error: 'User not found' }, { status: 404 });
     }
-    
+
     return NextResponse.json({ battleHistory: user?.battleHistory || [], stats: { wins: user?.wins, losses: user?.losses, total: user?.totalBattles } });
   } catch (err: any) {
     console.error('GET /api/arena/battle error:', err);

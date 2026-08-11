@@ -25,33 +25,204 @@ const PODIUM_CONFIG = [
 ]
 
 // Generate mock leaderboard with realistic names and stats
-function generateMockLeaderboard(category: string) {
+function generateMockLeaderboard(
+  category: string,
+  backendData: any[] = []
+) {
+  // Use backend data if available
+  if (Array.isArray(backendData) && backendData.length > 0) {
+    return backendData
+      .map((player, index) => {
+        const wins = Number(player.wins ?? 0);
+        const losses = Number(player.losses ?? 0);
+        const totalBattles =
+          Number(player.totalBattles ?? wins + losses);
+
+        const arenaPoints = Number(player.arenaPoints ?? 0);
+        const xp = Number(player.xp ?? 0);
+
+        return {
+          rank: player.rank ?? index + 1,
+
+          userId:
+            player.userId ??
+            player._id ??
+            `user-${index}`,
+
+          name: player.name ?? "Unknown Player",
+
+          avatar:
+            player.photoUrl ||
+            player.avatar ||
+            `https://ui-avatars.com/api/?name=${encodeURIComponent(
+              player.name ?? "User"
+            )}&background=6366f1&color=fff`,
+
+          arenaPoints,
+
+          arenaRank:
+            player.arenaRank ??
+            player.rank ??
+            "Unranked",
+
+          xp,
+
+          level: Number(player.level ?? 1),
+
+          wins,
+
+          losses,
+
+          totalBattles,
+
+          winRate:
+            player.winRate ??
+            (totalBattles > 0
+              ? Math.round((wins / totalBattles) * 100)
+              : 0),
+
+          badges: Array.isArray(player.badges)
+            ? player.badges
+            : [],
+
+          currentStreak: Number(
+            player.currentStreak ?? 0
+          ),
+
+          accuracy: Number(
+            player.accuracy ?? 0
+          ),
+
+          categoryXP:
+            category !== "global"
+              ? Number(player.categoryXP ?? xp)
+              : undefined,
+        };
+      })
+      .sort((a, b) => b.arenaPoints - a.arenaPoints)
+      .map((player, index) => ({
+        ...player,
+        rank: index + 1,
+      }));
+  }
+
+  // Offline fallback
   const names = [
-    'AlgoMaster99', 'CodeNinja', 'ByteWizard', 'LogicKing', 'BrainStorm',
-    'DataDragon', 'NeuralNerd', 'HackForce', 'CyberSage', 'PixelPunk',
-    'MathGenius', 'PuzzlePro', 'TechTitan', 'GKChampion', 'InfoGuru',
-    'DevStrike', 'RootAdmin', 'SystemX', 'Overflow_', 'BitHunter',
-  ]
-  const ranks = ['Unranked', 'Bronze', 'Silver', 'Gold', 'Platinum', 'Diamond', 'Master', 'Grandmaster']
+    "AlgoMaster99",
+    "CodeNinja",
+    "ByteWizard",
+    "LogicKing",
+    "BrainStorm",
+    "DataDragon",
+    "NeuralNerd",
+    "HackForce",
+    "CyberSage",
+    "PixelPunk",
+    "MathGenius",
+    "PuzzlePro",
+    "TechTitan",
+    "GKChampion",
+    "InfoGuru",
+    "DevStrike",
+    "RootAdmin",
+    "SystemX",
+    "Overflow_",
+    "BitHunter",
+  ];
+
+  const ranks = [
+    "Unranked",
+    "Bronze",
+    "Silver",
+    "Gold",
+    "Platinum",
+    "Diamond",
+    "Master",
+    "Grandmaster",
+  ];
 
   return names.map((name, i) => ({
     rank: i + 1,
+
     userId: `mock-${i}`,
+
     name,
-    avatar: `https://ui-avatars.com/api/?name=${encodeURIComponent(name)}&background=${['6366f1','8b5cf6','3b82f6','ec4899','10b981'][i % 5]}&color=fff`,
-    arenaPoints: Math.max(0, 8500 - i * 380 + Math.floor(Math.random() * 200)),
-    arenaRank: ranks[Math.max(0, 7 - Math.floor(i / 3))],
-    xp: Math.max(0, 12000 - i * 550 + Math.floor(Math.random() * 500)),
-    level: Math.max(1, 25 - Math.floor(i * 1.2)),
-    wins: Math.max(0, 120 - i * 5 + Math.floor(Math.random() * 20)),
-    losses: Math.max(0, 20 + i * 2 + Math.floor(Math.random() * 10)),
-    winRate: Math.max(20, 95 - i * 3 + Math.floor(Math.random() * 10)),
-    badges: ['🏆', '⚡', '🎯', '🔥'].slice(0, Math.max(1, 4 - Math.floor(i / 5))),
-    totalBattles: Math.max(5, 150 - i * 6),
-    currentStreak: Math.max(0, 15 - i),
-    accuracy: Math.max(40, 98 - i * 2.5),
-    categoryXP: category !== 'global' ? Math.max(0, 5000 - i * 240 + Math.floor(Math.random() * 300)) : undefined,
-  }))
+
+    avatar: `https://ui-avatars.com/api/?name=${encodeURIComponent(
+      name
+    )}&background=${
+      [
+        "6366f1",
+        "8b5cf6",
+        "3b82f6",
+        "ec4899",
+        "10b981",
+      ][i % 5]
+    }&color=fff`,
+
+    arenaPoints: Math.max(
+      0,
+      8500 - i * 380 + Math.floor(Math.random() * 200)
+    ),
+
+    arenaRank:
+      ranks[Math.max(0, 7 - Math.floor(i / 3))],
+
+    xp: Math.max(
+      0,
+      12000 - i * 550 + Math.floor(Math.random() * 500)
+    ),
+
+    level: Math.max(
+      1,
+      25 - Math.floor(i * 1.2)
+    ),
+
+    wins: Math.max(
+      0,
+      120 - i * 5 + Math.floor(Math.random() * 20)
+    ),
+
+    losses: Math.max(
+      0,
+      20 + i * 2 + Math.floor(Math.random() * 10)
+    ),
+
+    totalBattles: Math.max(
+      5,
+      150 - i * 6
+    ),
+
+    winRate: Math.max(
+      20,
+      95 - i * 3 + Math.floor(Math.random() * 10)
+    ),
+
+    badges: ["🏆", "⚡", "🎯", "🔥"].slice(
+      0,
+      Math.max(1, 4 - Math.floor(i / 5))
+    ),
+
+    currentStreak: Math.max(
+      0,
+      15 - i
+    ),
+
+    accuracy: Math.max(
+      40,
+      98 - i * 2.5
+    ),
+
+    categoryXP:
+      category !== "global"
+        ? Math.max(
+            0,
+            5000 -
+              i * 240 +
+              Math.floor(Math.random() * 300)
+          )
+        : undefined,
+  }));
 }
 
 interface ArenaLeaderboardProps {

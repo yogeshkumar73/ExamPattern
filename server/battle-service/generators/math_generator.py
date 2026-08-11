@@ -82,7 +82,7 @@ class MathGenerator(BaseGenerator):
             options[random.randint(0, len(options) - 1)] = correct
         random.shuffle(options)
         return QuestionModel(
-            id=generate_id("math"),
+            id=generate_id("math", question),
             mode=GameMode.MATH,
             difficulty=difficulty,
             topic=topic,

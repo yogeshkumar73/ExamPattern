@@ -3,7 +3,8 @@ Match Repository — MongoDB CRUD for matches collection.
 """
 
 from typing import Optional
-from motor.motor_asyncio import AsyncIOMotorDatabase
+# pyrefly: ignore [missing-import]
+from motor.motor_asyncio import AsyncIOMotorDatabase  # type: ignore
 
 from models.match import MatchModel, MatchStatus
 from utils.logger import get_logger

@@ -1,20 +1,56 @@
-"use client"
+"use client";
+
+import Link from "next/link";
+import { getSession } from "next-auth/react";
+
+import React, {
+  useState,
+  useEffect,
+  useCallback,
+  useMemo,
+} from "react";
 
 import {
-  Menubar, MenubarContent, MenubarItem, MenubarMenu, MenubarSeparator, MenubarTrigger
-} from "@/components/ui/menubar"
+  Menubar,
+  MenubarContent,
+  MenubarItem,
+  MenubarMenu,
+  MenubarSeparator,
+  MenubarTrigger,
+} from "@/components/ui/menubar";
+
 import {
-  Brain, Settings, HelpCircle, User, LogOut, ChevronLeft, ChevronRight,
-  ShieldCheck, Globe, Scale, MessageSquare, Sparkles, Swords, Mail, Smartphone, UserPlus
-} from "lucide-react"
-import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
+  Brain,
+  Settings,
+  HelpCircle,
+  User,
+  LogOut,
+  ChevronLeft,
+  ChevronRight,
+  ShieldCheck,
+  Globe,
+  Scale,
+  MessageSquare,
+  Sparkles,
+  Swords,
+  Mail,
+  Smartphone,
+  UserPlus,
+} from "lucide-react";
+
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+
 import {
-  Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle
-} from "@/components/ui/dialog"
-import { useNav, type Step } from "@/hooks/use-nav"
-import Link from "next/link"
-import { useState, useEffect, useCallback } from "react"
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+
+import { useNav, type Step } from "@/hooks/use-nav";
 
 type SessionUser = {
   name?: string
@@ -34,107 +70,267 @@ export function Header() {
   const [isAdminDialogOpen, setAdminDialogOpen] = useState(false)
   const [adminPasswordInput, setAdminPasswordInput] = useState("")
   const [adminAuthMessage, setAdminAuthMessage] = useState("")
-  const [adminAuthLoading, setAdminAuthLoading] = useState(false)
+  const [adminAuthLoading, setAdminAuthLoading] = useState(true);
 
-  // Sync session from localStorage and listen to storage changes
-  useEffect(() => {
-    function syncSession() {
-      const storedSession = localStorage.getItem("aura_session")
-      if (storedSession) {
-        try {
-          const parsed = JSON.parse(storedSession)
-          setSession(parsed)
-          if (parsed?.user?.role === "admin") {
-            setAdmin(true)
-          }
-        } catch {
-          setSession(null)
+useEffect(() => {
+  let mounted = true;
+
+  const loadSession = async () => {
+    try {
+      setAdminAuthLoading(true);
+
+      const res = await fetch("/api/auth/session", {
+        method: "GET",
+        credentials: "include",
+        cache: "no-store",
+      });
+
+      if (!res.ok) {
+        if (mounted) {
+          setSession(null);
+          setAdmin(false);
         }
-      } else {
-        setSession(null)
+        return;
+      }
+
+      const text = await res.text();
+
+      // Prevent "Unexpected end of JSON input"
+      if (!text.trim()) {
+        if (mounted) {
+          setSession(null);
+          setAdmin(false);
+        }
+        return;
+      }
+
+      const data = JSON.parse(text);
+
+      if (!mounted) return;
+
+      const session = data?.session ?? null;
+
+      setSession(session);
+      setAdmin(session?.user?.role === "admin");
+    } catch (error) {
+      console.error("Failed to load session:", error);
+
+      if (mounted) {
+        setSession(null);
+        setAdmin(false);
+      }
+    } finally {
+      if (mounted) {
+        setAdminAuthLoading(false);
       }
     }
-    syncSession()
-    window.addEventListener("storage", syncSession)
-    return () => window.removeEventListener("storage", syncSession)
-  }, [setAdmin])
+  };
+
+  loadSession();
+
+  const handleStorage = (event: StorageEvent) => {
+    if (
+      event.key === "session" ||
+      event.key === "auth" ||
+      event.key === "next-auth.session-token"
+    ) {
+      loadSession();
+    }
+  };
+
+  window.addEventListener("storage", handleStorage);
+
+  return () => {
+    mounted = false;
+    window.removeEventListener("storage", handleStorage);
+  };
+}, []);
 
   // Secure admin check simulation - Replace with real secure backend call
-  const verifyAdminPassword = useCallback(async (password: string): Promise<boolean> => {
-    // WARNING: This is placeholder.
-    // Do NOT use client side password validation in production.
-    // Replace this with an API call to your backend for safe validation.
-    return new Promise(resolve => {
-      setTimeout(() => {
-        resolve(password === "b6001d1fe29d165a0") // Example only
-      }, 300)
-    })
-  }, [])
+ const verifyAdminPassword = useCallback(
+  async (password: string): Promise<boolean> => {
+    const controller = new AbortController();
+    const timeout = window.setTimeout(() => {
+      controller.abort();
+    }, 10_000);
 
-  const handleAdminUnlock = useCallback(async () => {
-    if (!adminPasswordInput.trim()) {
-      setAdminAuthMessage("Please enter the password.")
-      return
-    }
-    setAdminAuthLoading(true)
-    setAdminAuthMessage("Verifying...")
-    const isValid = await verifyAdminPassword(adminPasswordInput.trim())
-    if (isValid) {
-      setAdmin(true)
-      setAdminAuthMessage("Successfully unlocked!")
-      setTimeout(() => {
-        setAdminDialogOpen(false)
-        setAdminPasswordInput("")
-        setAdminAuthMessage("")
-        setAdminAuthLoading(false)
-        setStep("admin")
-      }, 600)
-    } else {
-      setAdminAuthMessage("Invalid password. Try again.")
-      setAdminPasswordInput("")
-      setAdminAuthLoading(false)
-    }
-  }, [adminPasswordInput, setAdmin, setStep, verifyAdminPassword])
-
-  const handleAdminPasswordKeyDown = useCallback(
-    (e: React.KeyboardEvent<HTMLInputElement>) => {
-      if (e.key === "Enter" && !adminAuthLoading) {
-        handleAdminUnlock()
+    try {
+      if (typeof password !== "string" || password.length === 0) {
+        console.error("Admin password is required.");
+        return false;
       }
-    },
-    [adminAuthLoading, handleAdminUnlock]
-  )
 
-  const handleSignOut = useCallback(() => {
-    localStorage.removeItem("aura_session")
-    setSession(null)
-    setRegistered(false)
-    setStep("onboarding")
-    window.location.reload()
-  }, [setRegistered, setStep])
+      const response = await fetch("/api/admin/login", {
+        method: "POST",
+        credentials: "include",
+        cache: "no-store",
+        signal: controller.signal,
+        headers: {
+          "Content-Type": "application/json",
+          Accept: "application/json",
+        },
+        body: JSON.stringify({
+          password,
+        }),
+      });
+
+      if (!response.ok) {
+        let message = `Request failed with status ${response.status}`;
+
+        try {
+          const errorData = await response.json();
+
+          if (
+            errorData &&
+            typeof errorData.message === "string"
+          ) {
+            message = errorData.message;
+          }
+        } catch {
+          // Response was not valid JSON.
+        }
+
+        console.error("Admin login failed:", message);
+        return false;
+      }
+
+      try {
+        const data = await response.json();
+
+        return data?.success === true;
+      } catch {
+        console.error("Admin login returned invalid JSON.");
+        return false;
+      }
+    } catch (error) {
+      if (
+        error instanceof DOMException &&
+        error.name === "AbortError"
+      ) {
+        console.error("Admin verification timed out.");
+      } else {
+        console.error("Admin verification failed:", error);
+      }
+
+      return false;
+    } finally {
+      window.clearTimeout(timeout);
+    }
+  },
+  []
+);
+
+ const handleAdminUnlock = useCallback(async () => {
+  if (adminAuthLoading) return;
+
+  const password = adminPasswordInput.trim();
+
+  if (!password) {
+    setAdminAuthMessage("Please enter the password.");
+    return;
+  }
+
+  setAdminAuthLoading(true);
+  setAdminAuthMessage("Verifying...");
+
+  try {
+    const isValid = await verifyAdminPassword(password);
+
+    if (!isValid) {
+      setAdmin(false);
+      setAdminPasswordInput("");
+      setAdminAuthMessage("Invalid password.");
+      return;
+    }
+
+    setAdmin(true);
+    setAdminAuthMessage("Successfully unlocked.");
+
+    setTimeout(() => {
+      setAdminDialogOpen(false);
+      setAdminPasswordInput("");
+      setAdminAuthMessage("");
+      setStep("admin");
+    }, 500);
+  } catch (error) {
+    console.error(error);
+
+    setAdmin(false);
+    setAdminAuthMessage("Unable to verify admin credentials.");
+  } finally {
+    setAdminAuthLoading(false);
+  }
+}, [
+  adminAuthLoading,
+  adminPasswordInput,
+  verifyAdminPassword,
+  setAdmin,
+  setStep,
+]);
+  const handleAdminPasswordKeyDown = useCallback(
+  (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key !== "Enter") return;
+
+    e.preventDefault();
+
+    if (!adminAuthLoading) {
+      handleAdminUnlock();
+    }
+  },
+  [adminAuthLoading, handleAdminUnlock]
+);
+ const handleSignOut = useCallback(async () => {
+  try {
+   await signOut({ redirect: true });
+  } catch (error) {
+    console.error(error);
+  }
+
+  localStorage.removeItem("aura_session");
+
+  setSession(null);
+  setAdmin(false);
+  setRegistered(false);
+  setStep("onboarding");
+}, [setRegistered, setStep]);
 
   // Manage steps for navigation controls
-  const steps: Step[] = isRegistered ? ["upload", "analyze", "predict"] : ["onboarding"]
-  const currentIndex = steps.indexOf(currentStep)
+const steps = useMemo<Step[]>(
+  () =>
+    isRegistered
+      ? ["upload", "analyze", "predict"]
+      : ["onboarding"],
+  [isRegistered]
+);
+
+const currentIndex = useMemo(
+  () => steps.indexOf(currentStep),
+  [steps, currentStep]
+);
 
   const handlePrev = useCallback(() => {
-    if (currentIndex > 0) {
-      setStep(steps[currentIndex - 1])
-    }
-  }, [currentIndex, setStep, steps])
+  if (currentIndex <= 0) return;
+
+  setStep(steps[currentIndex - 1]);
+}, [currentIndex, steps, setStep]);
 
   const handleNext = useCallback(() => {
-    if (currentIndex < steps.length - 1) {
-      setStep(steps[currentIndex + 1])
-    }
-  }, [currentIndex, setStep, steps])
+  if (currentIndex >= steps.length - 1) return;
 
-  const createUserId = useCallback(() => {
-    const id = "AURA-" + Math.random().toString(36).slice(2, 11).toUpperCase()
-    setUserId(id)
-    // Ideally, replace alert with a nicer UI feedback like toast/snackbar
-    alert(`User ID Created: ${id}`)
-  }, [])
+  setStep(steps[currentIndex + 1]);
+}, [currentIndex, steps, setStep]);
+
+ const createUserId = useCallback(() => {
+  const random = crypto.randomUUID().replace(/-/g, "");
+
+  const id = `AURA-${random.slice(0, 10).toUpperCase()}`;
+
+  setUserId(id);
+
+  console.info("Generated User ID:", id);
+
+  // Replace with a toast/snackbar in your UI.
+}, []);
 
   return (
     <header className="sticky top-0 z-50 border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">

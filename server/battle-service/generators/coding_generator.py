@@ -96,10 +96,15 @@ class CodingGenerator(BaseGenerator):
         questions: list[QuestionModel] = []
         idx = 0
 
-        while len(questions) < count and idx < len(pool) * 4:
+        # Run up to len(pool) * 10 times to attempt to find enough non-excluded questions
+        max_attempts = len(pool) * 10
+        attempts = 0
+
+        while len(questions) < count and attempts < max_attempts and pool:
             entry = pool[idx % len(pool)]
             idx += 1
-            qid = generate_id("code")
+            attempts += 1
+            qid = generate_id("code", entry["q"])
             if qid in exclude:
                 continue
 

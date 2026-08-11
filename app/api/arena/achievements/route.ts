@@ -52,33 +52,82 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
-  await dbConnect();
-  const { userId } = await req.json();
-  if (!userId) return NextResponse.json({ error: 'userId required' }, { status: 400 });
+    await dbConnect();
 
-  try {
-    const user = await User.findById(userId);
-    if (!user) return NextResponse.json({ error: 'User not found' }, { status: 404 });
+    try {
+        const body = await req.json();
 
-    const userAchievementIds = (user.achievements || []).map((a: any) => a.id);
-    const newlyUnlocked: any[] = [];
+        if (!body?.userId) {
+            return NextResponse.json(
+                { error: "userId required" },
+                { status: 400 }
+            );
+        }
 
-    for (const ach of ACHIEVEMENTS_CATALOG) {
-      if (!userAchievementIds.includes(ach.id) && ach.condition(user)) {
-        user.achievements.push({
-          id: ach.id, name: ach.name, description: ach.description,
-          icon: ach.icon, unlockedAt: new Date(), xpReward: ach.xpReward,
+        const user = await User.findById(body.userId);
+
+        if (!user) {
+            return NextResponse.json(
+                { error: "User not found" },
+                { status: 404 }
+            );
+        }
+
+        user.achievements ??= [];
+        user.badges ??= [];
+
+        const userAchievementIds = new Set(
+            user.achievements.map((a: any) => a.id)
+        );
+
+        const newlyUnlocked: any[] = [];
+
+        for (const ach of ACHIEVEMENTS_CATALOG) {
+            if (!userAchievementIds.has(ach.id) && ach.condition(user)) {
+                user.achievements.push({
+                    id: ach.id,
+                    name: ach.name,
+                    description: ach.description,
+                    icon: ach.icon,
+                    unlockedAt: new Date(),
+                    xpReward: ach.xpReward,
+                });
+
+                user.xp = (user.xp ?? 0) + ach.xpReward;
+                user.coins = (user.coins ?? 0) + ach.coinsReward;
+
+                if (!user.badges.includes(ach.icon)) {
+                    user.badges.push(ach.icon);
+                }
+
+                newlyUnlocked.push(ach);
+            }
+        }
+
+        if (newlyUnlocked.length > 0) {
+            await user.save();
+        }
+
+        return NextResponse.json({
+            success: true,
+            newlyUnlocked,
+            total: user.achievements.length,
         });
-        user.xp = (user.xp || 0) + ach.xpReward;
-        user.coins = (user.coins || 0) + ach.coinsReward;
-        user.badges.push(ach.icon);
-        newlyUnlocked.push(ach);
-      }
+
+    } catch (err) {
+    console.error("Achievement POST Error:", err);
+
+    if (err instanceof Error) {
+        console.error(err.stack);
     }
 
-    if (newlyUnlocked.length > 0) await user.save();
-    return NextResponse.json({ newlyUnlocked, total: user.achievements.length });
-  } catch (err: any) {
-    return NextResponse.json({ error: err.message }, { status: 500 });
-  }
+    return NextResponse.json(
+        {
+            success: false,
+            error: err instanceof Error ? err.message : "Unknown error",
+        },
+        { status: 500 }
+    );
 }
+}
+

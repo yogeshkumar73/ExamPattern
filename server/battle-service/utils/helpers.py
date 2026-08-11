@@ -9,10 +9,26 @@ from datetime import datetime, timezone
 from typing import Any
 
 
-def generate_id(prefix: str = "q") -> str:
-    """Generate a unique ID with prefix. Example: 'q-a1b2c3d4'."""
+import hashlib
+from config import settings
+
+
+def generate_id(prefix: str = "q", question_text: str = "") -> str:
+    """Generate a unique ID with prefix. If question_text is provided, uses its MD5 hash."""
+    if question_text:
+        hash_str = hashlib.md5(question_text.strip().encode("utf-8")).hexdigest()[:12]
+        return f"{prefix}-{hash_str}"
     short = uuid.uuid4().hex[:12]
     return f"{prefix}-{short}"
+
+
+def get_difficulty_for_level(level: int) -> str:
+    """Determine difficulty tier based on user level using config mapping."""
+    mapping = settings.LEVEL_DIFFICULTY_MAPPING
+    for diff, range_vals in mapping.items():
+        if len(range_vals) == 2 and range_vals[0] <= level <= range_vals[1]:
+            return diff
+    return "beginner"
 
 
 def generate_room_id() -> str:

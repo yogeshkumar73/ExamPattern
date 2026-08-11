@@ -64,6 +64,9 @@ class AIService:
         difficulty: str,
         count: int = 10,
         topic: Optional[str] = None,
+        user_level: Optional[int] = None,
+        previously_used_ids: Optional[list[str]] = None,
+        previous_generated_questions: Optional[list[str]] = None,
     ) -> list[QuestionModel]:
         """
         Generate questions via AI. Returns [] on any failure or if unavailable.
@@ -78,7 +81,9 @@ class AIService:
             logger.info("Prediction mode blocked from AI — using PredictionGenerator.")
             return []
 
-        prompt = self._build_prompt(mode, difficulty, count, topic)
+        prompt = self._build_prompt(
+            mode, difficulty, count, topic, user_level, previously_used_ids, previous_generated_questions
+        )
 
         try:
             async with httpx.AsyncClient(timeout=20.0) as client:
@@ -121,11 +126,31 @@ class AIService:
             f"correct_answer, explanation, hint, topic, tags (array)."
         )
 
-    def _build_prompt(self, mode: str, difficulty: str, count: int, topic: Optional[str]) -> str:
+    def _build_prompt(
+        self,
+        mode: str,
+        difficulty: str,
+        count: int,
+        topic: Optional[str],
+        user_level: Optional[int] = None,
+        previously_used_ids: Optional[list[str]] = None,
+        previous_generated_questions: Optional[list[str]] = None,
+    ) -> str:
         topic_str = f" about {topic}" if topic else ""
+        level_str = f" for a user at Level {user_level}" if user_level else ""
+        
+        avoid_str = ""
+        if previously_used_ids or previous_generated_questions:
+            avoid_items = []
+            if previously_used_ids:
+                avoid_items.append(f"previously used question IDs: {', '.join(previously_used_ids)}")
+            if previous_generated_questions:
+                avoid_items.append(f"previously generated question content: {'; '.join(previous_generated_questions)}")
+            avoid_str = " CRITICAL: Avoid repeating or generating questions similar to: " + " and ".join(avoid_items) + "."
+
         return (
-            f"Generate {count} {difficulty} level {mode} questions{topic_str}. "
-            f"Return as JSON array only."
+            f"Generate {count} {difficulty} level {mode} questions{topic_str}{level_str}. "
+            f"Return as JSON array only.{avoid_str}"
         )
 
     def _parse_response(

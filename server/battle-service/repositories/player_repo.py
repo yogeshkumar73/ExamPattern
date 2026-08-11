@@ -3,7 +3,7 @@ Player Stats Repository — MongoDB CRUD for player_stats collection.
 """
 
 from typing import Optional
-from motor.motor_asyncio import AsyncIOMotorDatabase
+from motor.motor_asyncio import AsyncIOMotorDatabase  # pyrefly: ignore[missing-import]
 
 from models.player import PlayerStats
 from utils.logger import get_logger

@@ -6,7 +6,7 @@ deduplication via $nin, and batch inserts.
 """
 
 from typing import Optional
-from motor.motor_asyncio import AsyncIOMotorDatabase
+from motor.motor_asyncio import AsyncIOMotorDatabase  # pyrefly: ignore[missing-import]
 
 from models.question import QuestionModel
 from utils.logger import get_logger

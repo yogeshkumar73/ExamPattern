@@ -1,181 +1,184 @@
-/**
- * OpenAI Integration Service for Dynamic Question Generation & AI Coach
- * Supports: Question generation, voice synthesis, topic generation, AI coaching
- */
 
-import OpenAI from 'openai';
+import { GoogleGenAI } from "@google/genai";
 
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
+const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
+
+const GEMINI_MODEL =
+  process.env.GEMINI_MODEL || "gemini-2.5-flash";
+
+const ai = new GoogleGenAI({
+  apiKey: GEMINI_API_KEY!,
 });
 
-interface QuestionGenerationRequest {
-  mode: 'coding' | 'puzzle' | 'math' | 'gk' | 'prediction' | 'mixed';
-  difficulty: string;
-  topic?: string;
-  count?: number;
-}
-
-interface GeneratedQuestion {
-  id: string;
-  title: string;
-  description: string;
-  mode: string;
-  difficulty: string;
-  options?: string[];
-  correctAnswer?: string | number;
-  explanation?: string;
-  hints?: string[];
-  timeLimit?: number;
-  points?: number;
-}
-
-interface AICoachAdvice {
-  tip: string;
-  context: string;
-  difficulty: string;
-  actionable: boolean;
-}
-
-/**
- * Generate topics based on game mode and difficulty
- */
 export async function generateTopics(
-  mode: 'coding' | 'puzzle' | 'math' | 'gk' | 'prediction' | 'mixed',
+  mode: QuestionGenerationRequest["mode"],
   difficulty: string,
-  count: number = 5
+  count = 5
 ): Promise<string[]> {
-  if (!process.env.OPENAI_API_KEY) {
+  if (!GEMINI_API_KEY) {
     return getDefaultTopics(mode, difficulty);
   }
+
+  const topicCount = Math.min(Math.max(count, 1), 20);
+
+  const modeDescriptions: Record<QuestionGenerationRequest["mode"], string> = {
+    coding: "programming, algorithms and data structures",
+    puzzle: "logical reasoning and problem solving",
+    math: "mathematics including algebra, geometry and calculus",
+    gk: "general knowledge including science, history, geography and current affairs",
+    prediction: "sequence prediction and pattern recognition",
+    mixed: "a balanced combination of all categories",
+  };
 
   try {
-    const modeDescriptions: Record<string, string> = {
-      coding: 'programming and algorithms',
-      puzzle: 'logic puzzles and problem solving',
-      math: 'mathematics including algebra, geometry, and calculus',
-      gk: 'general knowledge across science, history, geography, culture',
-      prediction: 'sequence prediction and pattern recognition',
-      mixed: 'random mix of all categories',
-    };
+    const response = await ai.models.generateContent({
+      model: GEMINI_MODEL,
+      contents: `
+You are an expert educational content creator.
 
-    const response = await openai.chat.completions.create({
-      model: 'gpt-3.5-turbo',
-      messages: [
-        {
-          role: 'system',
-          content: `You are an expert educational content creator. Generate ${count} diverse and engaging topics for ${modeDescriptions[mode]}.
-The difficulty level is ${difficulty}. 
-Return ONLY a JSON array of topics (strings), nothing else.
-Format: ["topic1", "topic2", ...]`,
-        },
-        {
-          role: 'user',
-          content: `Generate ${count} ${difficulty} level topics for ${mode} mode learning.`,
-        },
-      ],
-      temperature: 0.8,
-      max_tokens: 300,
+Generate exactly ${topicCount} unique learning topics.
+
+Category:
+${modeDescriptions[mode]}
+
+Difficulty:
+${difficulty}
+
+Rules:
+- Return ONLY valid JSON.
+- No Markdown.
+- No explanation.
+- No code block.
+- Topics must be unique.
+
+Response Format:
+
+[
+  "Topic 1",
+  "Topic 2",
+  "Topic 3"
+]
+`,
+      config: {
+        temperature: 0.8,
+        responseMimeType: "application/json",
+      },
     });
 
-    const content = response.choices[0]?.message?.content || '[]';
-    const jsonMatch = content.match(/\[[\s\S]*\]/);
-    const topics = jsonMatch ? JSON.parse(jsonMatch[0]) : [];
+    const content = response.text?.trim();
 
-    return Array.isArray(topics) ? topics : getDefaultTopics(mode, difficulty);
+    if (!content) {
+      return getDefaultTopics(mode, difficulty);
+    }
+
+    const topics = JSON.parse(content);
+
+    if (
+      Array.isArray(topics) &&
+      topics.every((topic) => typeof topic === "string")
+    ) {
+      return topics.slice(0, topicCount);
+    }
+
+    return getDefaultTopics(mode, difficulty);
   } catch (error) {
-    console.error('Failed to generate topics:', error);
+    console.error("generateTopics:", error);
     return getDefaultTopics(mode, difficulty);
   }
 }
-
 /**
  * Generate dynamic questions based on mode, difficulty, and optional topic
  */
-export async function generateDynamicQuestions(
-  request: QuestionGenerationRequest
-): Promise<GeneratedQuestion[]> {
-  const { mode, difficulty, topic, count = 5 } = request;
-  if (!process.env.OPENAI_API_KEY) {
-    return getDefaultQuestions(mode, difficulty);
-  }
+const questionCount = Math.min(Math.max(count ?? 5, 1), 20);
 
-  try {
-
-    const systemPrompts: Record<string, string> = {
-      coding: `You are a coding instructor. Generate ${count} ${difficulty} level coding questions${topic ? ` about ${topic}` : ''}. 
-Each question should include: title, description, hints, explanation, time limit in seconds, and points (50-500).
-Format as JSON array with objects: {id, title, description, options (array or null), correctAnswer, explanation, hints (array), timeLimit, points}.`,
-
-      puzzle: `You are a puzzle master. Generate ${count} ${difficulty} level logic puzzles${topic ? ` about ${topic}` : ''}.
-Each puzzle should include: title, description, 4 options, correct answer, explanation, hints.
-Format as JSON array.`,
-
-      math: `You are a mathematics tutor. Generate ${count} ${difficulty} level math problems${topic ? ` about ${topic}` : ''}.
-Each problem should include: title, description, 4 multiple choice options, correct answer, explanation, step-by-step hints.
-Format as JSON array.`,
-
-      gk: `You are a general knowledge expert. Generate ${count} ${difficulty} level GK questions${topic ? ` about ${topic}` : ''}.
-Each question should include: title, description, 4 options, correct answer, explanation with facts.
-Format as JSON array.`,
-
-      prediction: `You are a pattern recognition expert. Generate ${count} ${difficulty} level sequence prediction challenges${topic ? ` about ${topic}` : ''}.
-Each challenge should include: title, description, pattern (show first N terms), options (possible next values), correct answer, explanation.
-Format as JSON array.`,
-
-      mixed: `You are a versatile educator. Generate ${count} ${difficulty} level mixed mode questions from various categories.
-Vary the question types and include all fields as per other modes.
-Format as JSON array.`,
-    };
-
-    const response = await openai.chat.completions.create({
-      model: 'gpt-3.5-turbo',
-      messages: [
-        {
-          role: 'system',
-          content: systemPrompts[mode] || systemPrompts.mixed,
-        },
-        {
-          role: 'user',
-          content: `Generate ${count} ${difficulty} level ${mode} questions${topic ? ` about: ${topic}` : ''}.
-Return ONLY valid JSON array, no other text.`,
-        },
-      ],
-      temperature: 0.7,
-      max_tokens: 2000,
-    });
-
-    const content = response.choices[0]?.message?.content || '[]';
-    const jsonMatch = content.match(/\[[\s\S]*\]/);
-    const questions = jsonMatch ? JSON.parse(jsonMatch[0]) : [];
-
-    // Validate and sanitize questions
-    if (Array.isArray(questions)) {
-      return questions
-        .filter((q: any) => q.title && q.description)
-        .map((q: any, idx: number) => ({
-          id: `q-${Date.now()}-${idx}`,
-          title: q.title,
-          description: q.description,
-          mode,
-          difficulty,
-          options: q.options || [],
-          correctAnswer: q.correctAnswer ?? 0,
-          explanation: q.explanation || '',
-          hints: q.hints || [],
-          timeLimit: q.timeLimit || 60,
-          points: q.points || 100,
-        }))
-        .slice(0, count);
-    }
-
-    return getDefaultQuestions(mode, difficulty);
-  } catch (error) {
-    console.error('Failed to generate dynamic questions:', error);
-    return getDefaultQuestions(mode, difficulty);
-  }
+if (!GEMINI_API_KEY) {
+  return getDefaultQuestions(mode, difficulty);
 }
 
+try {
+  const prompt = systemPrompts[mode] ?? systemPrompts.mixed;
+  const systemPrompts: Record<QuestionGenerationRequest["mode"], string> = {
+  coding: "Generate coding interview questions.",
+  puzzle: "Generate logical reasoning puzzles.",
+  math: "Generate mathematics problems.",
+  gk: "Generate general knowledge questions.",
+  prediction: "Generate sequence and pattern prediction questions.",
+  mixed: "Generate a balanced mix of all question types.",
+};
+
+  const response = await ai.models.generateContent({
+    model: GEMINI_MODEL,
+    contents: `
+${prompt}
+
+Topic:
+${topic || "General"}
+
+Generate exactly ${questionCount} questions.
+
+Rules:
+- Return ONLY valid JSON.
+- No Markdown.
+- No explanation outside JSON.
+- Response must be a JSON array.
+
+Expected Schema:
+
+[
+  {
+    "title":"Question Title",
+    "description":"Question description",
+    "options":["A","B","C","D"],
+    "correctAnswer":0,
+    "explanation":"Explanation",
+    "hints":["Hint 1","Hint 2"],
+    "timeLimit":60,
+    "points":100
+  }
+]
+`,
+    config: {
+      temperature: 0.7,
+      responseMimeType: "application/json",
+    },
+  });
+
+  const content = response.text?.trim();
+
+  if (!content) {
+    return getDefaultQuestions(mode, difficulty);
+  }
+
+  const parsed = JSON.parse(content);
+
+  if (!Array.isArray(parsed)) {
+    return getDefaultQuestions(mode, difficulty);
+  }
+
+  return parsed
+    .filter(
+      (q: any) =>
+        typeof q.title === "string" &&
+        typeof q.description === "string"
+    )
+    .map((q: any): GeneratedQuestion => ({
+      id: crypto.randomUUID(),
+      title: q.title.trim(),
+      description: q.description.trim(),
+      mode,
+      difficulty,
+      options: Array.isArray(q.options) ? q.options : [],
+      correctAnswer: q.correctAnswer ?? null,
+      explanation: q.explanation ?? "",
+      hints: Array.isArray(q.hints) ? q.hints : [],
+      timeLimit: Number(q.timeLimit) || 60,
+      points: Number(q.points) || 100,
+    }))
+    .slice(0, questionCount);
+} catch (error) {
+  console.error("generateDynamicQuestions:", error);
+  return getDefaultQuestions(mode, difficulty);
+}
 /**
  * Generate AI Coach advice based on user performance and context
  */
@@ -188,125 +191,193 @@ export async function generateCoachAdvice(
     recentMistakes?: string[];
   }
 ): Promise<AICoachAdvice[]> {
-  if (!process.env.OPENAI_API_KEY) {
+  if (!GEMINI_API_KEY) {
     return getDefaultCoachAdvice();
   }
 
   try {
+    const totalQuestions = Math.max(userPerformance.totalQuestions, 1);
+
     const accuracy = Math.round(
-      (userPerformance.correctAnswers / userPerformance.totalQuestions) * 100
+      (userPerformance.correctAnswers / totalQuestions) * 100
     );
 
-    const response = await openai.chat.completions.create({
-      model: 'gpt-3.5-turbo',
-      messages: [
-        {
-          role: 'system',
-          content: `You are an encouraging and supportive AI learning coach. 
-Generate 3 actionable tips to help the user improve their performance.
-Consider their accuracy rate and category.
-Keep tips specific, encouraging, and practical.
-Return as JSON array with objects: {tip, context, difficulty, actionable: true}`,
-        },
-        {
-          role: 'user',
-          content: `User solved ${userPerformance.correctAnswers}/${userPerformance.totalQuestions} problems correctly (${accuracy}% accuracy) in ${userPerformance.category} at ${userPerformance.difficulty} difficulty.
-${userPerformance.recentMistakes ? `Recent mistakes: ${userPerformance.recentMistakes.join(', ')}` : ''}
-Give 3 specific, encouraging tips to help them improve.`,
-        },
-      ],
-      temperature: 0.6,
-      max_tokens: 500,
+    const response = await ai.models.generateContent({
+      model: GEMINI_MODEL,
+      contents: `
+You are an experienced AI learning coach.
+
+Student Performance
+
+Accuracy: ${accuracy}%
+
+Correct Answers: ${userPerformance.correctAnswers}
+
+Total Questions: ${totalQuestions}
+
+Category: ${userPerformance.category}
+
+Difficulty: ${userPerformance.difficulty}
+
+Recent Mistakes:
+${userPerformance.recentMistakes?.join(", ") || "None"}
+
+Provide EXACTLY 3 personalized learning recommendations.
+
+Rules:
+
+- Be encouraging.
+- Give actionable advice.
+- Focus on weak areas.
+- Keep each tip under 40 words.
+- Return ONLY JSON.
+
+Response format:
+
+[
+  {
+    "tip":"...",
+    "context":"...",
+    "difficulty":"${userPerformance.difficulty}",
+    "actionable":true
+  }
+]
+`,
+      config: {
+        temperature: 0.5,
+        responseMimeType: "application/json",
+      },
     });
 
-    const content = response.choices[0]?.message?.content || '[]';
-    const jsonMatch = content.match(/\[[\s\S]*\]/);
-    const advice = jsonMatch ? JSON.parse(jsonMatch[0]) : [];
+    const content = response.text?.trim();
 
-    return Array.isArray(advice) ? advice : getDefaultCoachAdvice();
+    if (!content) {
+      return getDefaultCoachAdvice();
+    }
+
+    const advice = JSON.parse(content);
+
+    if (!Array.isArray(advice)) {
+      return getDefaultCoachAdvice();
+    }
+
+    return advice
+      .filter(
+        (item: any) =>
+          typeof item.tip === "string" &&
+          typeof item.context === "string"
+      )
+      .slice(0, 3)
+      .map(
+        (item: any): AICoachAdvice => ({
+          tip: item.tip.trim(),
+          context: item.context.trim(),
+          difficulty:
+            item.difficulty || userPerformance.difficulty,
+          actionable: Boolean(item.actionable),
+        })
+      );
   } catch (error) {
-    console.error('Failed to generate coach advice:', error);
+    console.error("generateCoachAdvice:", error);
     return getDefaultCoachAdvice();
   }
 }
-
 /**
  * Generate voice-over narration for questions using TTS
  */
 export async function generateQuestionVoiceOver(
   question: GeneratedQuestion
 ): Promise<string> {
-  if (!process.env.OPENAI_API_KEY) {
-    console.warn('OpenAI API key not configured for voice generation');
-    return '';
-  }
-
   try {
-    const textToSpeak = `${question.title}. ${question.description}`;
+    const narration = [
+      question.title,
+      question.description,
+      question.explanation,
+    ]
+      .filter(Boolean)
+      .join(". ");
 
-    const response = await openai.audio.speech.create({
-      model: 'tts-1',
-      voice: 'nova',
-      input: textToSpeak,
-      speed: 1.0,
-    });
-
-    // Convert the response to a buffer and create a blob URL
-    const audioBuffer = await response.arrayBuffer();
-    const blob = new Blob([audioBuffer], { type: 'audio/mpeg' });
-    const audioUrl = URL.createObjectURL(blob);
-
-    return audioUrl;
+    return narration;
   } catch (error) {
-    console.error('Failed to generate voice over:', error);
-    return '';
+    console.error("generateQuestionVoiceOver:", error);
+    return "";
   }
 }
-
 /**
  * Generate personalized hints for a question based on user context
- */
-export async function generateHints(
+ */export async function generateHints(
   question: GeneratedQuestion,
   difficultyLevel: string,
-  userAttempts: number = 0
+  userAttempts = 0
 ): Promise<string[]> {
-  if (!process.env.OPENAI_API_KEY) {
-    return question.hints || [];
+  if (!GEMINI_API_KEY) {
+    return question.hints ?? [];
   }
 
   try {
-    const response = await openai.chat.completions.create({
-      model: 'gpt-3.5-turbo',
-      messages: [
-        {
-          role: 'system',
-          content: `You are a helpful tutor. Generate 3 progressive hints for this ${difficultyLevel} question.
-Hints should get progressively more revealing (hint 1 is vague, hint 3 is almost the answer).
-User has already attempted this ${userAttempts} times.
-Return as JSON array: ["hint1", "hint2", "hint3"]`,
-        },
-        {
-          role: 'user',
-          content: `Question: ${question.title}
-Description: ${question.description}
-Correct Answer: ${question.correctAnswer}
-User attempts: ${userAttempts}
-Generate 3 helpful hints.`,
-        },
-      ],
-      temperature: 0.5,
-      max_tokens: 300,
+    const response = await ai.models.generateContent({
+      model: GEMINI_MODEL,
+      contents: `
+You are an expert educational tutor.
+
+Question Title:
+${question.title}
+
+Question Description:
+${question.description}
+
+Difficulty:
+${difficultyLevel}
+
+Correct Answer:
+${question.correctAnswer ?? "Not provided"}
+
+User Attempts:
+${userAttempts}
+
+Generate EXACTLY 3 progressive hints.
+
+Rules:
+- Hint 1 should be subtle.
+- Hint 2 should guide the student.
+- Hint 3 should almost reveal the solution without directly giving the answer.
+- Never reveal the complete answer.
+- Keep each hint under 30 words.
+- Return ONLY valid JSON.
+
+Response format:
+
+[
+  "Hint 1",
+  "Hint 2",
+  "Hint 3"
+]
+`,
+      config: {
+        temperature: 0.5,
+        responseMimeType: "application/json",
+      },
     });
 
-    const content = response.choices[0]?.message?.content || '[]';
-    const jsonMatch = content.match(/\[[\s\S]*\]/);
-    const hints = jsonMatch ? JSON.parse(jsonMatch[0]) : [];
+    const content = response.text?.trim();
 
-    return Array.isArray(hints) ? hints : question.hints || [];
+    if (!content) {
+      return question.hints ?? [];
+    }
+
+    const hints = JSON.parse(content);
+
+    if (
+      Array.isArray(hints) &&
+      hints.every((hint) => typeof hint === "string")
+    ) {
+      return hints.slice(0, 3);
+    }
+
+    return question.hints ?? [];
   } catch (error) {
-    console.error('Failed to generate hints:', error);
-    return question.hints || [];
+    console.error("generateHints:", error);
+    return question.hints ?? [];
   }
 }
 
@@ -317,157 +388,405 @@ export async function generateExplanation(
   question: GeneratedQuestion,
   userAnswer: string | number
 ): Promise<string> {
-  if (!process.env.OPENAI_API_KEY) {
-    return question.explanation || 'No explanation available';
+  if (!GEMINI_API_KEY) {
+    return (
+      question.explanation ??
+      "Please review the correct answer and try again."
+    );
   }
 
   try {
-    const isCorrect = userAnswer === question.correctAnswer;
+    const isCorrect = String(userAnswer).trim() === String(question.correctAnswer).trim();
 
-    const response = await openai.chat.completions.create({
-      model: 'gpt-3.5-turbo',
-      messages: [
-        {
-          role: 'system',
-          content: `You are an educational tutor explaining quiz answers.
-Provide a clear, encouraging explanation of why the answer is correct or incorrect.
-Keep it concise and educational.`,
-        },
-        {
-          role: 'user',
-          content: `Question: ${question.title}
-User's answer: ${userAnswer}
-Correct answer: ${question.correctAnswer}
-Is correct: ${isCorrect}
-Provide a clear explanation.`,
-        },
-      ],
-      temperature: 0.5,
-      max_tokens: 200,
+    const response = await ai.models.generateContent({
+      model: GEMINI_MODEL,
+      contents: `
+You are an experienced educational tutor.
+
+Question:
+${question.title}
+
+Description:
+${question.description}
+
+User Answer:
+${userAnswer}
+
+Correct Answer:
+${question.correctAnswer}
+
+Result:
+${isCorrect ? "Correct" : "Incorrect"}
+
+Instructions:
+- Explain WHY the answer is correct or incorrect.
+- Be encouraging and educational.
+- If the answer is incorrect, explain the correct reasoning.
+- Keep the explanation under 150 words.
+- Do not repeat the question.
+- Return plain text only.
+`,
+      config: {
+        temperature: 0.4,
+      },
     });
 
-    return response.choices[0]?.message?.content || question.explanation || 'See the correct answer above.';
+    const explanation = response.text?.trim();
+
+    return (
+      explanation ||
+      question.explanation ||
+      "Please review the correct answer and try again."
+    );
   } catch (error) {
-    console.error('Failed to generate explanation:', error);
-    return question.explanation || 'Please review the correct answer.';
+    console.error("generateExplanation:", error);
+
+    return (
+      question.explanation ||
+      "Please review the correct answer and try again."
+    );
   }
 }
 
 // ===== FALLBACK FUNCTIONS =====
 
-function getDefaultTopics(mode: string, difficulty: string): string[] {
-  const topicsByMode: Record<string, Record<string, string[]>> = {
-    coding: {
-      beginner: ['Variables & Data Types', 'Loops', 'Functions', 'Arrays', 'Strings'],
-      intermediate: ['Recursion', 'Sorting', 'Searching', 'Hash Tables', 'Stacks & Queues'],
-      advanced: ['Dynamic Programming', 'Graphs', 'Trees', 'Greedy Algorithms', 'Backtracking'],
-    },
-    puzzle: {
-      beginner: ['Number Patterns', 'Logic Gates', 'Sequence Finding', 'Visual Puzzles', 'Riddles'],
-      intermediate: ['Logic Grids', 'Cryptarithmetic', 'Mathematical Puzzles', 'Complex Patterns', 'Code Breaking'],
-      advanced: ['Constraint Satisfaction', 'Graph Puzzles', 'Optimization', 'Game Theory', 'Advanced Cryptography'],
-    },
-    math: {
-      beginner: ['Basic Arithmetic', 'Fractions', 'Percentages', 'Basic Algebra', 'Geometry Basics'],
-      intermediate: ['Quadratic Equations', 'Trigonometry', 'Logarithms', 'Calculus Basics', 'Statistics'],
-      advanced: ['Advanced Calculus', 'Differential Equations', 'Linear Algebra', 'Complex Numbers', 'Probability'],
-    },
-    gk: {
-      beginner: ['World Capitals', 'Famous Scientists', 'Earth & Space', 'Human Body', 'Historical Events'],
-      intermediate: ['Political Systems', 'Ancient Civilizations', 'Modern Technology', 'Literature', 'Sports History'],
-      advanced: ['Geopolitics', 'Philosophy', 'Advanced Science', 'World Economics', 'Cultural Heritage'],
-    },
-    prediction: {
-      beginner: ['Number Sequences', 'Color Patterns', 'Shape Sequences', 'Simple Progressions', 'Basic Trends'],
-      intermediate: ['Fibonacci Variations', 'Complex Sequences', 'Dual Patterns', 'Fractional Sequences', 'Mixed Operations'],
-      advanced: ['Recursive Sequences', 'Matrix Patterns', 'Probability Sequences', 'Chaotic Patterns', 'Mathematical Series'],
-    },
+type QuestionMode =
+  | "coding"
+  | "puzzle"
+  | "math"
+  | "gk"
+  | "prediction"
+  | "mixed";
+
+type Difficulty =
+  | "beginner"
+  | "intermediate"
+  | "advanced";
+
+const DEFAULT_TOPICS: Readonly<Record<QuestionMode, Record<Difficulty, readonly string[]>>> = {
+  coding: {
+    beginner: [
+      "Variables & Data Types",
+      "Loops",
+      "Functions",
+      "Arrays",
+      "Strings",
+    ],
+    intermediate: [
+      "Recursion",
+      "Sorting Algorithms",
+      "Searching Algorithms",
+      "Hash Tables",
+      "Stacks & Queues",
+    ],
+    advanced: [
+      "Dynamic Programming",
+      "Graphs",
+      "Trees",
+      "Greedy Algorithms",
+      "Backtracking",
+    ],
+  },
+
+  puzzle: {
+    beginner: [
+      "Number Patterns",
+      "Logic Puzzles",
+      "Sequences",
+      "Visual Reasoning",
+      "Riddles",
+    ],
+    intermediate: [
+      "Logic Grids",
+      "Cryptarithmetic",
+      "Pattern Recognition",
+      "Code Breaking",
+      "Mathematical Puzzles",
+    ],
+    advanced: [
+      "Constraint Satisfaction",
+      "Graph Puzzles",
+      "Game Theory",
+      "Optimization",
+      "Advanced Cryptography",
+    ],
+  },
+
+  math: {
+    beginner: [
+      "Arithmetic",
+      "Fractions",
+      "Percentages",
+      "Basic Algebra",
+      "Geometry",
+    ],
+    intermediate: [
+      "Quadratic Equations",
+      "Trigonometry",
+      "Logarithms",
+      "Calculus",
+      "Statistics",
+    ],
+    advanced: [
+      "Advanced Calculus",
+      "Differential Equations",
+      "Linear Algebra",
+      "Complex Numbers",
+      "Probability Theory",
+    ],
+  },
+
+  gk: {
+    beginner: [
+      "World Capitals",
+      "Science",
+      "History",
+      "Geography",
+      "Human Body",
+    ],
+    intermediate: [
+      "Politics",
+      "Ancient Civilizations",
+      "Technology",
+      "Literature",
+      "Sports",
+    ],
+    advanced: [
+      "Geopolitics",
+      "Economics",
+      "Philosophy",
+      "Advanced Science",
+      "World Culture",
+    ],
+  },
+
+  prediction: {
+    beginner: [
+      "Number Sequences",
+      "Shape Patterns",
+      "Color Patterns",
+      "Simple Progressions",
+      "Trend Analysis",
+    ],
+    intermediate: [
+      "Fibonacci Variations",
+      "Mixed Sequences",
+      "Dual Patterns",
+      "Matrix Patterns",
+      "Fraction Series",
+    ],
+    advanced: [
+      "Recursive Sequences",
+      "Probability Patterns",
+      "Mathematical Series",
+      "Complex Matrices",
+      "Chaotic Sequences",
+    ],
+  },
+
+  mixed: {
+    beginner: [
+      "Programming Basics",
+      "Logic",
+      "Arithmetic",
+      "General Knowledge",
+      "Patterns",
+    ],
+    intermediate: [
+      "Algorithms",
+      "Reasoning",
+      "Statistics",
+      "Technology",
+      "Problem Solving",
+    ],
+    advanced: [
+      "AI & Algorithms",
+      "Graph Theory",
+      "Optimization",
+      "Advanced Mathematics",
+      "Research Problems",
+    ],
+  },
+} as const;
+
+const FALLBACK_TOPICS = [
+  "Practice",
+  "Revision",
+  "Problem Solving",
+  "Mock Test",
+  "Challenge",
+] as const;
+
+export function getDefaultTopics(
+  mode: QuestionMode,
+  difficulty: string
+): string[] {
+  const normalizedDifficulty = difficulty.toLowerCase() as Difficulty;
+
+  return (
+    DEFAULT_TOPICS[mode]?.[normalizedDifficulty] ??
+    DEFAULT_TOPICS.mixed.beginner ??
+    FALLBACK_TOPICS
+  ).slice();
+}
+type QuestionMode =
+  | "coding"
+  | "puzzle"
+  | "math"
+  | "gk"
+  | "prediction"
+  | "mixed";
+
+type Difficulty =
+  | "beginner"
+  | "intermediate"
+  | "advanced";
+
+export function getDefaultQuestions(
+  mode: QuestionMode,
+  difficulty: Difficulty,
+  count = 5
+): GeneratedQuestion[] {
+  const safeCount = Math.min(Math.max(count, 1), 20);
+
+  const modeDescriptions: Record<QuestionMode, string> = {
+    coding: "programming",
+    puzzle: "logical reasoning",
+    math: "mathematics",
+    gk: "general knowledge",
+    prediction: "pattern prediction",
+    mixed: "mixed skills",
   };
 
-  return topicsByMode[mode]?.[difficulty] || ['General', 'Practice', 'Challenge'];
-}
+  const difficultyPoints: Record<Difficulty, number> = {
+    beginner: 100,
+    intermediate: 200,
+    advanced: 300,
+  };
 
-function getDefaultQuestions(mode: string, difficulty: string): GeneratedQuestion[] {
-  return [
-    {
-      id: 'default-1',
-      title: `${difficulty.toUpperCase()} ${mode.toUpperCase()} Question 1`,
-      description: `This is a sample ${difficulty} level ${mode} question. Practice your skills!`,
-      mode,
-      difficulty,
-      options: ['Option A', 'Option B', 'Option C', 'Option D'],
-      correctAnswer: 0,
-      explanation: 'This is the correct explanation for this question.',
-      hints: ['Think about the main concept', 'Consider the pattern', 'Check your logic'],
-      timeLimit: 60,
-      points: 100,
-    },
-    {
-      id: 'default-2',
-      title: `${difficulty.toUpperCase()} ${mode.toUpperCase()} Question 2`,
-      description: `Another ${difficulty} level challenge to test your ${mode} skills.`,
-      mode,
-      difficulty,
-      options: ['Option A', 'Option B', 'Option C', 'Option D'],
-      correctAnswer: 2,
-      explanation: 'The correct approach involves understanding the core concept.',
-      hints: ['Start with basics', 'Build up complexity', 'Apply your knowledge'],
-      timeLimit: 60,
-      points: 100,
-    },
-  ];
+  const difficultyTime: Record<Difficulty, number> = {
+    beginner: 60,
+    intermediate: 90,
+    advanced: 120,
+  };
+
+  return Array.from({ length: safeCount }, (_, index): GeneratedQuestion => ({
+    id: crypto.randomUUID(),
+
+    title: `${difficulty.charAt(0).toUpperCase() + difficulty.slice(1)} ${
+      modeDescriptions[mode]
+    } Question ${index + 1}`,
+
+    description: `Practice your ${modeDescriptions[mode]} skills with this ${difficulty} level question.`,
+
+    mode,
+
+    difficulty,
+
+    options: [
+      "Option A",
+      "Option B",
+      "Option C",
+      "Option D",
+    ],
+
+    correctAnswer: 0,
+
+    explanation:
+      "Review the concepts carefully and compare each option before selecting the correct answer.",
+
+    hints: [
+      "Understand the problem first.",
+      "Break it into smaller steps.",
+      "Eliminate incorrect options logically.",
+    ],
+
+    timeLimit: difficultyTime[difficulty],
+
+    points: difficultyPoints[difficulty],
+  }));
 }
+type QuestionMode =
+  | "coding"
+  | "puzzle"
+  | "math"
+  | "gk"
+  | "prediction"
+  | "mixed";
+
+type Difficulty =
+  | "beginner"
+  | "intermediate"
+  | "advanced";
 
 function getDefaultCoachAdvice(): AICoachAdvice[] {
   return [
     {
-      tip: 'Practice consistently to build muscle memory for problem-solving.',
-      context: 'Practice Strategy',
-      difficulty: 'beginner',
+      tip: "Practice consistently instead of studying for long sessions occasionally.",
+      context: "Study Habit",
+      difficulty: "beginner",
       actionable: true,
     },
     {
-      tip: 'Review your mistakes and understand the underlying concepts.',
-      context: 'Learning Strategy',
-      difficulty: 'intermediate',
+      tip: "Review every incorrect answer and identify the concept you misunderstood.",
+      context: "Error Analysis",
+      difficulty: "intermediate",
       actionable: true,
     },
     {
-      tip: 'Challenge yourself with progressively harder problems.',
-      context: 'Growth Strategy',
-      difficulty: 'advanced',
+      tip: "Attempt timed mock tests and focus on weak topics before learning new ones.",
+      context: "Exam Preparation",
+      difficulty: "advanced",
       actionable: true,
     },
   ];
 }
 
-/**
- * Batch generate multiple types of content
- */
 export async function generateBatchContent(
-  mode: string,
-  difficulty: string,
-  topic?: string
+  mode: QuestionMode,
+  difficulty: Difficulty,
+  topic?: string,
+  performance?: {
+    correctAnswers: number;
+    totalQuestions: number;
+  }
 ): Promise<{
   topics: string[];
   questions: GeneratedQuestion[];
   coachAdvice: AICoachAdvice[];
 }> {
-  const [topics, questions, coachAdvice] = await Promise.all([
-    generateTopics(mode as any, difficulty, 5),
+  const results = await Promise.allSettled([
+    generateTopics(mode, difficulty, 5),
+
     generateDynamicQuestions({
-      mode: mode as any,
+      mode,
       difficulty,
       topic,
       count: 3,
     }),
+
     generateCoachAdvice({
-      correctAnswers: 7,
-      totalQuestions: 10,
+      correctAnswers: performance?.correctAnswers ?? 0,
+      totalQuestions: performance?.totalQuestions ?? 0,
       category: mode,
       difficulty,
     }),
   ]);
+
+  const topics =
+    results[0].status === "fulfilled"
+      ? results[0].value
+      : getDefaultTopics(mode, difficulty);
+
+  const questions =
+    results[1].status === "fulfilled"
+      ? results[1].value
+      : getDefaultQuestions(mode, difficulty, 3);
+
+  const coachAdvice =
+    results[2].status === "fulfilled"
+      ? results[2].value
+      : getDefaultCoachAdvice();
 
   return {
     topics,
