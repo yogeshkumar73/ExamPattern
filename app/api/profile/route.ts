@@ -113,20 +113,24 @@ export async function PUT(req: Request) {
           course: user.course || "",
           department: user.department || "",
           grade: user.grade || "",
-         status: user.status,
+          status: user.status || "Active",
           profileComplete: user.profileComplete || false,
           isLabApproved: user.isLabApproved || false,
-          status: user.status || "Active",
           points: user.points || 0,
-          rank: user.rank,
+          xp: user.xp || 0,
+          level: user.level || 1,
+          coins: user.coins || 0,
+          elo: user.elo || 1200,
+          wins: user.wins || 0,
+          losses: user.losses || 0,
+          totalBattles: user.totalBattles || 0,
+          accuracy: user.accuracy || 0,
+          currentStreak: user.currentStreak || 0,
+          bestStreak: user.bestStreak || 0,
+          arenaPoints: user.arenaPoints || 0,
+          rank: user.rank || "Bronze",
         },
       });
-      if (stream !== undefined && !VALID_STREAMS.includes(stream)) {
-    return NextResponse.json(
-        { message: "Invalid stream." },
-        { status: 400 }
-    );
-}
     } catch (dbErr) {
       console.warn("MongoDB unavailable, using mock DB:", dbErr);
     }

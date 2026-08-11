@@ -1,23 +1,18 @@
 import { NextResponse } from "next/server";
-import OpenAI from "openai";
+import { GoogleGenAI } from "@google/genai";
 
-function getOpenAI() {
-  const apiKey = process.env.OPENAI_API_KEY;
+const GEMINI_API_KEY = process.env.GEMINI_API_KEY || process.env.GOOGLE_GENERATIVE_AI_API_KEY;
+const GEMINI_MODEL = process.env.GEMINI_MODEL || "gemini-2.5-flash";
 
-  if (!apiKey) {
+function getGeminiAI() {
+  if (!GEMINI_API_KEY) {
     throw new Error(
-      "OPENAI_API_KEY environment variable is missing."
+      "GEMINI_API_KEY environment variable is missing."
     );
   }
 
-  return new OpenAI({
-    apiKey,
-    baseURL: "https://openrouter.ai/api/v1",
-    defaultHeaders: {
-      "HTTP-Referer":
-        process.env.APP_URL || "http://localhost:3000",
-      "X-Title": "Smart Lab Voice Interviewer",
-    },
+  return new GoogleGenAI({
+    apiKey: GEMINI_API_KEY,
   });
 }
 
@@ -44,7 +39,7 @@ export async function POST(req: Request) {
       );
     }
 
-    const openai = getOpenAI();
+    const ai = getGeminiAI();
 
     const systemPrompt = `
 You are an experienced technical interviewer.
@@ -66,12 +61,8 @@ Rules:
 - Keep responses conversational because they are spoken aloud.
 `;
 
-    const messages = [
-      {
-        role: "system",
-        content: systemPrompt,
-      },
-
+    // Map roles to Gemini roles ('user' or 'model')
+    const contents = [
       ...conversationHistory
         .filter(
           (m: any) =>
@@ -80,35 +71,32 @@ Rules:
             typeof m.content === "string"
         )
         .map((m: any) => ({
-          role: m.role,
-          content: m.content,
+          role: m.role === "assistant" ? "model" : "user",
+          parts: [{ text: m.content }],
         })),
-
       {
         role: "user",
-        content: transcript,
+        parts: [{ text: transcript }],
       },
     ];
 
-    const completion =
-      await openai.chat.completions.create({
-        model:
-          "nvidia/llama-3.1-nemotron-70b-instruct:free",
-
-        messages,
-
+    const response = await ai.models.generateContent({
+      model: GEMINI_MODEL,
+      contents,
+      config: {
+        systemInstruction: systemPrompt,
         temperature: 0.7,
+        maxOutputTokens: 180,
+      },
+    });
 
-        max_tokens: 180,
-      });
-
-    const response =
-      completion.choices?.[0]?.message?.content?.trim() ||
+    const reply =
+      response.text?.trim() ||
       "Thank you. Can you explain your reasoning in a little more detail?";
 
     return NextResponse.json({
       success: true,
-      response,
+      response: reply,
     });
   } catch (error: any) {
     console.error("Voice Interview Error:", error);

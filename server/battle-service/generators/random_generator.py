@@ -71,11 +71,21 @@ class RandomGenerator(BaseGenerator):
 
         max_attempts = max(count * self.MAX_RETRY_MULTIPLIER, 100)
         attempts = 0
+        
+        # Purely algorithmic generators that theoretically have infinite combos
+        algorithmic_generators = [
+            g for g in self._generators 
+            if isinstance(g, (MathGenerator, PredictionGenerator))
+        ]
 
         while len(questions) < count and attempts < max_attempts:
             attempts += 1
 
-            generator = random.choice(generators)
+            # Fallback to pure algorithmic generators if we are struggling to find unique ones
+            if attempts > (max_attempts // 2) and algorithmic_generators:
+                generator = random.choice(algorithmic_generators)
+            else:
+                generator = random.choice(generators)
 
             try:
                 batch = generator.generate(
@@ -96,6 +106,7 @@ class RandomGenerator(BaseGenerator):
             if question.id in used_ids:
                 continue
 
+            self.apply_difficulty_scaling(question, difficulty)
             used_ids.add(question.id)
             questions.append(question)
 

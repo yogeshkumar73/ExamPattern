@@ -84,8 +84,8 @@ class Settings(BaseSettings):
     # ── Server ────────────────────────────────────────────────
     HOST: str = Field(default="0.0.0.0")
     PORT: int = Field(default=8001)
-    DEBUG: bool = Field(default=True)
-    CORS_ORIGINS: str = Field(default="http://localhost:3000")
+    DEBUG: bool = Field(default=False)
+    CORS_ORIGINS: str = Field(default="http://localhost:3000,http://localhost:3001,https://exampattern.netlify.app")
 
     model_config = {
         "env_file": str(_ENV_PATH),

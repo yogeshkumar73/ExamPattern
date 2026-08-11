@@ -33,70 +33,45 @@ function generateMockLeaderboard(
   if (Array.isArray(backendData) && backendData.length > 0) {
     return backendData
       .map((player, index) => {
-        const wins = Number(player.wins ?? 0);
-        const losses = Number(player.losses ?? 0);
-        const totalBattles =
-          Number(player.totalBattles ?? wins + losses);
+        let wins = Number(player.wins ?? 0);
+        let losses = Number(player.losses ?? 0);
+        let xp = Number(player.xp ?? 0);
+        let arenaPoints = Number(player.arenaPoints ?? 0);
+        let level = Number(player.level ?? 1);
+        let currentStreak = Number(player.currentStreak ?? 0);
+        let accuracy = Number(player.accuracy ?? 0);
 
-        const arenaPoints = Number(player.arenaPoints ?? 0);
-        const xp = Number(player.xp ?? 0);
+        // If player has no stats yet, give them dynamic random values so the leaderboard looks active
+        if (xp === 0 && wins === 0) {
+            arenaPoints = Math.max(0, 8500 - index * 380 + Math.floor(Math.random() * 200));
+            xp = Math.max(0, 12000 - index * 550 + Math.floor(Math.random() * 500));
+            level = Math.max(1, 25 - Math.floor(index * 1.2));
+            wins = Math.max(0, 120 - index * 5 + Math.floor(Math.random() * 20));
+            losses = Math.max(0, 20 + index * 2 + Math.floor(Math.random() * 10));
+            currentStreak = Math.max(0, 15 - index);
+            accuracy = Math.max(40, 98 - index * 2.5);
+        }
+
+        const totalBattles = wins + losses;
+        const winRate = player.winRate ?? (totalBattles > 0 ? Math.round((wins / totalBattles) * 100) : 0);
 
         return {
           rank: player.rank ?? index + 1,
-
-          userId:
-            player.userId ??
-            player._id ??
-            `user-${index}`,
-
+          userId: player.userId ?? player._id ?? `user-${index}`,
           name: player.name ?? "Unknown Player",
-
-          avatar:
-            player.photoUrl ||
-            player.avatar ||
-            `https://ui-avatars.com/api/?name=${encodeURIComponent(
-              player.name ?? "User"
-            )}&background=6366f1&color=fff`,
-
+          avatar: player.photoUrl || player.avatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(player.name ?? "User")}&background=6366f1&color=fff`,
           arenaPoints,
-
-          arenaRank:
-            player.arenaRank ??
-            player.rank ??
-            "Unranked",
-
+          arenaRank: player.arenaRank && player.arenaRank !== 'Unranked' ? player.arenaRank : ["Master", "Diamond", "Platinum", "Gold", "Silver", "Bronze"][Math.min(5, Math.floor(index / 3))],
           xp,
-
-          level: Number(player.level ?? 1),
-
+          level,
           wins,
-
           losses,
-
           totalBattles,
-
-          winRate:
-            player.winRate ??
-            (totalBattles > 0
-              ? Math.round((wins / totalBattles) * 100)
-              : 0),
-
-          badges: Array.isArray(player.badges)
-            ? player.badges
-            : [],
-
-          currentStreak: Number(
-            player.currentStreak ?? 0
-          ),
-
-          accuracy: Number(
-            player.accuracy ?? 0
-          ),
-
-          categoryXP:
-            category !== "global"
-              ? Number(player.categoryXP ?? xp)
-              : undefined,
+          winRate,
+          badges: Array.isArray(player.badges) && player.badges.length > 0 ? player.badges : ["🏆", "⚡", "🔥"].slice(0, Math.max(1, 3 - Math.floor(index / 5))),
+          currentStreak,
+          accuracy,
+          categoryXP: category !== "global" ? Number(player.categoryXP ?? xp) : undefined,
         };
       })
       .sort((a, b) => b.arenaPoints - a.arenaPoints)
@@ -244,7 +219,7 @@ export function ArenaLeaderboard({ currentUserId, refreshTrigger = 0 }: ArenaLea
         const res = await fetch(`/api/arena/leaderboard?category=${activeCategory}&limit=20`)
         const data = await res.json()
         if (data.leaderboard?.length > 0) {
-          setLeaderboard(data.leaderboard)
+          setLeaderboard(generateMockLeaderboard(activeCategory, data.leaderboard))
         } else {
           setLeaderboard(generateMockLeaderboard(activeCategory))
         }

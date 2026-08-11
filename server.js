@@ -217,6 +217,17 @@ app.prepare().then(() => {
 // VOICE ROOM (WebRTC Signaling)
 // =======================
 
+// Helper to calculate voice room active user counts
+const getVoiceRoomCounts = () => {
+  const counts = {};
+  Object.keys(voiceRooms).forEach((rId) => {
+    if (voiceRooms[rId]) {
+      counts[rId] = Object.keys(voiceRooms[rId]).length;
+    }
+  });
+  return counts;
+};
+
 socket.on("join-voice-room", ({ roomId, userId }) => {
   if (!roomId || !userId) {
     return socket.emit("voice-error", {
@@ -279,6 +290,9 @@ socket.on("join-voice-room", ({ roomId, userId }) => {
     io.to(user.socketId).emit("create-offer", socket.id);
   });
 
+  // Broadcast updated channel counts
+  io.emit("voice-room-counts", getVoiceRoomCounts());
+
   console.log(
     `[Voice] ${userId} (${socket.id}) joined ${roomId} | Users: ${Object.keys(
       voiceRooms[roomId]
@@ -292,7 +306,6 @@ socket.on("join-voice-room", ({ roomId, userId }) => {
 
 socket.on("offer", ({ targetId, offer }) => {
   if (!targetId || !offer) return;
-
   io.to(targetId).emit("offer", socket.id, offer);
 });
 
@@ -302,7 +315,6 @@ socket.on("offer", ({ targetId, offer }) => {
 
 socket.on("answer", ({ targetId, answer }) => {
   if (!targetId || !answer) return;
-
   io.to(targetId).emit("answer", socket.id, answer);
 });
 
@@ -312,8 +324,30 @@ socket.on("answer", ({ targetId, answer }) => {
 
 socket.on("candidate", ({ targetId, candidate }) => {
   if (!targetId || !candidate) return;
-
   io.to(targetId).emit("candidate", socket.id, candidate);
+});
+
+// -----------------------
+// Mute state relay
+// -----------------------
+socket.on("mute-status", ({ isMuted }) => {
+  // Find which room this socket is in
+  Object.keys(voiceRooms).forEach((roomId) => {
+    if (voiceRooms[roomId]?.[socket.id]) {
+      voiceRooms[roomId][socket.id].isMuted = isMuted;
+      socket.to(`voice-${roomId}`).emit("peer-mute-status", {
+        socketId: socket.id,
+        isMuted,
+      });
+    }
+  });
+});
+
+// -----------------------
+// Voice Latency check
+// -----------------------
+socket.on("voice-ping", (sentAt) => {
+  socket.emit("voice-pong", sentAt);
 });
 
 // -----------------------
@@ -327,13 +361,14 @@ socket.on("leave-voice-room", ({ roomId, userId }) => {
 
   if (voiceRooms[roomId]) {
     delete voiceRooms[roomId][socket.id];
-
     socket.to(`voice-${roomId}`).emit("user-left", socket.id);
-
     if (Object.keys(voiceRooms[roomId]).length === 0) {
       delete voiceRooms[roomId];
     }
   }
+
+  // Broadcast updated channel counts
+  io.emit("voice-room-counts", getVoiceRoomCounts());
 
   console.log(`[Voice] ${userId} (${socket.id}) left ${roomId}`);
 });
@@ -355,12 +390,13 @@ socket.on("disconnect", () => {
   });
 
   // Remove from voice rooms
+  let voiceLeft = false;
   Object.keys(voiceRooms).forEach((roomId) => {
     if (!voiceRooms[roomId]?.[socket.id]) return;
 
     delete voiceRooms[roomId][socket.id];
-
     socket.to(`voice-${roomId}`).emit("user-left", socket.id);
+    voiceLeft = true;
 
     console.log(
       `[Voice] ${socket.id} disconnected from ${roomId}`
@@ -370,6 +406,10 @@ socket.on("disconnect", () => {
       delete voiceRooms[roomId];
     }
   });
+
+  if (voiceLeft) {
+    io.emit("voice-room-counts", getVoiceRoomCounts());
+  }
 
   // Update lobby count
   setTimeout(() => {

@@ -1,14 +1,20 @@
 import { NextResponse } from 'next/server';
-import OpenAI from 'openai';
+import { GoogleGenAI } from "@google/genai";
 
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
-  baseURL: 'https://openrouter.ai/api/v1',
-  defaultHeaders: {
-    'HTTP-Referer': process.env.APP_URL || 'http://localhost:3000',
-    'X-Title': 'Smart Lab Interview Coach',
-  },
-});
+const GEMINI_API_KEY = process.env.GEMINI_API_KEY || process.env.GOOGLE_GENERATIVE_AI_API_KEY;
+const GEMINI_MODEL = process.env.GEMINI_MODEL || "gemini-2.5-flash";
+
+function getGeminiAI() {
+  if (!GEMINI_API_KEY) {
+    throw new Error(
+      "GEMINI_API_KEY environment variable is missing."
+    );
+  }
+
+  return new GoogleGenAI({
+    apiKey: GEMINI_API_KEY,
+  });
+}
 
 export async function POST(req: Request) {
   try {
@@ -21,6 +27,8 @@ export async function POST(req: Request) {
         { status: 400 }
       );
     }
+
+    const ai = getGeminiAI();
 
     const systemPrompt = `You are an expert AI Interview Coach specializing in technical interviews. 
 You help candidates prepare for software engineering roles.
@@ -38,20 +46,25 @@ Your role is to:
 
 Behave exactly like a senior engineer conducting a real interview panel.`;
 
-    const completion = await openai.chat.completions.create({
-      model: 'openai/gpt-3.5-turbo',
-      messages: [
-        { role: 'system', content: systemPrompt },
-        ...messages.map((m: { role: string; content: string }) => ({
-          role: m.role as 'user' | 'assistant',
-          content: m.content,
-        })),
-      ],
-      temperature: 0.7,
-      max_tokens: 400,
+    // Map assistant -> model
+    const contents = messages
+      .filter((m: any) => m && typeof m.role === "string" && typeof m.content === "string")
+      .map((m: any) => ({
+        role: m.role === "assistant" ? "model" : "user",
+        parts: [{ text: m.content }],
+      }));
+
+    const response = await ai.models.generateContent({
+      model: GEMINI_MODEL,
+      contents,
+      config: {
+        systemInstruction: systemPrompt,
+        temperature: 0.7,
+        maxOutputTokens: 400,
+      },
     });
 
-    const reply = completion.choices[0]?.message?.content || 'Could you elaborate on that?';
+    const reply = response.text?.trim() || 'Could you elaborate on that?';
 
     return NextResponse.json({ success: true, reply }, { status: 200 });
   } catch (error: any) {
@@ -62,3 +75,4 @@ Behave exactly like a senior engineer conducting a real interview panel.`;
     );
   }
 }
+

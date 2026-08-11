@@ -86,9 +86,9 @@ def calculate_coins(difficulty: str) -> int:
 def calculate_time_limit(difficulty: str) -> int:
     """Return time limit in seconds for a given difficulty tier."""
     time_map: dict[str, int] = {
-        "beginner": 90,
-        "intermediate": 60,
-        "advanced": 45,
+        "beginner": 30,
+        "intermediate": 45,
+        "advanced": 60,
     }
     return time_map.get(difficulty, 60)
 

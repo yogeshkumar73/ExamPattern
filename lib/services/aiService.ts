@@ -1,46 +1,47 @@
 /**
- * AI Service - Uses OpenAI API (via OpenRouter) for all AI features.
- * Replaces the old FastAPI Python service dependency.
+ * AI Service - Uses Google GenAI API (Gemini) for all AI features.
  */
 
-import OpenAI from 'openai';
+import { GoogleGenAI } from "@google/genai";
 
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
-  baseURL: 'https://openrouter.ai/api/v1',
-  defaultHeaders: {
-    'HTTP-Referer': process.env.APP_URL || 'http://localhost:3000',
-    'X-Title': 'Smart Lab AI Service',
-  },
+const GEMINI_API_KEY = process.env.GEMINI_API_KEY || process.env.GOOGLE_GENERATIVE_AI_API_KEY;
+const GEMINI_MODEL = process.env.GEMINI_MODEL || "gemini-2.5-flash";
+
+const ai = new GoogleGenAI({
+  apiKey: GEMINI_API_KEY!,
 });
 
-const MODEL = 'openai/gpt-3.5-turbo';
-
-async function callOpenAI(
+async function callGemini(
   systemPrompt: string,
   userPrompt: string,
-  maxTokens = 300
+  maxTokens = 400,
+  responseMimeType?: string
 ): Promise<string | null> {
   try {
-    const response = await openai.chat.completions.create({
-      model: MODEL,
-      messages: [
-        { role: 'system', content: systemPrompt },
-        { role: 'user', content: userPrompt },
-      ],
-      temperature: 0.7,
-      max_tokens: maxTokens,
+    if (!GEMINI_API_KEY) {
+      console.warn("GEMINI_API_KEY is not defined");
+      return null;
+    }
+    const response = await ai.models.generateContent({
+      model: GEMINI_MODEL,
+      contents: userPrompt,
+      config: {
+        systemInstruction: systemPrompt,
+        temperature: 0.7,
+        maxOutputTokens: maxTokens,
+        responseMimeType,
+      },
     });
-    return response.choices[0]?.message?.content || null;
+    return response.text?.trim() || null;
   } catch (error) {
-    console.error('OpenAI API call failed:', error);
+    console.error('Gemini API call failed:', error);
     return null;
   }
 }
 
 export async function aiHint(payload: Record<string, any>) {
   const { code, problem, language } = payload;
-  const result = await callOpenAI(
+  const result = await callGemini(
     'You are a helpful coding mentor. Give a single concise hint (1-2 sentences) to guide the student — do NOT give the full solution.',
     `Problem: ${problem || 'Unknown'}\nLanguage: ${language || 'Any'}\nCode so far:\n${code || '(empty)'}\n\nGive one helpful hint.`
   );
@@ -50,7 +51,7 @@ export async function aiHint(payload: Record<string, any>) {
 
 export async function aiExplain(payload: Record<string, any>) {
   const { code, language } = payload;
-  const result = await callOpenAI(
+  const result = await callGemini(
     'You are a programming teacher. Explain the given code clearly and concisely for a student.',
     `Language: ${language || 'Unknown'}\nCode:\n${code || '(no code provided)'}\n\nExplain what this code does step by step.`
   );
@@ -60,10 +61,10 @@ export async function aiExplain(payload: Record<string, any>) {
 
 export async function aiReview(payload: Record<string, any>) {
   const { code, language, problem } = payload;
-  const result = await callOpenAI(
+  const result = await callGemini(
     'You are a senior software engineer doing a code review. Point out positives and areas for improvement.',
     `Problem: ${problem || 'General coding task'}\nLanguage: ${language || 'Unknown'}\nCode:\n${code || '(no code provided)'}\n\nProvide a brief code review with positives and improvement suggestions.`,
-    400
+    600
   );
   if (result) return { review: result };
   return { review: 'Code Review:\n- Positive: Implementation is concise and easy to read.\n- Improvement: Verify constraints to prevent potential buffer overflows or array out of bound errors.' };
@@ -71,7 +72,7 @@ export async function aiReview(payload: Record<string, any>) {
 
 export async function aiDebug(payload: Record<string, any>) {
   const { code, error, language } = payload;
-  const result = await callOpenAI(
+  const result = await callGemini(
     'You are an expert debugger. Identify the bug and explain how to fix it concisely.',
     `Language: ${language || 'Unknown'}\nError: ${error || 'Unknown error'}\nCode:\n${code || '(no code provided)'}\n\nIdentify the bug and suggest how to fix it.`
   );
@@ -81,10 +82,10 @@ export async function aiDebug(payload: Record<string, any>) {
 
 export async function aiOptimize(payload: Record<string, any>) {
   const { code, language } = payload;
-  const result = await callOpenAI(
+  const result = await callGemini(
     'You are a performance optimization expert. Suggest concrete optimizations for the given code focusing on time and space complexity.',
     `Language: ${language || 'Unknown'}\nCode:\n${code || '(no code provided)'}\n\nSuggest optimizations with improved time/space complexity.`,
-    400
+    600
   );
   if (result) return { optimization: result };
   return { optimization: 'To optimize the time complexity, store intermediate results in a Map or Set to enable lookups in O(1) time.' };
@@ -92,24 +93,29 @@ export async function aiOptimize(payload: Record<string, any>) {
 
 export async function aiInterviewQuestion(payload: Record<string, any>) {
   const { category, difficulty, prompt } = payload;
-  const result = await callOpenAI(
+  const result = await callGemini(
     `You are a technical interview question creator. Generate a single clear interview question.
 Return ONLY a JSON object: {"question": "the question text", "hints": ["hint1", "hint2"]}`,
-    prompt || `Generate a ${difficulty || 'Medium'} difficulty interview question for ${category || 'General'} topic.`
+    prompt || `Generate a ${difficulty || 'Medium'} difficulty interview question for ${category || 'General'} topic.`,
+    500,
+    "application/json"
   );
   if (result) {
     try {
-      const jsonMatch = result.match(/\{[\s\S]*\}/);
-      if (jsonMatch) {
-        const parsed = JSON.parse(jsonMatch[0]);
-        if (parsed.question) return { question: parsed.question, hints: parsed.hints || [] };
-      }
-      return { question: result.replace(/^["']|["']$/g, '').trim(), hints: [] };
+      const parsed = JSON.parse(result);
+      if (parsed.question) return { question: parsed.question, hints: parsed.hints || [] };
     } catch {
-      return { question: result.trim(), hints: [] };
+      try {
+        const jsonMatch = result.match(/\{[\s\S]*\}/);
+        if (jsonMatch) {
+          const parsed = JSON.parse(jsonMatch[0]);
+          if (parsed.question) return { question: parsed.question, hints: parsed.hints || [] };
+        }
+      } catch {}
+      return { question: result.replace(/^["']|["']$/g, '').trim(), hints: [] };
     }
   }
-  return { question: 'Explain how closures work in JavaScript and write an example emulating private properties.' };
+  return { question: 'Explain how closures work in JavaScript and write an example emulating private properties.', hints: [] };
 }
 
 export async function aiMockFeedback(payload: Record<string, any>) {
@@ -118,24 +124,29 @@ export async function aiMockFeedback(payload: Record<string, any>) {
     ? answers.map((a: string, i: number) => `Q${i + 1}: ${questions?.[i]?.prompt || 'Question'}\nA${i + 1}: ${a || '(no answer)'}`).join('\n\n')
     : 'No answers provided';
 
-  const result = await callOpenAI(
+  const result = await callGemini(
     `You are a technical interview evaluator. Score the candidate's answers and provide feedback.
 Return ONLY a JSON object with this exact structure:
 {"score": 75, "readinessScore": 80, "communicationScore": 85, "technicalAccuracyScore": 72, "problemSolvingScore": 70, "feedback": "detailed feedback text"}
 Scores must be integers from 0-100.`,
     `Evaluate these interview answers:\n\n${answersText}\n\nProvide scores and constructive feedback.`,
-    600
+    1000,
+    "application/json"
   );
 
   if (result) {
     try {
-      const jsonMatch = result.match(/\{[\s\S]*\}/);
-      if (jsonMatch) {
-        const parsed = JSON.parse(jsonMatch[0]);
-        if (parsed.score !== undefined) return parsed;
-      }
+      const parsed = JSON.parse(result);
+      if (parsed.score !== undefined) return parsed;
     } catch (e) {
       console.warn('Failed to parse AI feedback JSON:', e);
+      try {
+        const jsonMatch = result.match(/\{[\s\S]*\}/);
+        if (jsonMatch) {
+          const parsed = JSON.parse(jsonMatch[0]);
+          if (parsed.score !== undefined) return parsed;
+        }
+      } catch {}
     }
   }
 
@@ -148,3 +159,4 @@ Scores must be integers from 0-100.`,
     feedback: 'Overall good performance. Focus on explaining time/space complexity and structure your responses using the STAR method.',
   };
 }
+

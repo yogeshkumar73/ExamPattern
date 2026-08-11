@@ -1,6 +1,47 @@
 
 import { GoogleGenAI } from "@google/genai";
 
+// ===== TYPES =====
+
+type QuestionMode =
+  | "coding"
+  | "puzzle"
+  | "math"
+  | "gk"
+  | "prediction"
+  | "mixed";
+
+type Difficulty = "beginner" | "intermediate" | "advanced";
+
+interface QuestionGenerationRequest {
+  mode: QuestionMode;
+  difficulty: Difficulty;
+  topic?: string;
+  count?: number;
+}
+
+interface GeneratedQuestion {
+  id: string;
+  title: string;
+  description: string;
+  mode: QuestionMode;
+  difficulty: string;
+  options: string[];
+  correctAnswer: number | string | null;
+  explanation: string;
+  hints: string[];
+  timeLimit: number;
+  points: number;
+}
+
+interface AICoachAdvice {
+  tip: string;
+  context: string;
+  difficulty: string;
+  actionable: boolean;
+}
+
+
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
 
 const GEMINI_MODEL =
@@ -89,26 +130,33 @@ Response Format:
 /**
  * Generate dynamic questions based on mode, difficulty, and optional topic
  */
-const questionCount = Math.min(Math.max(count ?? 5, 1), 20);
+export async function generateDynamicQuestions({
+  mode,
+  difficulty,
+  topic,
+  count,
+}: QuestionGenerationRequest): Promise<GeneratedQuestion[]> {
+  const questionCount = Math.min(Math.max(count ?? 5, 1), 20);
 
-if (!GEMINI_API_KEY) {
-  return getDefaultQuestions(mode, difficulty);
-}
+  if (!GEMINI_API_KEY) {
+    return getDefaultQuestions(mode, difficulty);
+  }
 
-try {
-  const prompt = systemPrompts[mode] ?? systemPrompts.mixed;
   const systemPrompts: Record<QuestionGenerationRequest["mode"], string> = {
-  coding: "Generate coding interview questions.",
-  puzzle: "Generate logical reasoning puzzles.",
-  math: "Generate mathematics problems.",
-  gk: "Generate general knowledge questions.",
-  prediction: "Generate sequence and pattern prediction questions.",
-  mixed: "Generate a balanced mix of all question types.",
-};
+    coding: "Generate coding interview questions.",
+    puzzle: "Generate logical reasoning puzzles.",
+    math: "Generate mathematics problems.",
+    gk: "Generate general knowledge questions.",
+    prediction: "Generate sequence and pattern prediction questions.",
+    mixed: "Generate a balanced mix of all question types.",
+  };
 
-  const response = await ai.models.generateContent({
-    model: GEMINI_MODEL,
-    contents: `
+  try {
+    const prompt = systemPrompts[mode] ?? systemPrompts.mixed;
+
+    const response = await ai.models.generateContent({
+      model: GEMINI_MODEL,
+      contents: `
 ${prompt}
 
 Topic:
@@ -137,47 +185,48 @@ Expected Schema:
   }
 ]
 `,
-    config: {
-      temperature: 0.7,
-      responseMimeType: "application/json",
-    },
-  });
+      config: {
+        temperature: 0.7,
+        responseMimeType: "application/json",
+      },
+    });
 
-  const content = response.text?.trim();
+    const content = response.text?.trim();
 
-  if (!content) {
+    if (!content) {
+      return getDefaultQuestions(mode, difficulty);
+    }
+
+    const parsed = JSON.parse(content);
+
+    if (!Array.isArray(parsed)) {
+      return getDefaultQuestions(mode, difficulty);
+    }
+
+    return parsed
+      .filter(
+        (q: any) =>
+          typeof q.title === "string" &&
+          typeof q.description === "string"
+      )
+      .map((q: any): GeneratedQuestion => ({
+        id: crypto.randomUUID(),
+        title: q.title.trim(),
+        description: q.description.trim(),
+        mode,
+        difficulty,
+        options: Array.isArray(q.options) ? q.options : [],
+        correctAnswer: q.correctAnswer ?? null,
+        explanation: q.explanation ?? "",
+        hints: Array.isArray(q.hints) ? q.hints : [],
+        timeLimit: Number(q.timeLimit) || 60,
+        points: Number(q.points) || 100,
+      }))
+      .slice(0, questionCount);
+  } catch (error) {
+    console.error("generateDynamicQuestions:", error);
     return getDefaultQuestions(mode, difficulty);
   }
-
-  const parsed = JSON.parse(content);
-
-  if (!Array.isArray(parsed)) {
-    return getDefaultQuestions(mode, difficulty);
-  }
-
-  return parsed
-    .filter(
-      (q: any) =>
-        typeof q.title === "string" &&
-        typeof q.description === "string"
-    )
-    .map((q: any): GeneratedQuestion => ({
-      id: crypto.randomUUID(),
-      title: q.title.trim(),
-      description: q.description.trim(),
-      mode,
-      difficulty,
-      options: Array.isArray(q.options) ? q.options : [],
-      correctAnswer: q.correctAnswer ?? null,
-      explanation: q.explanation ?? "",
-      hints: Array.isArray(q.hints) ? q.hints : [],
-      timeLimit: Number(q.timeLimit) || 60,
-      points: Number(q.points) || 100,
-    }))
-    .slice(0, questionCount);
-} catch (error) {
-  console.error("generateDynamicQuestions:", error);
-  return getDefaultQuestions(mode, difficulty);
 }
 /**
  * Generate AI Coach advice based on user performance and context
@@ -629,18 +678,7 @@ export function getDefaultTopics(
     FALLBACK_TOPICS
   ).slice();
 }
-type QuestionMode =
-  | "coding"
-  | "puzzle"
-  | "math"
-  | "gk"
-  | "prediction"
-  | "mixed";
 
-type Difficulty =
-  | "beginner"
-  | "intermediate"
-  | "advanced";
 
 export function getDefaultQuestions(
   mode: QuestionMode,
@@ -706,18 +744,7 @@ export function getDefaultQuestions(
     points: difficultyPoints[difficulty],
   }));
 }
-type QuestionMode =
-  | "coding"
-  | "puzzle"
-  | "math"
-  | "gk"
-  | "prediction"
-  | "mixed";
 
-type Difficulty =
-  | "beginner"
-  | "intermediate"
-  | "advanced";
 
 function getDefaultCoachAdvice(): AICoachAdvice[] {
   return [

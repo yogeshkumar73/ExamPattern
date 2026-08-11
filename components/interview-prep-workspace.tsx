@@ -69,7 +69,7 @@ export function InterviewPrepWorkspace() {
 
   // Chat Coach State
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([
-    { role: "ai", content: "Hello! I'm your AI Interview Coach powered by GPT. What topic would you like to practice today? Tell me your experience level and the role you're targeting!" }
+    { role: "ai", content: "Hello! I'm your AI Interview Coach powered by Google Gemini. What topic would you like to practice today? Tell me your experience level and the role you're targeting!" }
   ])
   const [chatInput, setChatInput] = useState("")
   const [isChatLoading, setIsChatLoading] = useState(false)
@@ -239,7 +239,7 @@ export function InterviewPrepWorkspace() {
     setShowResults(false)
   }
 
-  // ─── AI Coach Chat (Real OpenAI) ────────────────────────────────────────────
+  // ─── AI Coach Chat (Google Gemini) ──────────────────────────────────────────
   const handleSendChatMessage = async () => {
     if (!chatInput.trim() || isChatLoading) return
 
@@ -278,7 +278,7 @@ export function InterviewPrepWorkspace() {
     }
   }
 
-  // ─── Voice Call (Real OpenAI + Browser SpeechRecognition + TTS) ─────────────
+  // ─── Voice Call (Google Gemini + Browser SpeechRecognition + TTS) ─────────────
   const startVoiceCall = async () => {
     setIsCalling(true)
     setVoiceConvHistory([])
@@ -557,7 +557,7 @@ export function InterviewPrepWorkspace() {
                   </div>
                 </div>
                 <CardTitle className="text-3xl font-black text-center">AI Evaluation Complete</CardTitle>
-                <p className="text-center text-muted-foreground font-medium mt-1">Powered by OpenAI GPT</p>
+                <p className="text-center text-muted-foreground font-medium mt-1">Powered by Google Gemini</p>
               </CardHeader>
               <CardContent className="space-y-6 pt-6">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -679,7 +679,7 @@ export function InterviewPrepWorkspace() {
             <div className="p-2 bg-purple-500/20 rounded-lg text-purple-600"><Bot className="w-6 h-6" /></div>
             <div className="flex-1">
               <CardTitle className="text-lg font-black text-purple-600">AI Career Coach</CardTitle>
-              <CardDescription className="font-bold">Powered by OpenAI GPT — Ask anything about technical interviews, resumes, or code.</CardDescription>
+              <CardDescription className="font-bold">Powered by Google Gemini — Ask anything about technical interviews, resumes, or code.</CardDescription>
             </div>
             <Badge className="bg-purple-500 text-white text-[10px] font-bold">LIVE AI</Badge>
           </CardHeader>
@@ -743,7 +743,7 @@ export function InterviewPrepWorkspace() {
               </CardDescription>
               {isCalling && (
                 <div className="flex justify-center gap-2 mt-2">
-                  <Badge className="bg-green-500 text-white text-[10px]">LIVE • OpenAI GPT</Badge>
+                  <Badge className="bg-green-500 text-white text-[10px]">LIVE • Google Gemini</Badge>
                   <Badge className="bg-blue-500 text-white text-[10px]">{selectedCategory} • {selectedDifficulty}</Badge>
                 </div>
               )}
@@ -829,7 +829,7 @@ export function InterviewPrepWorkspace() {
 
             {!isCalling && (
               <p className="text-center text-xs text-muted-foreground font-medium mt-2">
-                Uses browser Speech Recognition (Chrome recommended) + OpenAI GPT + Text-to-Speech
+                Uses browser Speech Recognition (Chrome recommended) + Google Gemini + Text-to-Speech
               </p>
             )}
           </CardContent>

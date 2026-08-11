@@ -259,12 +259,36 @@ class QuestionService:
                 exclude_ids=exclude,
             )
             if gen_questions:
-                await self._repo.insert_many(gen_questions)
+                # We don't save to DB here because pure generative modes are infinite and one-offs
+                # await self._repo.insert_many(gen_questions)
                 for q in gen_questions:
                     if q.id not in exclude:
                         questions.append(q)
                         exclude.add(q.id)
             source_label += "+generator"
+            
+        # 4. Ultimate Fallback (guarantee limit for unlimited loops)
+        # If we STILL don't have enough questions (e.g. GK ran out of unique combos)
+        # Force fallback to pure algorithmic Math/Prediction generators
+        if len(questions) < limit:
+            needed = limit - len(questions)
+            fallback_gen = random.choice([MathGenerator(), PredictionGenerator()])
+            try:
+                diff_enum = Difficulty(difficulty)
+            except ValueError:
+                diff_enum = Difficulty.BEGINNER
+                
+            fallback_questions = fallback_gen.generate(
+                difficulty=diff_enum, 
+                count=needed, 
+                topic=None, 
+                exclude_ids=exclude
+            )
+            for q in fallback_questions:
+                if q.id not in exclude:
+                    questions.append(q)
+                    exclude.add(q.id)
+            source_label += "+algorithmic_fallback"
 
         # Shuffle the final batch
         random.shuffle(questions)

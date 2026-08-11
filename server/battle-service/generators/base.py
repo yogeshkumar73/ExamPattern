@@ -45,3 +45,24 @@ class BaseGenerator(ABC):
     def mode(self) -> str:
         """The game mode this generator serves (e.g. 'math', 'prediction')."""
         ...
+
+    def apply_difficulty_scaling(self, question: QuestionModel, difficulty: Difficulty) -> None:
+        """
+        Mutate the question's time_limit, xp, and coins based on difficulty.
+        """
+        if difficulty == Difficulty.BEGINNER:
+            question.time_limit = 30
+            question.xp = 50
+            question.coins = 10
+        elif difficulty == Difficulty.INTERMEDIATE:
+            question.time_limit = 45
+            question.xp = 100
+            question.coins = 25
+        elif difficulty == Difficulty.ADVANCED:
+            question.time_limit = 60
+            question.xp = 200
+            question.coins = 50
+        else:
+            question.time_limit = 60
+            question.xp = 50
+            question.coins = 10
