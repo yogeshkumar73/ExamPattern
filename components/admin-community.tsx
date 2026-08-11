@@ -375,7 +375,6 @@ export function AdminPanel() {
       fetchFeedbacks()
     }
   }, [activeTab, fetchArenaApprovals, fetchFeedbacks])
-  }, [activeTab, arenaFilterStatus])
 
   useEffect(() => {
     if (!selectedUserId && users.length) {
@@ -978,7 +977,7 @@ export function AdminPanel() {
                       </Button>
                     </div>
                   </Card>
-                )))}
+                ))}
               </CardContent>
             </Card>
           )}
@@ -1452,6 +1451,8 @@ export function CommunityChat() {
 // --- FEEDBACK SECTION ---
 export function FeedbackSection() {
   const { sessionUser } = useNav()
+  const [nameInput, setNameInput] = useState(sessionUser?.name || "")
+  const [emailInput, setEmailInput] = useState(sessionUser?.email || "")
   const [category, setCategory] = useState("general")
   const [message, setMessage] = useState("")
   const [rating, setRating] = useState(0)
@@ -1459,6 +1460,13 @@ export function FeedbackSection() {
   const [loading, setLoading] = useState(false)
   const [submitted, setSubmitted] = useState(false)
   const [error, setError] = useState("")
+
+  useEffect(() => {
+    if (sessionUser) {
+      if (!nameInput) setNameInput(sessionUser.name || "")
+      if (!emailInput) setEmailInput(sessionUser.email || "")
+    }
+  }, [sessionUser])
 
   const categories = [
     { id: "general", label: "General Query", icon: "💬", color: "bg-blue-500" },
@@ -1469,8 +1477,12 @@ export function FeedbackSection() {
   ]
 
   const handleSubmit = async () => {
+    if (!emailInput.trim() || !emailInput.includes("@")) {
+      setError("Please enter a valid email address.")
+      return
+    }
     if (!message.trim() || message.trim().length < 5) {
-      setError("Please write at least 5 characters.")
+      setError("Please write at least 5 characters in your message.")
       return
     }
     setError("")
@@ -1481,8 +1493,8 @@ export function FeedbackSection() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           userId: sessionUser?.id || null,
-          userName: sessionUser?.name || "Anonymous",
-          userEmail: sessionUser?.email || null,
+          userName: nameInput.trim() || sessionUser?.name || "Student",
+          userEmail: emailInput.trim().toLowerCase(),
           category,
           message: message.trim(),
           rating: rating || null,
@@ -1512,7 +1524,7 @@ export function FeedbackSection() {
             <CheckCircle2 className="w-12 h-12 text-white" />
           </div>
           <h2 className="text-3xl font-black text-foreground mb-3">Thank You! 🎉</h2>
-          <p className="text-lg text-muted-foreground mb-8">Your message has been received. We read every single feedback and will get back to you soon!</p>
+          <p className="text-lg text-muted-foreground mb-8">Your message has been sent to our team and is now visible in the Admin Panel Feedback Section!</p>
           <Button onClick={() => setSubmitted(false)} className="rounded-xl h-12 px-8 font-bold">
             Submit Another Feedback
           </Button>
@@ -1530,10 +1542,10 @@ export function FeedbackSection() {
           <span className="text-sm font-bold text-primary uppercase tracking-widest">Contact Us</span>
         </div>
         <h1 className="text-4xl font-black tracking-tight mb-3 bg-clip-text text-transparent bg-gradient-to-r from-primary via-purple-500 to-indigo-600">
-          We&apos;d Love to Hear From You
+          Send Your Feedback
         </h1>
         <p className="text-muted-foreground text-lg">
-          Ask questions, report bugs, request features, or just say hello!
+          Ask questions, report bugs, or request features. Your message goes straight to the Admin Feedback Panel!
         </p>
       </div>
 
@@ -1541,12 +1553,38 @@ export function FeedbackSection() {
         <CardHeader className="bg-gradient-to-r from-primary/10 via-purple-500/10 to-indigo-600/10 border-b border-primary/10 py-6">
           <CardTitle className="text-xl font-black flex items-center gap-2">
             <MessageSquare className="w-5 h-5 text-primary" />
-            Send a Message
+            Send a Message to Admin
           </CardTitle>
-          <CardDescription>Your message goes directly to our team</CardDescription>
+          <CardDescription>Your feedback will be delivered directly to the Admin Panel</CardDescription>
         </CardHeader>
 
         <CardContent className="p-6 space-y-6">
+          {/* User Name & Email Inputs */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <Label className="font-bold text-sm uppercase tracking-wider">Your Name</Label>
+              <Input
+                type="text"
+                placeholder="John Doe"
+                className="h-12 rounded-xl border-2 text-sm"
+                value={nameInput}
+                onChange={(e) => setNameInput(e.target.value)}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label className="font-bold text-sm uppercase tracking-wider">Your Email *</Label>
+              <Input
+                type="email"
+                placeholder="student@gmail.com"
+                className="h-12 rounded-xl border-2 text-sm"
+                value={emailInput}
+                onChange={(e) => {
+                  setEmailInput(e.target.value)
+                  if (error) setError("")
+                }}
+              />
+            </div>
+          </div>
           {/* Category Selection */}
           <div className="space-y-2">
             <Label className="font-bold text-sm uppercase tracking-wider">Category</Label>

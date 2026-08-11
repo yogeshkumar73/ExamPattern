@@ -35,7 +35,6 @@ import {
   Sparkles,
   Swords,
   Mail,
-  Smartphone,
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
