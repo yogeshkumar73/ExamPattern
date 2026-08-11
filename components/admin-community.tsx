@@ -1606,28 +1606,27 @@ export function FeedbackSection() {
 
 // --- WHATSAPP COMMUNITY SECTION ---
 export function WhatsAppCommunity() {
-  const SUPPORT_PHONE = process.env.NEXT_PUBLIC_SUPPORT_PHONE || "7379307099"
-  const SUPPORT_PHONE2 = process.env.NEXT_PUBLIC_SUPPORT_PHONE2 || "9532415871"
+  const COMMUNITY_LINK = "https://chat.whatsapp.com/GqywH4gM6XJCO5hjSRyJDN?s=cl&p=a&ilr=1"
   const SUPPORT_EMAIL = process.env.NEXT_PUBLIC_SUPPORT_EMAIL || "helpsupport9452@gmail.com"
 
   const groups = [
     {
       id: 1,
-      name: "📚 ExamPattern Students",
-      description: "Main community for exam analysis, tips, and peer discussions.",
-      link: `https://wa.me/${SUPPORT_PHONE}?text=${encodeURIComponent("Hi! I want to join the ExamPattern Students community.")}`  ,
-      members: "500+",
+      name: "📚 ExamPattern Official Community",
+      description: "Main community for exam analysis, study resources, and peer discussions.",
+      link: COMMUNITY_LINK,
+      members: "1000+",
       gradient: "from-green-500 to-emerald-600",
       glow: "shadow-green-500/30",
-      badge: "Main Group",
+      badge: "Official Community",
       badgeColor: "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300",
     },
     {
       id: 2,
-      name: "⚔️ Battle Arena Players",
-      description: "Join battle challenges, see leaderboards, and compete with peers!",
-      link: `https://wa.me/${SUPPORT_PHONE2}?text=${encodeURIComponent("Hi! I want to join the Battle Arena community.")}`  ,
-      members: "200+",
+      name: "⚔️ Battle Arena & Live Challenges",
+      description: "Join multiplayer battle challenges, view leaderboards, and compete live!",
+      link: COMMUNITY_LINK,
+      members: "500+",
       gradient: "from-purple-500 to-indigo-600",
       glow: "shadow-purple-500/30",
       badge: "Arena Group",
@@ -1636,9 +1635,9 @@ export function WhatsAppCommunity() {
     {
       id: 3,
       name: "🤖 AI & Smart Lab Hub",
-      description: "Discuss AI features, interview prep tips, and get smart lab support.",
-      link: `https://wa.me/${SUPPORT_PHONE}?text=${encodeURIComponent("Hi! I want to join the AI & Smart Lab Hub.")}`  ,
-      members: "150+",
+      description: "Discuss AI features, interview prep guidance, and technical support.",
+      link: COMMUNITY_LINK,
+      members: "350+",
       gradient: "from-blue-500 to-cyan-600",
       glow: "shadow-blue-500/30",
       badge: "Tech Group",
@@ -1655,10 +1654,10 @@ export function WhatsAppCommunity() {
           <span className="text-sm font-black text-green-600 uppercase tracking-widest">WhatsApp Community</span>
         </div>
         <h1 className="text-4xl font-black tracking-tight mb-3 bg-clip-text text-transparent bg-gradient-to-r from-green-500 via-emerald-500 to-teal-600">
-          Join Our Learning Community
+          Join Our Official Community
         </h1>
         <p className="text-muted-foreground text-lg max-w-xl mx-auto">
-          Connect with thousands of students. Get exam tips, battle updates, AI tricks, and peer support — all on WhatsApp!
+          Connect with thousands of students. Get exam tips, battle updates, AI tricks, and peer support — directly on WhatsApp!
         </p>
       </div>
 
@@ -1695,7 +1694,7 @@ export function WhatsAppCommunity() {
                         </span>
                         <span className="flex items-center gap-1 text-green-600 font-bold">
                           <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse" />
-                          Active
+                          Active Now
                         </span>
                       </div>
                     </div>
@@ -1715,23 +1714,23 @@ export function WhatsAppCommunity() {
         <CardHeader className="bg-gradient-to-r from-primary/10 via-purple-500/10 to-indigo-600/10 border-b border-primary/10 py-5">
           <CardTitle className="text-lg font-black flex items-center gap-2">
             <Heart className="w-5 h-5 text-red-500" />
-            Direct Support
+            Instant Support & Community
           </CardTitle>
-          <CardDescription>Reach out to our team directly for urgent queries</CardDescription>
+          <CardDescription>Click below to join our group or send us an email</CardDescription>
         </CardHeader>
         <CardContent className="p-6 space-y-4">
           <a
-            href={`https://wa.me/${SUPPORT_PHONE}?text=${encodeURIComponent("Hi ExamPattern support team, I need help with:")}`}
+            href={COMMUNITY_LINK}
             target="_blank"
             rel="noopener noreferrer"
             className="flex items-center gap-4 p-4 rounded-xl bg-green-50 dark:bg-green-900/20 border-2 border-green-200 dark:border-green-700/30 hover:border-green-400 hover:scale-[1.01] transition-all cursor-pointer group"
           >
             <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-green-500 to-emerald-600 shadow-lg flex items-center justify-center flex-shrink-0">
-              <Phone className="w-6 h-6 text-white" />
+              <MessageSquare className="w-6 h-6 text-white" />
             </div>
             <div className="flex-1">
-              <p className="text-sm font-black text-foreground group-hover:text-green-600 transition-colors">WhatsApp Support</p>
-              <p className="text-base font-bold text-green-600">+91 {SUPPORT_PHONE}</p>
+              <p className="text-sm font-black text-foreground group-hover:text-green-600 transition-colors">Official WhatsApp Group</p>
+              <p className="text-xs font-bold text-green-600">Click to Join Instant Group Chat</p>
             </div>
             <ExternalLink className="w-4 h-4 text-green-500" />
           </a>

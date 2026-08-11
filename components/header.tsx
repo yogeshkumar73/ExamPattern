@@ -532,13 +532,13 @@ const currentIndex = useMemo(
                   </a>
                 </MenubarItem>
                 <MenubarItem asChild>
-                  <a href="tel:+917379307099" className="flex items-center gap-2">
-                    <Smartphone className="h-4 w-4" /> Contact: +91 73793 07099
-                  </a>
-                </MenubarItem>
-                <MenubarItem asChild>
-                  <a href="tel:+919532415871" className="flex items-center gap-2">
-                    <Smartphone className="h-4 w-4" /> Contact: +91 95324 15871
+                  <a
+                    href="https://chat.whatsapp.com/GqywH4gM6XJCO5hjSRyJDN?s=cl&p=a&ilr=1"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex items-center gap-2 font-bold text-green-600"
+                  >
+                    <MessageSquare className="h-4 w-4 text-green-500" /> Join Official WhatsApp Group
                   </a>
                 </MenubarItem>
                 <MenubarItem>Documentation</MenubarItem>
