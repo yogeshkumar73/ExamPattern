@@ -60,16 +60,16 @@ Create a `.env` file in the root directory with the following variables:
 GEMINI_API_KEY=your_gemini_api_key
 GOOGLE_GENERATIVE_AI_API_KEY=your_gemini_api_key
 OPENROUTER_API_KEY=your_openrouter_key
-GEMINI_MODEL=gemini-2.5-flash
+GEMINI_MODEL=your_gemini_model_name
 
 # Database Connection
 MONGODB_URI=your_mongodb_connection_string
 
 # Application URLs
-APP_URL=http://localhost:3000
-BATTLE_SERVICE_URL=http://localhost:8001
-AI_SERVICE_URL=http://localhost:8000
-CORS_ORIGINS=http://localhost:3000,https://exampattern.netlify.app
+APP_URL=http://127.0.0.1:3000
+BATTLE_SERVICE_URL=http://127.0.0.1:8001
+AI_SERVICE_URL=http://127.0.0.1:8000
+CORS_ORIGINS=http://127.0.0.1:3000,https://exampattern.netlify.app
 
 # Auth & Admin
 NEXTAUTH_SECRET=your_nextauth_secret
