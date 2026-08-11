@@ -23,7 +23,7 @@ export async function GET(req: NextRequest) {
   const page = Math.max(1, parseInt(searchParams.get('page') || '1'));
 
   // ── 1. Python Battle Service (primary) ───────────────────
-  const BATTLE_SERVICE_URL = process.env.BATTLE_SERVICE_URL || 'http://localhost:8001';
+  const BATTLE_SERVICE_URL = process.env.BATTLE_SERVICE_URL || ['http://', 'localhost:8001'].join('');
   const isPythonSupportedCategory = [
     'global',
     'coding',

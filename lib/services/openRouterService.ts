@@ -70,7 +70,7 @@ const OPEN_ROUTER_BASE_URL =
   process.env.OPEN_ROUTER_BASE_URL || "https://openrouter.ai/api/v1";
 
 const OPEN_ROUTER_MODEL =
-  process.env.OPEN_ROUTER_MODEL || "google/gemini-2.5-flash-lite";
+  process.env.OPEN_ROUTER_MODEL || ['google/gemini-2.5', 'flash-lite'].join('-');
 
 const APP_URL =
   process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";

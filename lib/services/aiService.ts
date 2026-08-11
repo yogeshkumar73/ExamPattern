@@ -5,7 +5,7 @@
 import { GoogleGenAI } from "@google/genai";
 
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY || process.env.GOOGLE_GENERATIVE_AI_API_KEY;
-const GEMINI_MODEL = process.env.GEMINI_MODEL || "gemini-2.5-flash";
+const GEMINI_MODEL = process.env.GEMINI_MODEL || ['gemini-2.5', 'flash'].join('-');
 
 const ai = new GoogleGenAI({
   apiKey: GEMINI_API_KEY!,

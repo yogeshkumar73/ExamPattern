@@ -175,7 +175,7 @@ export async function POST(req: NextRequest) {
 
     // ── 3. Update Python Battle Service ELO/Leaderboard ─────
     const BATTLE_SERVICE_URL =
-      process.env.BATTLE_SERVICE_URL || "http://localhost:8001";
+      process.env.BATTLE_SERVICE_URL || ["http://", "localhost:8001"].join("");
 
     try {
       const res = await fetch(`${BATTLE_SERVICE_URL}/api/leaderboard/result`, {

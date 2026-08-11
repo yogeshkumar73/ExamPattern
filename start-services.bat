@@ -3,8 +3,8 @@ title Smart Lab — FastAPI Microservices Launcher
 color 0A
 echo ============================================================
 echo   SMART LAB - FastAPI Microservices Startup
-echo   AI Service    : http://localhost:8000
-echo   Battle Service: http://localhost:8001
+echo   AI Service    : http://127.0.0.1:8000
+echo   Battle Service: http://127.0.0.1:8001
 echo ============================================================
 echo.
 

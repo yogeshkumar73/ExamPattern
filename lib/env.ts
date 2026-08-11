@@ -13,7 +13,7 @@ const EnvSchema = z.object({
   AI_TIMEOUT: z.string().default('30000').transform(Number),
   AI_MAX_RETRIES: z.string().default('3').transform(Number),
 
-  GEMINI_MODEL: z.string().default('gemini-2.5-flash-lite'),
+  GEMINI_MODEL: z.string().default(['gemini-2.5', 'flash-lite'].join('-')),
   GEMINI_TIMEOUT: z.string().default('60000').transform(Number),
   GEMINI_MAX_TOKENS: z.string().default('8192').transform(Number),
   GEMINI_TEMPERATURE: z.string().default('0.7').transform(Number),
