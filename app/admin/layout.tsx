@@ -28,16 +28,17 @@ export default function AdminLayout({
           return;
         }
 
-        const user = JSON.parse(sessionData);
+        const sessionObj = JSON.parse(sessionData);
+        const userObj = sessionObj.user || sessionObj;
         
         // Check if user is admin
-        if (user.role !== 'admin') {
+        if (userObj.role !== 'admin') {
           console.warn('Not authorized as admin');
           router.push('/');
           return;
         }
 
-        setUser(user);
+        setUser(userObj);
         setIsAuthenticated(true);
       } catch (error) {
         console.error('Auth check failed:', error);

@@ -31,11 +31,11 @@ import {
   Globe,
   Scale,
   MessageSquare,
+  MessageCircle,
   Sparkles,
   Swords,
   Mail,
   Smartphone,
-  UserPlus,
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -66,7 +66,6 @@ export function Header() {
   const { currentStep, setStep, isRegistered, isAdmin, setAdmin, setRegistered } = useNav()
 
   const [session, setSession] = useState<Session>(null)
-  const [userId, setUserId] = useState<string | null>(null)
   const [isAdminDialogOpen, setAdminDialogOpen] = useState(false)
   const [adminPasswordInput, setAdminPasswordInput] = useState("")
   const [adminAuthMessage, setAdminAuthMessage] = useState("")
@@ -320,17 +319,7 @@ const currentIndex = useMemo(
   setStep(steps[currentIndex + 1]);
 }, [currentIndex, steps, setStep]);
 
- const createUserId = useCallback(() => {
-  const random = crypto.randomUUID().replace(/-/g, "");
 
-  const id = `AURA-${random.slice(0, 10).toUpperCase()}`;
-
-  setUserId(id);
-
-  console.info("Generated User ID:", id);
-
-  // Replace with a toast/snackbar in your UI.
-}, []);
 
   return (
     <header className="sticky top-0 z-50 border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
@@ -399,24 +388,13 @@ const currentIndex = useMemo(
                 <User className="mr-2 h-4 w-4" /> {session?.user?.name ?? "Student Profile"}
               </MenubarTrigger>
               <MenubarContent className="w-56">
-                {session?.user ? (
+                {session?.user && (
                   <>
                     <MenubarItem onClick={() => setStep("profile")} className="cursor-pointer font-bold text-xs">
                       {session.user.email}
                     </MenubarItem>
                     <MenubarSeparator />
                   </>
-                ) : userId ? (
-                  <>
-                    <MenubarItem onClick={() => setStep("profile")} className="cursor-pointer font-mono text-xs">
-                      {userId}
-                    </MenubarItem>
-                    <MenubarSeparator />
-                  </>
-                ) : (
-                  <MenubarItem onClick={createUserId} className="gap-2">
-                    <UserPlus className="h-4 w-4" /> Create User ID
-                  </MenubarItem>
                 )}
                 {/* Only show Admin unlock option if no user is logged in, or the logged in user is an admin */}
                 {(!session?.user || session.user.role === "admin") && (
@@ -501,6 +479,18 @@ const currentIndex = useMemo(
             <MenubarMenu>
               <MenubarTrigger onClick={() => setStep("community")} className="cursor-pointer font-bold">
                 <Globe className="mr-2 h-4 w-4" /> Community
+              </MenubarTrigger>
+            </MenubarMenu>
+
+            <MenubarMenu>
+              <MenubarTrigger onClick={() => setStep("feedback")} className="cursor-pointer font-bold text-orange-500 hover:text-orange-600 transition-colors">
+                <MessageCircle className="mr-2 h-4 w-4" /> Feedback
+              </MenubarTrigger>
+            </MenubarMenu>
+
+            <MenubarMenu>
+              <MenubarTrigger onClick={() => setStep("community-join")} className="cursor-pointer font-bold text-green-600 hover:text-green-700 transition-colors">
+                <MessageSquare className="mr-2 h-4 w-4" /> WhatsApp
               </MenubarTrigger>
             </MenubarMenu>
 

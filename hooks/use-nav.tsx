@@ -17,6 +17,8 @@ export type Step =
   | "lab"
   | "guider"
   | "arena"
+  | "feedback"
+  | "community-join"
 
 export interface SessionUser {
   id: string

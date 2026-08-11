@@ -103,6 +103,10 @@ export function StudentProfile() {
   const [achievements, setAchievements] = useState<Achievement[]>([])
   const [toast, setToast] = useState<string | null>(null)
 
+  // Password reset state inside profile settings
+  const [passwordForm, setPasswordForm] = useState({ newPassword: "", confirmPassword: "" })
+  const [isResettingPassword, setIsResettingPassword] = useState(false)
+
   const showToast = (msg: string) => {
     setToast(msg)
     setTimeout(() => setToast(null), 3500)
@@ -247,6 +251,43 @@ export function StudentProfile() {
     } finally {
       setIsSaving(false)
       setIsEditing(false)
+    }
+  }
+
+  // ── Change / Reset Password ──────────────────────────────────────────────────
+  const handleChangePassword = async () => {
+    if (!passwordForm.newPassword) {
+      showToast("⚠️ Please enter a new password.")
+      return
+    }
+    if (passwordForm.newPassword !== passwordForm.confirmPassword) {
+      showToast("⚠️ Passwords do not match!")
+      return
+    }
+
+    setIsResettingPassword(true)
+    try {
+      const res = await fetch("/api/auth/reset-password", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          email: profile.email,
+          phone: profile.phone,
+          newPassword: passwordForm.newPassword,
+        }),
+      })
+
+      const data = await res.json()
+      if (res.ok && data.success) {
+        showToast("🔑 Password updated successfully!")
+        setPasswordForm({ newPassword: "", confirmPassword: "" })
+      } else {
+        showToast("⚠️ " + (data.message || "Password update failed."))
+      }
+    } catch {
+      showToast("⚠️ Network error. Please try again.")
+    } finally {
+      setIsResettingPassword(false)
     }
   }
 
@@ -833,6 +874,46 @@ export function StudentProfile() {
                   <LogOut className="mr-2 w-4 h-4" /> Sign Out
                 </Button>
               </div>
+            </CardContent>
+          </Card>
+
+          {/* Change / Reset Password Card */}
+          <Card className="border-2 shadow-xl border-primary/20">
+            <CardHeader className="border-b bg-muted/20">
+              <CardTitle className="flex items-center gap-2 text-base">
+                <Lock className="w-5 h-5 text-primary" /> Reset & Change Password
+              </CardTitle>
+              <CardDescription>Update your account password securely</CardDescription>
+            </CardHeader>
+            <CardContent className="pt-6 space-y-4">
+              <div className="space-y-2">
+                <Label className="font-bold text-xs uppercase tracking-wider">New Password</Label>
+                <Input
+                  type="password"
+                  value={passwordForm.newPassword}
+                  onChange={(e) => setPasswordForm({ ...passwordForm, newPassword: e.target.value })}
+                  placeholder="••••••••"
+                  className="h-12 border-2 rounded-xl"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label className="font-bold text-xs uppercase tracking-wider">Confirm New Password</Label>
+                <Input
+                  type="password"
+                  value={passwordForm.confirmPassword}
+                  onChange={(e) => setPasswordForm({ ...passwordForm, confirmPassword: e.target.value })}
+                  placeholder="••••••••"
+                  className="h-12 border-2 rounded-xl"
+                />
+              </div>
+              <Button
+                onClick={handleChangePassword}
+                disabled={isResettingPassword}
+                className="w-full h-12 font-black rounded-xl bg-gradient-to-r from-primary to-indigo-600 text-white shadow-lg"
+              >
+                <Lock className="mr-2 w-4 h-4" />
+                {isResettingPassword ? "Updating Password..." : "Update Password"}
+              </Button>
             </CardContent>
           </Card>
 

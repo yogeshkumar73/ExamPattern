@@ -29,7 +29,7 @@ import {
 import FileUpload from "@/components/file-upload"
 import TopicAnalysis from "@/components/topic-analysis"
 import QuestionPredictor from "@/components/question-predictor"
-import { UserOnboarding, AdminPanel, PaperRepository, PolicySection, CommunityChat } from "./admin-community"
+import { UserOnboarding, AdminPanel, PaperRepository, PolicySection, CommunityChat, FeedbackSection, WhatsAppCommunity } from "./admin-community"
 import { StudentProfile } from "@/components/student-profile"
 import { DeveloperSection } from "@/components/developer-section"
 import { SmartLab } from "@/components/smart-lab"
@@ -127,6 +127,8 @@ export default function ExamAnalyzer() {
   if (currentStep === "developer") return <DeveloperSection />
   if (currentStep === "lab") return <SmartLab />
   if (currentStep === "guider") return <GuiderAgent />
+  if (currentStep === "feedback") return <FeedbackSection />
+  if (currentStep === "community-join") return <WhatsAppCommunity />
   
   // Arena: Show request form for students, battle arena for approved
   if (currentStep === "arena") {

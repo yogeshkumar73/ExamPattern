@@ -17,6 +17,17 @@ import bcrypt from 'bcryptjs';
 
 export async function POST(req: Request) {
   try {
+    const initSecret = process.env.ADMIN_INIT_SECRET;
+    const providedSecret = req.headers.get("x-admin-init-secret");
+
+    // In production, block unauthorized initialization
+    if (process.env.NODE_ENV === "production" && (!initSecret || providedSecret !== initSecret)) {
+      return NextResponse.json(
+        { error: "Forbidden: Admin initialization is restricted in production environment." },
+        { status: 403 }
+      );
+    }
+
     const { email, password, name } = await req.json();
 
     if (!email || !password || !name) {

@@ -17,7 +17,8 @@ export default function AdminDashboard() {
   useEffect(() => {
     const fetchStats = async () => {
       try {
-        const user = JSON.parse(localStorage.getItem('aura_session') || '{}');
+        const rawSession = JSON.parse(localStorage.getItem('aura_session') || '{}');
+        const user = rawSession.user || rawSession;
         
         // Fetch pending count
         const pendingRes = await fetch(

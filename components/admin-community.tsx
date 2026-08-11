@@ -6,16 +6,16 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Badge } from "@/components/ui/badge"
-import { ShieldCheck, User, Users, Lock, Unlock, Phone, CheckCircle2, Download, Upload, FileText, Globe, Scale, ArrowRight, ShieldAlert, Brain, MessageSquare, Send, Sparkles, Activity, Zap, Trophy, Target, CheckSquare, XSquare } from "lucide-react"
+import { Textarea } from "@/components/ui/textarea"
+import { ShieldCheck, User, Users, Lock, Unlock, Phone, CheckCircle2, Download, Upload, FileText, Globe, Scale, ArrowRight, ShieldAlert, Brain, MessageSquare, Send, Sparkles, Activity, Zap, Trophy, Target, CheckSquare, XSquare, Star, MessageCircle, ExternalLink, Heart } from "lucide-react"
 import { useNav } from "@/hooks/use-nav"
 import { Switch } from "@/components/ui/switch"
-// import { signIn, useSession } from "next-auth/react" // Removed due to environment restrictions
 
 // --- ONBOARDING COMPONENT ---
 export function UserOnboarding() {
   const { setRegistered, setStep } = useNav()
-  const [mode, setMode] = useState<"login" | "register">("register")
-  const [formData, setFormData] = useState({ name: "", email: "", phone: "", password: "" })
+  const [mode, setMode] = useState<"login" | "register" | "forgot">("register")
+  const [formData, setFormData] = useState({ name: "", email: "", phone: "", password: "", confirmPassword: "" })
   const [loading, setLoading] = useState(false)
   
 
@@ -111,6 +111,45 @@ export function UserOnboarding() {
     }
   }
 
+  const handleResetPassword = async () => {
+    if (!formData.email || !formData.phone || !formData.password) {
+      alert("Please enter your registered Gmail, Phone Number, and New Password.")
+      return
+    }
+
+    if (formData.password !== formData.confirmPassword) {
+      alert("Passwords do not match. Please ensure New Password and Confirm Password match.")
+      return
+    }
+
+    setLoading(true)
+    try {
+      const res = await fetch("/api/auth/reset-password", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          email: formData.email,
+          phone: formData.phone,
+          newPassword: formData.password
+        })
+      })
+      const data = await res.json()
+
+      if (res.ok) {
+        alert(data.message || "Password reset successful! Please login with your new password.")
+        setFormData({ ...formData, password: "", confirmPassword: "" })
+        setMode("login")
+      } else {
+        alert(data.message || "Password reset failed. Please verify your details.")
+      }
+    } catch (e) {
+      console.error(e)
+      alert("Network error. Could not reach server.")
+    } finally {
+      setLoading(false)
+    }
+  }
+
   return (
     <div className="max-w-md mx-auto py-20 animate-in fade-in zoom-in duration-500">
       <Card className="border-2 shadow-2xl overflow-hidden glass-morphism border-primary/20">
@@ -118,25 +157,37 @@ export function UserOnboarding() {
           <div className="absolute top-0 right-0 p-4 opacity-20"><Brain className="w-20 h-20 text-white" /></div>
           <CardTitle className="text-3xl font-black tracking-wider italic text-white">AURA PORTAL</CardTitle>
           <CardDescription className="text-primary-foreground/90 font-bold uppercase tracking-widest text-xs">
-            {mode === "register" ? "STUDENT REGISTRATION" : "STUDENT LOGIN"}
+            {mode === "register" ? "STUDENT REGISTRATION" : mode === "login" ? "STUDENT LOGIN" : "RESET YOUR PASSWORD"}
           </CardDescription>
         </CardHeader>
         
         <CardContent className="pt-8 space-y-6">
-          <div className="flex border-2 border-muted rounded-xl overflow-hidden">
-            <button 
-              onClick={() => setMode("register")}
-              className={`flex-1 py-3 text-sm font-bold uppercase tracking-wider transition-colors ${mode === "register" ? "bg-primary text-primary-foreground" : "bg-transparent text-muted-foreground hover:bg-muted/10"}`}
-            >
-              Register
-            </button>
-            <button 
-              onClick={() => setMode("login")}
-              className={`flex-1 py-3 text-sm font-bold uppercase tracking-wider transition-colors ${mode === "login" ? "bg-primary text-primary-foreground" : "bg-transparent text-muted-foreground hover:bg-muted/10"}`}
-            >
-              Login
-            </button>
-          </div>
+          {mode !== "forgot" ? (
+            <div className="flex border-2 border-muted rounded-xl overflow-hidden">
+              <button 
+                onClick={() => setMode("register")}
+                className={`flex-1 py-3 text-sm font-bold uppercase tracking-wider transition-colors ${mode === "register" ? "bg-primary text-primary-foreground" : "bg-transparent text-muted-foreground hover:bg-muted/10"}`}
+              >
+                Register
+              </button>
+              <button 
+                onClick={() => setMode("login")}
+                className={`flex-1 py-3 text-sm font-bold uppercase tracking-wider transition-colors ${mode === "login" ? "bg-primary text-primary-foreground" : "bg-transparent text-muted-foreground hover:bg-muted/10"}`}
+              >
+                Login
+              </button>
+            </div>
+          ) : (
+            <div className="flex items-center justify-between">
+              <span className="text-sm font-bold text-muted-foreground uppercase tracking-wider">Account Security Recovery</span>
+              <button 
+                onClick={() => setMode("login")}
+                className="text-xs font-black text-primary hover:underline uppercase"
+              >
+                ← Back to Login
+              </button>
+            </div>
+          )}
 
           <div className="space-y-4">
             {mode === "register" && (
@@ -162,7 +213,19 @@ export function UserOnboarding() {
               </>
             )}
 
+            {mode === "forgot" && (
               <div className="space-y-2">
+                <Label className="font-bold">Registered Phone Number *</Label>
+                <Input 
+                  placeholder="+91 00000 00000" 
+                  className="h-12 border-2" 
+                  value={formData.phone} 
+                  onChange={(e) => setFormData({ ...formData, phone: e.target.value })} 
+                />
+              </div>
+            )}
+
+            <div className="space-y-2">
               <Label className="font-bold">Gmail Address</Label>
               <Input 
                 type="email" 
@@ -174,7 +237,18 @@ export function UserOnboarding() {
             </div>
             
             <div className="space-y-2">
-              <Label className="font-bold">Password</Label>
+              <div className="flex items-center justify-between">
+                <Label className="font-bold">{mode === "forgot" ? "New Password" : "Password"}</Label>
+                {mode === "login" && (
+                  <button 
+                    type="button"
+                    onClick={() => setMode("forgot")}
+                    className="text-xs font-bold text-primary hover:underline"
+                  >
+                    Forgot Password?
+                  </button>
+                )}
+              </div>
               <Input 
                 type="password" 
                 placeholder="••••••••" 
@@ -184,24 +258,42 @@ export function UserOnboarding() {
               />
             </div>
 
+            {mode === "forgot" && (
+              <div className="space-y-2">
+                <Label className="font-bold">Confirm New Password</Label>
+                <Input 
+                  type="password" 
+                  placeholder="••••••••" 
+                  className="h-12 border-2" 
+                  value={formData.confirmPassword} 
+                  onChange={(e) => setFormData({ ...formData, confirmPassword: e.target.value })} 
+                />
+              </div>
+            )}
+
             {mode === "register" ? (
-              <>
-                <Button 
-                  onClick={handleRegister} 
-                  disabled={loading} 
-                  className="w-full h-14 text-lg font-black bg-primary text-primary-foreground rounded-xl shadow-xl hover:scale-102 transition-transform mt-4"
-                >
-                  {loading ? "REGISTERING..." : "CREATE ACCOUNT"} <ArrowRight className="ml-2 w-5 h-5" />
-                </Button>
-                
-              </>
-            ) : (
+              <Button 
+                onClick={handleRegister} 
+                disabled={loading} 
+                className="w-full h-14 text-lg font-black bg-primary text-primary-foreground rounded-xl shadow-xl hover:scale-102 transition-transform mt-4"
+              >
+                {loading ? "REGISTERING..." : "CREATE ACCOUNT"} <ArrowRight className="ml-2 w-5 h-5" />
+              </Button>
+            ) : mode === "login" ? (
               <Button 
                 onClick={handleLogin} 
                 disabled={loading} 
                 className="w-full h-14 text-lg font-black bg-green-600 hover:bg-green-700 rounded-xl shadow-xl hover:scale-102 transition-transform mt-4 text-white border-none"
               >
                 {loading ? "LOGGING IN..." : "VERIFY & ENTER"} <ArrowRight className="ml-2 w-5 h-5" />
+              </Button>
+            ) : (
+              <Button 
+                onClick={handleResetPassword} 
+                disabled={loading} 
+                className="w-full h-14 text-lg font-black bg-indigo-600 hover:bg-indigo-700 rounded-xl shadow-xl hover:scale-102 transition-transform mt-4 text-white border-none"
+              >
+                {loading ? "SAVING..." : "SET NEW PASSWORD"} <ArrowRight className="ml-2 w-5 h-5" />
               </Button>
             )}
           </div>
@@ -1308,6 +1400,357 @@ export function CommunityChat() {
           </div>
         </Card>
       </div>
+    </div>
+  )
+}
+
+// --- FEEDBACK SECTION ---
+export function FeedbackSection() {
+  const { sessionUser } = useNav()
+  const [category, setCategory] = useState("general")
+  const [message, setMessage] = useState("")
+  const [rating, setRating] = useState(0)
+  const [hoverRating, setHoverRating] = useState(0)
+  const [loading, setLoading] = useState(false)
+  const [submitted, setSubmitted] = useState(false)
+  const [error, setError] = useState("")
+
+  const categories = [
+    { id: "general", label: "General Query", icon: "💬", color: "bg-blue-500" },
+    { id: "bug", label: "Bug Report", icon: "🐛", color: "bg-red-500" },
+    { id: "feature", label: "Feature Request", icon: "✨", color: "bg-purple-500" },
+    { id: "praise", label: "Praise / Feedback", icon: "❤️", color: "bg-pink-500" },
+    { id: "complaint", label: "Complaint", icon: "⚠️", color: "bg-yellow-500" },
+  ]
+
+  const handleSubmit = async () => {
+    if (!message.trim() || message.trim().length < 5) {
+      setError("Please write at least 5 characters.")
+      return
+    }
+    setError("")
+    setLoading(true)
+    try {
+      const res = await fetch("/api/feedback", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          userId: sessionUser?.id || null,
+          userName: sessionUser?.name || "Anonymous",
+          userEmail: sessionUser?.email || null,
+          category,
+          message: message.trim(),
+          rating: rating || null,
+        }),
+      })
+      const data = await res.json()
+      if (res.ok && data.success) {
+        setSubmitted(true)
+        setMessage("")
+        setRating(0)
+        setCategory("general")
+      } else {
+        setError(data.message || "Submission failed. Please try again.")
+      }
+    } catch {
+      setError("Network error. Please check your connection.")
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  if (submitted) {
+    return (
+      <div className="max-w-2xl mx-auto py-20 px-4 animate-in fade-in zoom-in duration-500">
+        <div className="text-center">
+          <div className="w-24 h-24 bg-gradient-to-br from-green-400 to-emerald-600 rounded-full flex items-center justify-center mx-auto mb-6 shadow-2xl shadow-green-500/30 animate-bounce">
+            <CheckCircle2 className="w-12 h-12 text-white" />
+          </div>
+          <h2 className="text-3xl font-black text-foreground mb-3">Thank You! 🎉</h2>
+          <p className="text-lg text-muted-foreground mb-8">Your message has been received. We read every single feedback and will get back to you soon!</p>
+          <Button onClick={() => setSubmitted(false)} className="rounded-xl h-12 px-8 font-bold">
+            Submit Another Feedback
+          </Button>
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <div className="max-w-2xl mx-auto py-12 px-4 animate-in fade-in duration-500">
+      {/* Header */}
+      <div className="text-center mb-10">
+        <div className="inline-flex items-center gap-2 bg-primary/10 border border-primary/20 rounded-full px-5 py-2 mb-4">
+          <MessageCircle className="w-4 h-4 text-primary" />
+          <span className="text-sm font-bold text-primary uppercase tracking-widest">Contact Us</span>
+        </div>
+        <h1 className="text-4xl font-black tracking-tight mb-3 bg-clip-text text-transparent bg-gradient-to-r from-primary via-purple-500 to-indigo-600">
+          We&apos;d Love to Hear From You
+        </h1>
+        <p className="text-muted-foreground text-lg">
+          Ask questions, report bugs, request features, or just say hello!
+        </p>
+      </div>
+
+      <Card className="border-2 border-primary/10 shadow-xl rounded-2xl overflow-hidden">
+        <CardHeader className="bg-gradient-to-r from-primary/10 via-purple-500/10 to-indigo-600/10 border-b border-primary/10 py-6">
+          <CardTitle className="text-xl font-black flex items-center gap-2">
+            <MessageSquare className="w-5 h-5 text-primary" />
+            Send a Message
+          </CardTitle>
+          <CardDescription>Your message goes directly to our team</CardDescription>
+        </CardHeader>
+
+        <CardContent className="p-6 space-y-6">
+          {/* Category Selection */}
+          <div className="space-y-2">
+            <Label className="font-bold text-sm uppercase tracking-wider">Category</Label>
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+              {categories.map((cat) => (
+                <button
+                  key={cat.id}
+                  onClick={() => setCategory(cat.id)}
+                  className={`flex items-center gap-2 p-3 rounded-xl border-2 text-left transition-all text-sm font-semibold ${
+                    category === cat.id
+                      ? "border-primary bg-primary/10 text-primary shadow-md"
+                      : "border-muted bg-muted/30 text-muted-foreground hover:border-primary/40 hover:bg-muted/50"
+                  }`}
+                >
+                  <span className="text-lg">{cat.icon}</span>
+                  <span>{cat.label}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Rating */}
+          <div className="space-y-2">
+            <Label className="font-bold text-sm uppercase tracking-wider">Rate Your Experience (Optional)</Label>
+            <div className="flex items-center gap-2">
+              {[1, 2, 3, 4, 5].map((star) => (
+                <button
+                  key={star}
+                  type="button"
+                  onClick={() => setRating(star)}
+                  onMouseEnter={() => setHoverRating(star)}
+                  onMouseLeave={() => setHoverRating(0)}
+                  className="transition-transform hover:scale-125"
+                >
+                  <Star
+                    className={`w-8 h-8 ${
+                      star <= (hoverRating || rating)
+                        ? "fill-yellow-400 text-yellow-400"
+                        : "text-muted-foreground"
+                    } transition-colors`}
+                  />
+                </button>
+              ))}
+              {rating > 0 && (
+                <span className="ml-2 text-sm font-bold text-muted-foreground">
+                  {["Poor", "Fair", "Good", "Great", "Excellent"][rating - 1]}
+                </span>
+              )}
+            </div>
+          </div>
+
+          {/* Message */}
+          <div className="space-y-2">
+            <Label className="font-bold text-sm uppercase tracking-wider">Your Message *</Label>
+            <Textarea
+              placeholder="Type your query, feedback, or anything you'd like to share with us..."
+              className="min-h-[140px] resize-none rounded-xl border-2 text-sm"
+              value={message}
+              onChange={(e) => {
+                setMessage(e.target.value)
+                if (error) setError("")
+              }}
+              maxLength={2000}
+            />
+            <div className="flex justify-between items-center">
+              {error && <p className="text-xs text-destructive font-bold">{error}</p>}
+              <span className="text-xs text-muted-foreground ml-auto">{message.length}/2000</span>
+            </div>
+          </div>
+
+          {/* User info preview */}
+          {sessionUser && (
+            <div className="flex items-center gap-3 bg-muted/40 rounded-xl p-3">
+              <div className="w-9 h-9 rounded-full bg-primary/20 flex items-center justify-center">
+                <User className="w-4 h-4 text-primary" />
+              </div>
+              <div>
+                <p className="text-sm font-bold">{sessionUser.name}</p>
+                <p className="text-xs text-muted-foreground">{sessionUser.email}</p>
+              </div>
+              <Badge variant="outline" className="ml-auto text-xs">Logged in</Badge>
+            </div>
+          )}
+
+          {/* Submit */}
+          <Button
+            onClick={handleSubmit}
+            disabled={loading}
+            className="w-full h-14 text-lg font-black rounded-xl shadow-lg hover:scale-[1.01] transition-transform bg-gradient-to-r from-primary to-purple-600 text-white border-none"
+          >
+            {loading ? (
+              <><Activity className="mr-2 w-5 h-5 animate-spin" /> Sending...</>
+            ) : (
+              <><Send className="mr-2 w-5 h-5" /> Send Message</>
+            )}
+          </Button>
+        </CardContent>
+      </Card>
+    </div>
+  )
+}
+
+// --- WHATSAPP COMMUNITY SECTION ---
+export function WhatsAppCommunity() {
+  const SUPPORT_PHONE = process.env.NEXT_PUBLIC_SUPPORT_PHONE || "7379307099"
+  const SUPPORT_PHONE2 = process.env.NEXT_PUBLIC_SUPPORT_PHONE2 || "9532415871"
+  const SUPPORT_EMAIL = process.env.NEXT_PUBLIC_SUPPORT_EMAIL || "helpsupport9452@gmail.com"
+
+  const groups = [
+    {
+      id: 1,
+      name: "📚 ExamPattern Students",
+      description: "Main community for exam analysis, tips, and peer discussions.",
+      link: `https://wa.me/${SUPPORT_PHONE}?text=${encodeURIComponent("Hi! I want to join the ExamPattern Students community.")}`  ,
+      members: "500+",
+      gradient: "from-green-500 to-emerald-600",
+      glow: "shadow-green-500/30",
+      badge: "Main Group",
+      badgeColor: "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300",
+    },
+    {
+      id: 2,
+      name: "⚔️ Battle Arena Players",
+      description: "Join battle challenges, see leaderboards, and compete with peers!",
+      link: `https://wa.me/${SUPPORT_PHONE2}?text=${encodeURIComponent("Hi! I want to join the Battle Arena community.")}`  ,
+      members: "200+",
+      gradient: "from-purple-500 to-indigo-600",
+      glow: "shadow-purple-500/30",
+      badge: "Arena Group",
+      badgeColor: "bg-purple-100 text-purple-800 dark:bg-purple-900/30 dark:text-purple-300",
+    },
+    {
+      id: 3,
+      name: "🤖 AI & Smart Lab Hub",
+      description: "Discuss AI features, interview prep tips, and get smart lab support.",
+      link: `https://wa.me/${SUPPORT_PHONE}?text=${encodeURIComponent("Hi! I want to join the AI & Smart Lab Hub.")}`  ,
+      members: "150+",
+      gradient: "from-blue-500 to-cyan-600",
+      glow: "shadow-blue-500/30",
+      badge: "Tech Group",
+      badgeColor: "bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300",
+    },
+  ]
+
+  return (
+    <div className="max-w-3xl mx-auto py-12 px-4 animate-in fade-in duration-500">
+      {/* Header */}
+      <div className="text-center mb-12">
+        <div className="inline-flex items-center gap-2 bg-green-500/10 border border-green-500/20 rounded-full px-5 py-2 mb-5">
+          <span className="text-xl">💬</span>
+          <span className="text-sm font-black text-green-600 uppercase tracking-widest">WhatsApp Community</span>
+        </div>
+        <h1 className="text-4xl font-black tracking-tight mb-3 bg-clip-text text-transparent bg-gradient-to-r from-green-500 via-emerald-500 to-teal-600">
+          Join Our Learning Community
+        </h1>
+        <p className="text-muted-foreground text-lg max-w-xl mx-auto">
+          Connect with thousands of students. Get exam tips, battle updates, AI tricks, and peer support — all on WhatsApp!
+        </p>
+      </div>
+
+      {/* Group Cards */}
+      <div className="space-y-4 mb-10">
+        {groups.map((group) => (
+          <a
+            key={group.id}
+            href={group.link}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="block group"
+          >
+            <Card className="border-2 border-transparent hover:border-green-400/50 shadow-lg hover:shadow-xl transition-all duration-300 rounded-2xl overflow-hidden cursor-pointer hover:scale-[1.01]">
+              <div className="flex items-stretch">
+                {/* Left gradient accent */}
+                <div className={`w-2 bg-gradient-to-b ${group.gradient} flex-shrink-0`} />
+                <CardContent className="flex-1 p-5">
+                  <div className="flex items-start justify-between gap-4">
+                    <div className="flex-1">
+                      <div className="flex items-center gap-3 mb-2">
+                        <h3 className="text-lg font-black text-foreground group-hover:text-green-600 transition-colors">
+                          {group.name}
+                        </h3>
+                        <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${group.badgeColor}`}>
+                          {group.badge}
+                        </span>
+                      </div>
+                      <p className="text-sm text-muted-foreground mb-3">{group.description}</p>
+                      <div className="flex items-center gap-4 text-xs text-muted-foreground">
+                        <span className="flex items-center gap-1">
+                          <Users className="w-3 h-3" />
+                          {group.members} members
+                        </span>
+                        <span className="flex items-center gap-1 text-green-600 font-bold">
+                          <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse" />
+                          Active
+                        </span>
+                      </div>
+                    </div>
+                    <div className={`flex-shrink-0 w-14 h-14 rounded-2xl bg-gradient-to-br ${group.gradient} shadow-lg ${group.glow} flex items-center justify-center group-hover:scale-110 transition-transform`}>
+                      <ExternalLink className="w-6 h-6 text-white" />
+                    </div>
+                  </div>
+                </CardContent>
+              </div>
+            </Card>
+          </a>
+        ))}
+      </div>
+
+      {/* Support Contact Card */}
+      <Card className="border-2 border-primary/10 shadow-xl rounded-2xl overflow-hidden">
+        <CardHeader className="bg-gradient-to-r from-primary/10 via-purple-500/10 to-indigo-600/10 border-b border-primary/10 py-5">
+          <CardTitle className="text-lg font-black flex items-center gap-2">
+            <Heart className="w-5 h-5 text-red-500" />
+            Direct Support
+          </CardTitle>
+          <CardDescription>Reach out to our team directly for urgent queries</CardDescription>
+        </CardHeader>
+        <CardContent className="p-6 space-y-4">
+          <a
+            href={`https://wa.me/${SUPPORT_PHONE}?text=${encodeURIComponent("Hi ExamPattern support team, I need help with:")}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex items-center gap-4 p-4 rounded-xl bg-green-50 dark:bg-green-900/20 border-2 border-green-200 dark:border-green-700/30 hover:border-green-400 hover:scale-[1.01] transition-all cursor-pointer group"
+          >
+            <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-green-500 to-emerald-600 shadow-lg flex items-center justify-center flex-shrink-0">
+              <Phone className="w-6 h-6 text-white" />
+            </div>
+            <div className="flex-1">
+              <p className="text-sm font-black text-foreground group-hover:text-green-600 transition-colors">WhatsApp Support</p>
+              <p className="text-base font-bold text-green-600">+91 {SUPPORT_PHONE}</p>
+            </div>
+            <ExternalLink className="w-4 h-4 text-green-500" />
+          </a>
+
+          <a
+            href={`mailto:${SUPPORT_EMAIL}`}
+            className="flex items-center gap-4 p-4 rounded-xl bg-blue-50 dark:bg-blue-900/20 border-2 border-blue-200 dark:border-blue-700/30 hover:border-blue-400 hover:scale-[1.01] transition-all cursor-pointer group"
+          >
+            <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-blue-500 to-indigo-600 shadow-lg flex items-center justify-center flex-shrink-0">
+              <Globe className="w-6 h-6 text-white" />
+            </div>
+            <div className="flex-1">
+              <p className="text-sm font-black text-foreground group-hover:text-blue-600 transition-colors">Email Support</p>
+              <p className="text-base font-bold text-blue-600">{SUPPORT_EMAIL}</p>
+            </div>
+            <ExternalLink className="w-4 h-4 text-blue-500" />
+          </a>
+        </CardContent>
+      </Card>
     </div>
   )
 }
