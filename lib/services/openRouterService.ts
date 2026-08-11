@@ -1,6 +1,13 @@
 /**
- * Open Router Service - Integration with NVIDIA Nemotron 3.5 for Content Safety & RAG
- * Production-Ready SaaS Service
+ * OpenRouter AI Service
+ *
+ * Features:
+ * - Content safety checking
+ * - Dynamic coding question generation
+ * - RAG-enhanced question generation
+ * - Batch question generation
+ *
+ * Server-side only.
  */
 
 interface ContentSafetyCheckRequest {
@@ -29,7 +36,10 @@ interface GeneratedQuestion {
   difficulty: "Easy" | "Medium" | "Hard";
   tags: string[];
   boilerplate?: string;
-  testCases?: Array<{ input: string; output: string }>;
+  testCases?: Array<{
+    input: string;
+    output: string;
+  }>;
 }
 
 interface GenerateQuestionResponse {
@@ -37,110 +47,469 @@ interface GenerateQuestionResponse {
   isSafe: boolean;
 }
 
+interface ChatMessage {
+  role: "system" | "user" | "assistant";
+  content: string;
+}
+
+interface OpenRouterResponse {
+  choices?: Array<{
+    message?: {
+      content?: string;
+    };
+  }>;
+}
+
+/* -------------------------------------------------------------------------- */
+/* Configuration                                                               */
+/* -------------------------------------------------------------------------- */
+
 const OPEN_ROUTER_API_KEY = process.env.OPEN_ROUTER_API_KEY;
-const OPEN_ROUTER_BASE_URL = "https://openrouter.io/api/v1";
-const NEMOTRON_MODEL = "nvidia/nemotron-3.5-content-safety:free";
+
+const OPEN_ROUTER_BASE_URL =
+  process.env.OPEN_ROUTER_BASE_URL || "https://openrouter.ai/api/v1";
+
+const OPEN_ROUTER_MODEL =
+  process.env.OPEN_ROUTER_MODEL || "google/gemini-2.5-flash-lite";
+
+const APP_URL =
+  process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
+
+const REQUEST_TIMEOUT_MS = 60_000;
+
+const DEFAULT_QUESTION_COUNT = 3;
+const MAX_QUESTION_COUNT = 10;
+
+/* -------------------------------------------------------------------------- */
+/* Validation                                                                  */
+/* -------------------------------------------------------------------------- */
+
+function ensureApiKey(): void {
+  if (!OPEN_ROUTER_API_KEY) {
+    throw new Error("OPEN_ROUTER_API_KEY is not configured");
+  }
+}
+
+function normalizeCount(count?: number): number {
+  if (!Number.isFinite(count)) {
+    return DEFAULT_QUESTION_COUNT;
+  }
+
+  return Math.min(
+    Math.max(Math.floor(count ?? DEFAULT_QUESTION_COUNT), 1),
+    MAX_QUESTION_COUNT
+  );
+}
+
+/* -------------------------------------------------------------------------- */
+/* JSON Parsing                                                                */
+/* -------------------------------------------------------------------------- */
 
 /**
- * Check content safety using NVIDIA Nemotron 3.5
- * @param request Content to check for safety
- * @returns Safety assessment and issues found
+ * Safely parse JSON returned by an AI model.
+ *
+ * Handles:
+ * - Normal JSON
+ * - JSON wrapped in markdown code fences
+ * - Extra text before/after JSON
+ */
+function parseAIResponse<T>(content: string, fallback: T): T {
+  if (!content || typeof content !== "string") {
+    return fallback;
+  }
+
+  const cleaned = content
+    .trim()
+    .replace(/^```(?:json)?\s*/i, "")
+    .replace(/\s*```$/i, "")
+    .trim();
+
+  // First attempt: direct JSON parsing.
+  try {
+    return JSON.parse(cleaned) as T;
+  } catch {
+    // Continue with extraction.
+  }
+
+  // Try to extract an object.
+  const objectStart = cleaned.indexOf("{");
+  const objectEnd = cleaned.lastIndexOf("}");
+
+  if (objectStart !== -1 && objectEnd > objectStart) {
+    try {
+      return JSON.parse(
+        cleaned.slice(objectStart, objectEnd + 1)
+      ) as T;
+    } catch {
+      // Continue with array extraction.
+    }
+  }
+
+  // Try to extract an array.
+  const arrayStart = cleaned.indexOf("[");
+  const arrayEnd = cleaned.lastIndexOf("]");
+
+  if (arrayStart !== -1 && arrayEnd > arrayStart) {
+    try {
+      return JSON.parse(
+        cleaned.slice(arrayStart, arrayEnd + 1)
+      ) as T;
+    } catch {
+      // Return fallback below.
+    }
+  }
+
+  return fallback;
+}
+
+/* -------------------------------------------------------------------------- */
+/* OpenRouter                                                                  */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * Generic OpenRouter API call.
+ */
+async function callOpenRouter(
+  messages: ChatMessage[],
+  options: {
+    temperature?: number;
+    maxTokens?: number;
+    title?: string;
+  } = {}
+): Promise<string> {
+  ensureApiKey();
+
+  const {
+    temperature = 0.7,
+    maxTokens = 4096,
+    title = "Aura Study AI",
+  } = options;
+
+  const controller = new AbortController();
+
+  const timeout = setTimeout(() => {
+    controller.abort();
+  }, REQUEST_TIMEOUT_MS);
+
+  try {
+    const response = await fetch(
+      `${OPEN_ROUTER_BASE_URL}/chat/completions`,
+      {
+        method: "POST",
+
+        headers: {
+          Authorization: `Bearer ${OPEN_ROUTER_API_KEY}`,
+          "Content-Type": "application/json",
+          "HTTP-Referer": APP_URL,
+          "X-Title": title,
+        },
+
+        body: JSON.stringify({
+          model: OPEN_ROUTER_MODEL,
+          messages,
+          temperature,
+          top_p: 0.9,
+          max_tokens: maxTokens,
+        }),
+
+        signal: controller.signal,
+
+        // Prevent Next.js from unnecessarily caching AI requests.
+        cache: "no-store",
+      }
+    );
+
+    if (!response.ok) {
+      // Don't expose the provider's entire error body to callers.
+      const errorText = await response.text();
+
+      console.error("OpenRouter API error:", {
+        status: response.status,
+        body: errorText.slice(0, 1000),
+      });
+
+      throw new Error(
+        `OpenRouter request failed with status ${response.status}`
+      );
+    }
+
+    const data =
+      (await response.json()) as OpenRouterResponse;
+
+    const content =
+      data.choices?.[0]?.message?.content;
+
+    if (!content || typeof content !== "string") {
+      throw new Error("OpenRouter returned an empty AI response");
+    }
+
+    return content;
+  } catch (error) {
+    if (
+      error instanceof DOMException &&
+      error.name === "AbortError"
+    ) {
+      throw new Error("OpenRouter request timed out");
+    }
+
+    throw error;
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+/* -------------------------------------------------------------------------- */
+/* Content Safety                                                              */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * Check whether content is safe.
  */
 export async function checkContentSafety(
   request: ContentSafetyCheckRequest
 ): Promise<ContentSafetyCheckResponse> {
-  if (!OPEN_ROUTER_API_KEY) {
-    console.warn("OPEN_ROUTER_API_KEY not set, skipping safety check");
-    return { isSafe: true, score: 1.0, issues: [] };
+  const text = request.text?.trim();
+
+  if (!text) {
+    throw new Error("Text is required for content safety checking");
   }
 
   try {
-    const systemPrompt = `You are a content safety checker. Analyze the following text and respond with a JSON object containing:
-- isSafe: boolean (true if content is safe)
-- score: number (0-1, where 1 is completely safe)
-- issues: array of strings describing any safety concerns found
+    const systemPrompt = `
+You are a content safety classifier.
 
-Check for: hate speech, violence, adult content, misinformation, abuse, and other harmful content.`;
+Analyze the supplied text and return ONLY valid JSON.
 
-    const response = await fetch(`${OPEN_ROUTER_BASE_URL}/chat/completions`, {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${OPEN_ROUTER_API_KEY}`,
-        "HTTP-Referer": process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000",
-        "X-Title": "Aura Study AI - Content Safety",
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        model: NEMOTRON_MODEL,
-        messages: [
-          {
-            role: "system",
-            content: systemPrompt,
-          },
-          {
-            role: "user",
-            content: `Context: ${request.context || "General"}
+Required JSON format:
+{
+  "isSafe": true,
+  "score": 0.95,
+  "issues": []
+}
 
-Text to check: "${request.text}"
+Rules:
+- isSafe must be a boolean.
+- score must be a number from 0 to 1.
+- issues must be an array of strings.
+- score represents confidence that the content is safe.
+- Identify meaningful safety concerns.
+- Do not generate, rewrite, or expand the supplied content.
+- Do not use markdown.
+- Do not include explanations outside the JSON.
 
-Respond only with valid JSON.`,
-          },
-        ],
-        temperature: 0.3,
-        top_p: 0.9,
-        max_tokens: 300,
-      }),
-    });
+Check for:
+- hate speech
+- violence
+- sexual/adult content
+- abuse
+- dangerous instructions
+- harassment
+- extremist content
+- serious misinformation
+- other harmful content
+`;
 
-    if (!response.ok) {
-      const error = await response.json();
-      console.error("Open Router API error:", error);
-      throw new Error(`API error: ${response.status}`);
-    }
+    const userPrompt = `
+Text to analyze:
+${text}
 
-    const data = await response.json();
-    const content = data.choices?.[0]?.message?.content || "{}";
+Additional context:
+${request.context?.trim() || "None"}
+`;
 
-    // Parse JSON from response
-    const jsonMatch = content.match(/\{[\s\S]*\}/);
-    const safetyCheck = jsonMatch ? JSON.parse(jsonMatch[0]) : { isSafe: true, score: 1.0, issues: [] };
+    const content = await callOpenRouter(
+      [
+        {
+          role: "system",
+          content: systemPrompt,
+        },
+        {
+          role: "user",
+          content: userPrompt,
+        },
+      ],
+      {
+        temperature: 0,
+        maxTokens: 512,
+        title: "Aura Study AI - Content Safety",
+      }
+    );
+
+    const parsed = parseAIResponse<ContentSafetyCheckResponse>(
+      content,
+      {
+        isSafe: false,
+        score: 0,
+        issues: ["Unable to parse safety response"],
+      }
+    );
+
+    const score = Number(parsed.score);
 
     return {
-      isSafe: safetyCheck.isSafe ?? true,
-      score: safetyCheck.score ?? 1.0,
-      issues: safetyCheck.issues ?? [],
+      isSafe:
+        parsed.isSafe === true &&
+        Number.isFinite(score) &&
+        score >= 0 &&
+        score <= 1,
+
+      score:
+        Number.isFinite(score) && score >= 0 && score <= 1
+          ? score
+          : 0,
+
+      issues: Array.isArray(parsed.issues)
+        ? parsed.issues
+            .filter((issue): issue is string => typeof issue === "string")
+            .slice(0, 20)
+        : ["Invalid safety response"],
     };
   } catch (error) {
     console.error("Content safety check failed:", error);
-    // Default to safe if check fails
-    return { isSafe: true, score: 1.0, issues: [] };
+    throw error;
   }
 }
 
+/* -------------------------------------------------------------------------- */
+/* Question Validation                                                         */
+/* -------------------------------------------------------------------------- */
+
+function isDifficulty(
+  value: unknown
+): value is "Easy" | "Medium" | "Hard" {
+  return (
+    value === "Easy" ||
+    value === "Medium" ||
+    value === "Hard"
+  );
+}
+
+function sanitizeQuestion(
+  question: unknown,
+  request: GenerateQuestionRequest
+): GeneratedQuestion | null {
+  if (!question || typeof question !== "object") {
+    return null;
+  }
+
+  const q = question as Record<string, unknown>;
+
+  if (
+    typeof q.title !== "string" ||
+    typeof q.description !== "string" ||
+    !q.title.trim() ||
+    !q.description.trim()
+  ) {
+    return null;
+  }
+
+  const tags = Array.isArray(q.tags)
+    ? q.tags
+        .filter((tag): tag is string => typeof tag === "string")
+        .map((tag) => tag.trim())
+        .filter(Boolean)
+        .slice(0, 10)
+    : [];
+
+  const testCases = Array.isArray(q.testCases)
+    ? q.testCases
+        .filter(
+          (testCase): testCase is { input: string; output: string } =>
+            !!testCase &&
+            typeof testCase === "object" &&
+            typeof (testCase as Record<string, unknown>).input ===
+              "string" &&
+            typeof (testCase as Record<string, unknown>).output ===
+              "string"
+        )
+        .slice(0, 5)
+    : [];
+
+  return {
+    title: q.title.trim().slice(0, 300),
+
+    description: q.description
+      .trim()
+      .slice(0, 5000),
+
+    category:
+      typeof q.category === "string" && q.category.trim()
+        ? q.category.trim().slice(0, 100)
+        : request.category,
+
+    difficulty: isDifficulty(q.difficulty)
+      ? q.difficulty
+      : request.difficulty,
+
+    tags,
+
+    boilerplate:
+      typeof q.boilerplate === "string"
+        ? q.boilerplate.slice(0, 10_000)
+        : "",
+
+    testCases,
+  };
+}
+
+/* -------------------------------------------------------------------------- */
+/* Dynamic Question Generation                                                 */
+/* -------------------------------------------------------------------------- */
+
 /**
- * Generate dynamic coding questions using RAG with Nemotron
- * @param request Question generation parameters
- * @returns Generated questions with safety check
+ * Generate dynamic coding questions using RAG context.
  */
 export async function generateDynamicQuestions(
   request: GenerateQuestionRequest
 ): Promise<GenerateQuestionResponse> {
-  if (!OPEN_ROUTER_API_KEY) {
-    throw new Error("OPEN_ROUTER_API_KEY not configured");
+  ensureApiKey();
+
+  if (!request.topic?.trim()) {
+    throw new Error("Topic is required");
   }
 
-  const count = request.count || 3;
+  if (!request.category?.trim()) {
+    throw new Error("Category is required");
+  }
+
+  if (!isDifficulty(request.difficulty)) {
+    throw new Error("Invalid difficulty");
+  }
+
+  const count = normalizeCount(request.count);
 
   try {
-    const systemPrompt = `You are an expert coding instructor creating unique, engaging coding problems for students.
-Generate ${count} ${request.difficulty} difficulty coding questions for ${request.category}.
-Each question must be:
-- Educationally valuable and challenging
-- Clearly described with problem statement
-- Include relevant tags and a boilerplate code template
-- Include 2-3 test cases
+    const systemPrompt = `
+You are an expert coding instructor.
 
-Respond with ONLY a valid JSON array of objects with this structure:
+Generate exactly ${count} unique coding problems.
+
+Difficulty:
+${request.difficulty}
+
+Category:
+${request.category}
+
+Topic:
+${request.topic}
+
+IMPORTANT:
+Use the provided context as the primary source when context is supplied.
+
+Do not invent syllabus topics that contradict the context.
+
+Each question must contain:
+- title
+- description
+- difficulty
+- category
+- tags
+- boilerplate
+- 2 to 3 test cases
+
+Return ONLY a valid JSON array.
+
+Required format:
 [
   {
     "title": "Problem Title",
@@ -148,88 +517,93 @@ Respond with ONLY a valid JSON array of objects with this structure:
     "difficulty": "${request.difficulty}",
     "category": "${request.category}",
     "tags": ["tag1", "tag2"],
-    "boilerplate": "function solve() {\\n  \\n}",
+    "boilerplate": "function solve() {}",
     "testCases": [
-      { "input": "...", "output": "..." }
+      {
+        "input": "...",
+        "output": "..."
+      }
     ]
   }
-]`;
+]
 
-    const response = await fetch(`${OPEN_ROUTER_BASE_URL}/chat/completions`, {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${OPEN_ROUTER_API_KEY}`,
-        "HTTP-Referer": process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000",
-        "X-Title": "Aura Study AI - Question Generation",
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        model: NEMOTRON_MODEL,
-        messages: [
-          {
-            role: "system",
-            content: systemPrompt,
-          },
-          {
-            role: "user",
-            content: `Topic: ${request.topic}
-Context: ${request.context || "General coding practice"}
+Do not use markdown.
+Do not wrap the JSON in code fences.
+Do not add explanations.
+`;
 
-Generate ${count} unique ${request.difficulty} ${request.category} questions.`,
-          },
-        ],
+    const userPrompt = `
+Topic:
+${request.topic.trim()}
+
+Retrieved context:
+${request.context?.trim() || "No additional context provided."}
+
+Generate exactly ${count} unique questions.
+`;
+
+    const content = await callOpenRouter(
+      [
+        {
+          role: "system",
+          content: systemPrompt,
+        },
+        {
+          role: "user",
+          content: userPrompt,
+        },
+      ],
+      {
         temperature: 0.7,
-        top_p: 0.9,
-        max_tokens: 2000,
-      }),
-    });
+        maxTokens: 4096,
+        title: "Aura Study AI - Question Generation",
+      }
+    );
 
-    if (!response.ok) {
-      const error = await response.json();
-      console.error("Open Router API error:", error);
-      throw new Error(`API error: ${response.status}`);
-    }
-
-    const data = await response.json();
-    const content = data.choices?.[0]?.message?.content || "[]";
-
-    // Parse JSON from response
-    const jsonMatch = content.match(/\[[\s\S]*\]/);
-    const questions = jsonMatch ? JSON.parse(jsonMatch[0]) : [];
+    const questions = parseAIResponse<unknown[]>(
+      content,
+      []
+    );
 
     if (!Array.isArray(questions)) {
-      throw new Error("Invalid response format");
+      throw new Error("AI returned an invalid question format");
     }
 
-    // Validate and sanitize questions
     const validatedQuestions = questions
-      .filter((q: any) => q.title && q.description)
-      .map((q: any) => ({
-        title: q.title,
-        description: q.description,
-        category: q.category || request.category,
-        difficulty: q.difficulty || request.difficulty,
-        tags: Array.isArray(q.tags) ? q.tags : [],
-        boilerplate: q.boilerplate || "",
-        testCases: Array.isArray(q.testCases) ? q.testCases : [],
-      }));
+      .map((question) =>
+        sanitizeQuestion(question, request)
+      )
+      .filter(
+        (question): question is GeneratedQuestion =>
+          question !== null
+      )
+      .slice(0, count);
 
-    // Check content safety of generated questions
-    let isSafe = true;
-    for (const question of validatedQuestions) {
-      const safetyCheck = await checkContentSafety({
-        text: `${question.title} ${question.description}`,
-        context: "Educational coding question",
-      });
-      if (!safetyCheck.isSafe) {
-        isSafe = false;
-        console.warn(`Question flagged for safety: ${question.title}`);
-        break;
-      }
+    if (validatedQuestions.length === 0) {
+      throw new Error(
+        "AI did not return any valid questions"
+      );
     }
+
+    /*
+     * Check the complete generated question instead of
+     * checking only title + description.
+     */
+    const safetyResults = await Promise.all(
+      validatedQuestions.map((question) =>
+        checkContentSafety({
+          text: JSON.stringify(question),
+          context: "Educational coding question",
+        })
+      )
+    );
+
+    const isSafe = safetyResults.every(
+      (result) => result.isSafe
+    );
 
     return {
-      questions: validatedQuestions,
+      questions: isSafe ? validatedQuestions : [],
       isSafe,
     };
   } catch (error) {
@@ -238,13 +612,12 @@ Generate ${count} unique ${request.difficulty} ${request.category} questions.`,
   }
 }
 
+/* -------------------------------------------------------------------------- */
+/* RAG                                                                         */
+/* -------------------------------------------------------------------------- */
+
 /**
- * RAG-enhanced question generation with context retrieval
- * @param topic The topic to generate questions about
- * @param difficulty Question difficulty level
- * @param category Question category
- * @param contextDocuments Additional context for RAG
- * @returns Generated questions
+ * RAG-enhanced question generation.
  */
 export async function generateRAGQuestions(
   topic: string,
@@ -252,40 +625,67 @@ export async function generateRAGQuestions(
   category: string,
   contextDocuments?: string[]
 ): Promise<GenerateQuestionResponse> {
-  const context = contextDocuments?.join("\n---\n") || "";
+  const context =
+    contextDocuments
+      ?.filter(
+        (document): document is string =>
+          typeof document === "string" &&
+          document.trim().length > 0
+      )
+      .join("\n---\n") || "";
 
   return generateDynamicQuestions({
     topic,
     difficulty,
     category,
     context,
-    count: 3,
+    count: DEFAULT_QUESTION_COUNT,
   });
 }
 
+/* -------------------------------------------------------------------------- */
+/* Batch                                                                       */
+/* -------------------------------------------------------------------------- */
+
 /**
- * Batch process multiple question generation requests
- * @param requests Array of question generation requests
- * @returns Array of responses
+ * Generate questions for multiple requests.
+ *
+ * Failed requests return an empty result instead of
+ * causing the entire batch to fail.
  */
 export async function generateBatch(
   requests: GenerateQuestionRequest[]
 ): Promise<GenerateQuestionResponse[]> {
-  try {
-    const results = await Promise.allSettled(
-      requests.map((req) => generateDynamicQuestions(req))
+  if (!Array.isArray(requests)) {
+    throw new Error("Requests must be an array");
+  }
+
+  if (requests.length === 0) {
+    return [];
+  }
+
+  // Prevent accidental huge batch requests.
+  const limitedRequests = requests.slice(0, 10);
+
+  const results = await Promise.allSettled(
+    limitedRequests.map((request) =>
+      generateDynamicQuestions(request)
+    )
+  );
+
+  return results.map((result) => {
+    if (result.status === "fulfilled") {
+      return result.value;
+    }
+
+    console.error(
+      "Batch generation error:",
+      result.reason
     );
 
-    return results.map((result) => {
-      if (result.status === "fulfilled") {
-        return result.value;
-      } else {
-        console.error("Batch generation error:", result.reason);
-        return { questions: [], isSafe: false };
-      }
-    });
-  } catch (error) {
-    console.error("Batch generation failed:", error);
-    throw error;
-  }
+    return {
+      questions: [],
+      isSafe: false,
+    };
+  });
 }
