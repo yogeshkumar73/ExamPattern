@@ -923,23 +923,24 @@ export function AdminPanel() {
                 </Button>
               </CardHeader>
               <CardContent className="p-6 space-y-6">
-                {loadingFeedbacks ? (
+                {loadingFeedbacks && (
                   <div className="flex items-center justify-center py-12 gap-3 text-muted-foreground font-bold">
                     <Activity className="w-5 h-5 animate-spin text-primary" /> Loading feedback entries...
                   </div>
-                ) : feedbacks.length === 0 ? (
+                )}
+                {!loadingFeedbacks && feedbacks.length === 0 && (
                   <div className="text-center py-12 text-muted-foreground space-y-3">
                     <MessageSquare className="w-12 h-12 mx-auto text-muted-foreground/50" />
                     <p className="font-bold text-lg">No student feedback submitted yet.</p>
                     <p className="text-xs">Submissions from the user Feedback section will appear here automatically.</p>
                   </div>
-                ) : (
-                  feedbacks.map(f => (
+                )}
+                {!loadingFeedbacks && feedbacks.length > 0 && feedbacks.map(f => (
                   <Card key={f.id} className="border p-4 bg-muted/5 rounded-xl space-y-4">
                     <div className="flex justify-between items-start">
                       <div>
                         <h4 className="font-black text-foreground">{f.user}</h4>
-                        <p className="text-sm font-medium text-muted-foreground mt-1">"{f.message}"</p>
+                        <p className="text-sm font-medium text-muted-foreground mt-1">&quot;{f.message}&quot;</p>
                       </div>
                       <Badge variant="outline" className="text-[10px]">{f.time}</Badge>
                     </div>
