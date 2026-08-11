@@ -322,26 +322,34 @@ export function AdminPanel() {
   const [rejectingUserId, setRejectingUserId] = useState<string | null>(null)
   
   // Feedback states
-  const [feedbacks, setFeedbacks] = useState([
-    { 
-      id: "1", 
-      user: "User #102 (John Doe)", 
-      message: "Prediction model is very accurate!", 
-      time: "12 mins ago",
-      replies: [] as string[],
-      replyInput: "",
-      aiLoading: false
-    },
-    { 
-      id: "2", 
-      user: "User #45 (Alice)", 
-      message: "Need more UPSC past papers.", 
-      time: "1 hour ago",
-      replies: ["Admin: We are currently uploading more papers for UPSC v2026!"] as string[],
-      replyInput: "",
-      aiLoading: false
+  const [feedbacks, setFeedbacks] = useState<any[]>([])
+  const [loadingFeedbacks, setLoadingFeedbacks] = useState(false)
+
+  const fetchFeedbacks = useCallback(async () => {
+    setLoadingFeedbacks(true)
+    try {
+      const res = await fetch("/api/feedback")
+      const data = await res.json()
+      if (res.ok && data.feedbacks) {
+        const formatted = data.feedbacks.map((f: any) => ({
+          id: f._id || f.id,
+          user: `${f.userName || "Student"} (${f.userEmail || "helpsupport9452@gmail.com"})`,
+          message: f.message,
+          category: f.category || "general",
+          rating: f.rating,
+          time: f.createdAt ? new Date(f.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : "Just now",
+          replies: f.replies ? f.replies.map((r: any) => `Admin: ${r.text}`) : [],
+          replyInput: "",
+          aiLoading: false
+        }))
+        setFeedbacks(formatted)
+      }
+    } catch (e) {
+      console.warn("Failed to load feedbacks:", e)
+    } finally {
+      setLoadingFeedbacks(false)
     }
-  ])
+  }, [])
 
   useEffect(() => {
     setUsersError(null)
@@ -358,11 +366,15 @@ export function AdminPanel() {
       })
   }, [])
 
-  // Fetch Arena Approvals
+  // Fetch Arena Approvals or Feedback
   useEffect(() => {
     if (activeTab === "arena") {
       fetchArenaApprovals()
     }
+    if (activeTab === "feedback") {
+      fetchFeedbacks()
+    }
+  }, [activeTab, fetchArenaApprovals, fetchFeedbacks])
   }, [activeTab, arenaFilterStatus])
 
   useEffect(() => {
@@ -402,12 +414,29 @@ export function AdminPanel() {
     }
   }
 
-  const handleSendReply = (feedbackId: string) => {
+  const handleSendReply = async (feedbackId: string) => {
+    const target = feedbacks.find(f => f.id === feedbackId)
+    if (!target || !target.replyInput.trim()) return
+
+    const replyMsg = target.replyInput.trim()
+    try {
+      await fetch("/api/feedback", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          feedbackId,
+          replyText: replyMsg,
+        }),
+      })
+    } catch (e) {
+      console.warn("Failed to persist reply to DB:", e)
+    }
+
     setFeedbacks(feedbacks.map(f => {
-      if (f.id === feedbackId && f.replyInput.trim()) {
+      if (f.id === feedbackId) {
         return {
           ...f,
-          replies: [...f.replies, `Admin: ${f.replyInput.trim()}`],
+          replies: [...f.replies, `Admin: ${replyMsg}`],
           replyInput: ""
         }
       }
@@ -883,14 +912,30 @@ export function AdminPanel() {
 
           {activeTab === "feedback" && (
             <Card className="border-2 shadow-2xl overflow-hidden glass-morphism">
-              <CardHeader className="bg-muted/30 border-b">
-                <CardTitle className="flex items-center gap-2">
-                  <MessageSquare className="w-6 h-6 text-green-500" /> Active Feedback & Discussion Reply
-                </CardTitle>
-                <CardDescription>Reply directly to student concerns or get instant AI-suggested responses</CardDescription>
+              <CardHeader className="bg-muted/30 border-b flex flex-row items-center justify-between">
+                <div>
+                  <CardTitle className="flex items-center gap-2">
+                    <MessageSquare className="w-6 h-6 text-green-500" /> Student Feedback & Admin Reply Center
+                  </CardTitle>
+                  <CardDescription>Live feedback from users sent to helpsupport9452@gmail.com or via portal</CardDescription>
+                </div>
+                <Button variant="outline" size="sm" onClick={fetchFeedbacks} disabled={loadingFeedbacks} className="gap-2 font-bold">
+                  <RefreshCw className={`w-4 h-4 ${loadingFeedbacks ? "animate-spin" : ""}`} /> Refresh
+                </Button>
               </CardHeader>
               <CardContent className="p-6 space-y-6">
-                {feedbacks.map(f => (
+                {loadingFeedbacks ? (
+                  <div className="flex items-center justify-center py-12 gap-3 text-muted-foreground font-bold">
+                    <Activity className="w-5 h-5 animate-spin text-primary" /> Loading feedback entries...
+                  </div>
+                ) : feedbacks.length === 0 ? (
+                  <div className="text-center py-12 text-muted-foreground space-y-3">
+                    <MessageSquare className="w-12 h-12 mx-auto text-muted-foreground/50" />
+                    <p className="font-bold text-lg">No student feedback submitted yet.</p>
+                    <p className="text-xs">Submissions from the user Feedback section will appear here automatically.</p>
+                  </div>
+                ) : (
+                  feedbacks.map(f => (
                   <Card key={f.id} className="border p-4 bg-muted/5 rounded-xl space-y-4">
                     <div className="flex justify-between items-start">
                       <div>
@@ -933,7 +978,7 @@ export function AdminPanel() {
                       </Button>
                     </div>
                   </Card>
-                ))}
+                )))}
               </CardContent>
             </Card>
           )}
@@ -1586,18 +1631,27 @@ export function FeedbackSection() {
             </div>
           )}
 
-          {/* Submit */}
-          <Button
-            onClick={handleSubmit}
-            disabled={loading}
-            className="w-full h-14 text-lg font-black rounded-xl shadow-lg hover:scale-[1.01] transition-transform bg-gradient-to-r from-primary to-purple-600 text-white border-none"
-          >
-            {loading ? (
-              <><Activity className="mr-2 w-5 h-5 animate-spin" /> Sending...</>
-            ) : (
-              <><Send className="mr-2 w-5 h-5" /> Send Message</>
-            )}
-          </Button>
+          {/* Submit Buttons */}
+          <div className="space-y-3">
+            <Button
+              onClick={handleSubmit}
+              disabled={loading}
+              className="w-full h-14 text-lg font-black rounded-xl shadow-lg hover:scale-[1.01] transition-transform bg-gradient-to-r from-primary to-purple-600 text-white border-none"
+            >
+              {loading ? (
+                <><Activity className="mr-2 w-5 h-5 animate-spin" /> Submitting Feedback...</>
+              ) : (
+                <><Send className="mr-2 w-5 h-5" /> Submit Feedback to Admin</>
+              )}
+            </Button>
+
+            <a
+              href={`mailto:helpsupport9452@gmail.com?subject=${encodeURIComponent(`[${category.toUpperCase()}] User Feedback`)}&body=${encodeURIComponent(message || "Please write your query here...")}`}
+              className="block w-full text-center py-3 rounded-xl border-2 border-primary/20 hover:border-primary/40 bg-primary/5 text-primary text-sm font-bold transition-all"
+            >
+              ✉️ Open Direct Email Client (helpsupport9452@gmail.com)
+            </a>
+          </div>
         </CardContent>
       </Card>
     </div>

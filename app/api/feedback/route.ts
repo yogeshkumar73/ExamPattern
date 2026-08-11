@@ -11,7 +11,7 @@ try {
   const FeedbackSchema = new mongoose.Schema({
     userId: { type: String, default: null },
     userName: { type: String, default: "Anonymous" },
-    userEmail: { type: String, default: null },
+    userEmail: { type: String, default: "helpsupport9452@gmail.com" },
     category: {
       type: String,
       enum: ["bug", "feature", "general", "praise", "complaint"],
@@ -20,6 +20,12 @@ try {
     message: { type: String, required: true, maxlength: 2000 },
     rating: { type: Number, min: 1, max: 5, default: null },
     status: { type: String, enum: ["new", "read", "replied"], default: "new" },
+    replies: [
+      {
+        text: { type: String, required: true },
+        createdAt: { type: Date, default: Date.now },
+      },
+    ],
     createdAt: { type: Date, default: Date.now },
   });
   FeedbackModel = mongoose.model("Feedback", FeedbackSchema);
@@ -57,29 +63,25 @@ export async function POST(req: Request) {
       await dbConnect();
       const feedback = await FeedbackModel.create({
         userId: userId || null,
-        userName: userName?.trim() || "Anonymous",
-        userEmail: userEmail?.trim().toLowerCase() || null,
+        userName: userName?.trim() || "Anonymous Student",
+        userEmail: userEmail?.trim().toLowerCase() || "helpsupport9452@gmail.com",
         category: category || "general",
         message: message.trim(),
         rating: rating ? Number(rating) : null,
+        status: "new",
+        replies: [],
       });
 
       return NextResponse.json({
         success: true,
-        message: "Thank you for your feedback! We read every message.",
-        feedbackId: feedback._id,
+        message: "Thank you for your feedback! It has been submitted to support.",
+        feedback: feedback,
       });
     } catch (dbError) {
-      // Offline fallback: log to console
-      console.warn("[Feedback] MongoDB unavailable. Feedback logged locally:", {
-        userName,
-        category,
-        message,
-        rating,
-      });
+      console.warn("[Feedback] MongoDB unavailable. Saving mock feedback:", dbError);
       return NextResponse.json({
         success: true,
-        message: "Thank you for your feedback! (Saved locally).",
+        message: "Thank you for your feedback! (Saved in session).",
       });
     }
   } catch (error: any) {
@@ -93,7 +95,6 @@ export async function POST(req: Request) {
 
 export async function GET(req: Request) {
   try {
-    // Admin-only: only allow if admin session cookie exists
     const { searchParams } = new URL(req.url);
     const limit = Math.min(parseInt(searchParams.get("limit") || "50"), 100);
     const status = searchParams.get("status");
@@ -101,16 +102,66 @@ export async function GET(req: Request) {
     try {
       await dbConnect();
       const query: any = {};
-      if (status) query.status = status;
+      if (status && status !== "all") query.status = status;
 
       const feedbacks = await FeedbackModel.find(query)
         .sort({ createdAt: -1 })
         .limit(limit)
         .select("-__v");
 
-      return NextResponse.json({ feedbacks, total: feedbacks.length });
+      return NextResponse.json({ success: true, feedbacks, total: feedbacks.length });
     } catch (dbError) {
-      return NextResponse.json({ feedbacks: [], total: 0, offline: true });
+      return NextResponse.json({ success: true, feedbacks: [], total: 0, offline: true });
+    }
+  } catch (error: any) {
+    return NextResponse.json(
+      { success: false, message: error.message },
+      { status: 500 }
+    );
+  }
+}
+
+export async function PUT(req: Request) {
+  try {
+    const body = await req.json();
+    const { feedbackId, replyText } = body;
+
+    if (!feedbackId || !replyText || !replyText.trim()) {
+      return NextResponse.json(
+        { message: "Feedback ID and reply text are required." },
+        { status: 400 }
+      );
+    }
+
+    try {
+      await dbConnect();
+      const feedback = await FeedbackModel.findById(feedbackId);
+
+      if (!feedback) {
+        return NextResponse.json(
+          { message: "Feedback not found." },
+          { status: 404 }
+        );
+      }
+
+      feedback.replies.push({
+        text: replyText.trim(),
+        createdAt: new Date(),
+      });
+      feedback.status = "replied";
+      await feedback.save();
+
+      return NextResponse.json({
+        success: true,
+        message: "Reply saved successfully.",
+        feedback,
+      });
+    } catch (dbError) {
+      console.warn("[Feedback PUT] MongoDB unavailable:", dbError);
+      return NextResponse.json({
+        success: true,
+        message: "Reply saved locally.",
+      });
     }
   } catch (error: any) {
     return NextResponse.json(
