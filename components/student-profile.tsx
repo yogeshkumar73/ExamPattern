@@ -555,10 +555,12 @@ export function StudentProfile() {
             <CardContent className="pt-6 space-y-3">
               {[
                 { label: "Total XP Points", value: profile.xp ?? profile.points ?? 0, icon: "⚡" },
-                { label: "Rank", value: profile.rank || "Bronze", icon: "🏆" },
+                { label: "Rank", value: profile.rank || "Unranked", icon: "🏆" },
+                { label: "Arena Rank", value: (profile as any).arenaRank || "Unranked", icon: "⚔️" },
+                { label: "Arena Points", value: (profile as any).arenaPoints ?? 0, icon: "🎯" },
                 { label: "Arena Level", value: `Level ${profile.level ?? 1}`, icon: "🎮" },
                 { label: "Coins", value: profile.coins ?? 0, icon: "🪙" },
-                { label: "ELO Rating", value: profile.elo ?? 1200, icon: "📊" },
+                { label: "ELO Rating", value: profile.elo ?? 0, icon: "📊" },
                 { label: "Total Battles", value: profile.totalBattles ?? 0, icon: "⚔️" },
                 { label: "Win Rate", value: winRate > 0 ? `${winRate}%` : "0%", icon: "🎯" },
                 { label: "Best Streak", value: profile.bestStreak ?? 0, icon: "🔥" },

@@ -1,13 +1,13 @@
 "use client"
 
-import { useState, useEffect, useRef } from "react"
+import { useState, useEffect, useRef, useCallback } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Badge } from "@/components/ui/badge"
 import { Textarea } from "@/components/ui/textarea"
-import { ShieldCheck, User, Users, Lock, Unlock, Phone, CheckCircle2, Download, Upload, FileText, Globe, Scale, ArrowRight, ShieldAlert, Brain, MessageSquare, Send, Sparkles, Activity, Zap, Trophy, Target, CheckSquare, XSquare, Star, MessageCircle, ExternalLink, Heart } from "lucide-react"
+import { ShieldCheck, User, Users, Lock, Unlock, Phone, CheckCircle2, Download, Upload, FileText, Globe, Scale, ArrowRight, ShieldAlert, Brain, MessageSquare, Send, Sparkles, Activity, Zap, Trophy, Target, CheckSquare, XSquare, Star, MessageCircle, ExternalLink, Heart, RefreshCw } from "lucide-react"
 import { useNav } from "@/hooks/use-nav"
 import { Switch } from "@/components/ui/switch"
 
@@ -333,7 +333,7 @@ export function AdminPanel() {
       if (res.ok && data.feedbacks) {
         const formatted = data.feedbacks.map((f: any) => ({
           id: f._id || f.id,
-          user: `${f.userName || "Student"} (${f.userEmail || "helpsupport9452@gmail.com"})`,
+          user: `${f.userName || "Student"} (${f.userEmail || ""})`,
           message: f.message,
           category: f.category || "general",
           rating: f.rating,
@@ -366,7 +366,8 @@ export function AdminPanel() {
       })
   }, [])
 
-  // Fetch Arena Approvals or Feedback
+  // Fetch Arena Approvals or Feedback based on active tab
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
     if (activeTab === "arena") {
       fetchArenaApprovals()
@@ -374,7 +375,7 @@ export function AdminPanel() {
     if (activeTab === "feedback") {
       fetchFeedbacks()
     }
-  }, [activeTab, fetchArenaApprovals, fetchFeedbacks])
+  }, [activeTab])
 
   useEffect(() => {
     if (!selectedUserId && users.length) {
@@ -503,7 +504,7 @@ export function AdminPanel() {
     return { id: 'admin', name: 'Admin', email: 'admin@aura', role: 'admin' }
   }
 
-  const fetchArenaApprovals = async () => {
+  const fetchArenaApprovals = useCallback(async () => {
     // Gate on the context flag set by the password-unlock flow
     if (!isAdmin) {
       console.warn('fetchArenaApprovals: not admin, skipping')
@@ -543,14 +544,15 @@ export function AdminPanel() {
       console.warn('Arena approval fetch failed (DB may be unavailable):', error.message)
       setArenaError(
         error.message?.includes('connect') || error.message?.includes('MongoDB')
-          ? 'Cannot connect to database. Please whitelist your IP in MongoDB Atlas → Network Access → Add IP Address → Allow from anywhere (0.0.0.0/0).'
+          ? 'Cannot connect to database. Please whitelist your IP in MongoDB Atlas.'
           : `Failed to load approvals: ${error.message}`
       )
       setArenaApprovals([])
     } finally {
       setArenaLoading(false)
     }
-  }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isAdmin, arenaFilterStatus])
 
   const handleArenaApprove = async (userId: string) => {
     if (!isAdmin) { alert('Admin access required'); return }
@@ -947,7 +949,7 @@ export function AdminPanel() {
 
                     {f.replies.length > 0 && (
                       <div className="pl-4 border-l-4 border-primary space-y-2 bg-muted/10 p-3 rounded-r-lg">
-                        {f.replies.map((rep, idx) => (
+                        {f.replies.map((rep: string, idx: number) => (
                           <p key={idx} className="text-xs font-bold text-primary">{rep}</p>
                         ))}
                       </div>
