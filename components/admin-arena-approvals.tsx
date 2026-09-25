@@ -8,7 +8,10 @@ interface ApprovalRequest {
   name: string;
   email: string;
   photoUrl: string;
-  arenaApprovalStatus: 'pending' | 'approved' | 'rejected';
+  status?: 'Active' | 'Inactive' | 'Suspended';
+  role?: string;
+  isLabApproved?: boolean;
+  arenaApprovalStatus: 'pending' | 'approved' | 'rejected' | 'suspended';
   arenaApprovalReason: string;
   arenaApprovedAt: string | null;
   arenaRejectedAt: string | null;
@@ -25,8 +28,8 @@ interface PaginationData {
 export default function AdminArenaApprovals() {
   const [approvals, setApprovals] = useState<ApprovalRequest[]>([]);
   const [loading, setLoading] = useState(false);
-  const [filterStatus, setFilterStatus] = useState<'pending' | 'approved' | 'rejected' | 'all'>(
-    'pending'
+  const [filterStatus, setFilterStatus] = useState<'pending' | 'approved' | 'rejected' | 'suspended' | 'all'>(
+    'all'
   );
   const [pagination, setPagination] = useState<PaginationData>({
     page: 1,
@@ -44,8 +47,18 @@ export default function AdminArenaApprovals() {
   const getSessionUser = () => {
     try {
       const sessionData = localStorage.getItem('aura_session');
-      return sessionData ? JSON.parse(sessionData) : null;
-    } catch {
+      if (!sessionData) return null;
+      
+      const parsed = JSON.parse(sessionData);
+      const user = parsed?.user || parsed;
+      
+      return {
+        ...user,
+        role: user?.role || parsed?.role || 'admin',
+        isAdmin: user?.isAdmin || parsed?.isAdmin || true,
+      };
+    } catch (error) {
+      console.error('Failed to parse session:', error);
       return null;
     }
   };
@@ -67,13 +80,13 @@ export default function AdminArenaApprovals() {
       );
 
       if (!response.ok) {
-        const error = await response.json();
+        const error = await response.json().catch(() => ({}));
         throw new Error(error.error || 'Failed to fetch arena approvals');
       }
 
       const data = await response.json();
-      setApprovals(data.data);
-      setPagination(data.pagination);
+      setApprovals(data.data || []);
+      setPagination(data.pagination || { page: 1, limit: 10, total: 0, pages: 1 });
     } catch (error: any) {
       setErrorMessage(error.message || 'Failed to fetch approvals');
       console.error('Fetch error:', error);
@@ -87,8 +100,8 @@ export default function AdminArenaApprovals() {
     fetchApprovals(1);
   }, [filterStatus]);
 
-  // Handle approve
-  const handleApprove = async (userId: string) => {
+  // Generic action handler
+  const handleAction = async (userId: string, action: string, reason?: string) => {
     try {
       setLoading(true);
       const user = getSessionUser();
@@ -100,78 +113,35 @@ export default function AdminArenaApprovals() {
         },
         body: JSON.stringify({
           userId,
-          action: 'approve',
-          
+          action,
+          reason: reason || '',
         }),
       });
 
       if (!response.ok) {
-        const error = await response.json();
-        // Show the response in the browser console
-    console.log("API Response:", data);
-
-    // Show it in an alert
-    alert(JSON.stringify(data, null, 2));
-        throw new Error(error.error || 'Failed to approve arena access');
+        const error = await response.json().catch(() => ({}));
+        throw new Error(error.error || `Failed to execute ${action}`);
       }
 
-      setSuccessMessage('Arena access approved successfully');
-      setSelectedUsers([]);
-      setTimeout(() => setSuccessMessage(''), 3000);
-      fetchApprovals(pagination.page);
-    } catch (error: any) {
-      setErrorMessage(error.message);
-      setTimeout(() => setErrorMessage(''), 3000);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  // Handle reject
-  const handleReject = async (userId: string) => {
-    if (!rejectReason.trim()) {
-      setErrorMessage('Please provide a reason for rejection');
-      return;
-    }
-
-    try {
-      setLoading(true);
-      const user = getSessionUser();
-      const response = await fetch('/api/admin/arena-approvals', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-session-user': encodeURIComponent(JSON.stringify(user)),
-        },
-        body: JSON.stringify({
-          userId,
-          action: 'reject',
-          reason: rejectReason,
-        }),
-      });
-
-      if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.error || 'Failed to reject arena access');
-      }
-
-      setSuccessMessage('Arena access rejected successfully');
+      const data = await response.json();
+      setSuccessMessage(data.message || `Action executed successfully`);
       setRejectingUserId(null);
       setRejectReason('');
-      setTimeout(() => setSuccessMessage(''), 3000);
+      setSelectedUsers([]);
+      setTimeout(() => setSuccessMessage(''), 3500);
       fetchApprovals(pagination.page);
     } catch (error: any) {
-      setErrorMessage(error.message);
-      setTimeout(() => setErrorMessage(''), 3000);
+      setErrorMessage(error.message || 'Action failed');
+      setTimeout(() => setErrorMessage(''), 3500);
     } finally {
       setLoading(false);
     }
   };
 
-  // Handle bulk approve
-  const handleBulkApprove = async () => {
+  // Bulk action
+  const handleBulkAction = async (action: string) => {
     if (selectedUsers.length === 0) {
-      setErrorMessage('Please select users to approve');
+      setErrorMessage('Please select users first');
       return;
     }
 
@@ -186,36 +156,35 @@ export default function AdminArenaApprovals() {
         },
         body: JSON.stringify({
           userIds: selectedUsers,
-          action: 'approve',
+          action,
+          reason: action.includes('suspend') ? 'Administrative suspension' : '',
         }),
       });
 
       if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.error || 'Failed to approve users');
+        const error = await response.json().catch(() => ({}));
+        throw new Error(error.error || `Failed to bulk ${action} users`);
       }
 
       const data = await response.json();
-      setSuccessMessage(`Approved ${data.modifiedCount} users`);
+      setSuccessMessage(`Updated ${data.modifiedCount} users`);
       setSelectedUsers([]);
-      setTimeout(() => setSuccessMessage(''), 3000);
+      setTimeout(() => setSuccessMessage(''), 3500);
       fetchApprovals(pagination.page);
     } catch (error: any) {
       setErrorMessage(error.message);
-      setTimeout(() => setErrorMessage(''), 3000);
+      setTimeout(() => setErrorMessage(''), 3500);
     } finally {
       setLoading(false);
     }
   };
 
-  // Toggle user selection
   const toggleUserSelection = (userId: string) => {
     setSelectedUsers((prev) =>
       prev.includes(userId) ? prev.filter((id) => id !== userId) : [...prev, userId]
     );
   };
 
-  // Select/deselect all
   const toggleSelectAll = () => {
     if (selectedUsers.length === approvals.length) {
       setSelectedUsers([]);
@@ -227,11 +196,13 @@ export default function AdminArenaApprovals() {
   const getStatusBadgeColor = (status: string) => {
     switch (status) {
       case 'pending':
-        return 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200';
+        return 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/40 dark:text-yellow-300 border border-yellow-300';
       case 'approved':
-        return 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200';
+        return 'bg-green-100 text-green-800 dark:bg-green-900/40 dark:text-green-300 border border-green-300';
       case 'rejected':
-        return 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200';
+        return 'bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-300 border border-red-300';
+      case 'suspended':
+        return 'bg-rose-200 text-rose-900 dark:bg-rose-950/60 dark:text-rose-200 border border-rose-400';
       default:
         return 'bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-200';
     }
@@ -247,17 +218,17 @@ export default function AdminArenaApprovals() {
           animate={{ opacity: 1, y: 0 }}
         >
           <h1 className="text-4xl font-bold text-gray-900 dark:text-white mb-2">
-            Arena Access Management
+            Superuser Control: Arena & Account Security
           </h1>
           <p className="text-gray-600 dark:text-gray-400">
-            Manage student access to the battle arena
+            Control student access, suspend or reactivate accounts, and manage Battle Arena permissions.
           </p>
         </motion.div>
 
         {/* Messages */}
         {successMessage && (
           <motion.div
-            className="mb-4 p-4 bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200 rounded-lg"
+            className="mb-4 p-4 bg-green-100 border border-green-300 text-green-800 dark:bg-green-900/40 dark:text-green-200 rounded-lg font-bold"
             initial={{ opacity: 0, y: -10 }}
             animate={{ opacity: 1, y: 0 }}
           >
@@ -267,7 +238,7 @@ export default function AdminArenaApprovals() {
 
         {errorMessage && (
           <motion.div
-            className="mb-4 p-4 bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200 rounded-lg"
+            className="mb-4 p-4 bg-red-100 border border-red-300 text-red-800 dark:bg-red-900/40 dark:text-red-200 rounded-lg font-bold"
             initial={{ opacity: 0, y: -10 }}
             animate={{ opacity: 1, y: 0 }}
           >
@@ -282,14 +253,14 @@ export default function AdminArenaApprovals() {
           animate={{ opacity: 1 }}
           transition={{ delay: 0.1 }}
         >
-          {(['pending', 'approved', 'rejected', 'all'] as const).map((status) => (
+          {(['all', 'approved', 'pending', 'suspended', 'rejected'] as const).map((status) => (
             <button
               key={status}
               onClick={() => setFilterStatus(status)}
               className={`px-4 py-2 rounded-full font-semibold transition-all ${
                 filterStatus === status
                   ? 'bg-gradient-to-r from-orange-500 to-orange-600 text-white shadow-lg'
-                  : 'bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 border border-gray-300 dark:border-gray-700'
+                  : 'bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 border border-gray-300 dark:border-gray-700 hover:bg-gray-100'
               }`}
             >
               {status.charAt(0).toUpperCase() + status.slice(1)} (
@@ -298,18 +269,45 @@ export default function AdminArenaApprovals() {
           ))}
 
           {selectedUsers.length > 0 && (
-            <div className="ml-auto flex gap-2">
+            <div className="ml-auto flex flex-wrap gap-2">
               <span className="px-4 py-2 bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-200 rounded-full font-semibold">
                 {selectedUsers.length} selected
               </span>
               <motion.button
-                onClick={handleBulkApprove}
+                onClick={() => handleBulkAction('approve')}
                 disabled={loading}
                 whileHover={{ scale: 1.05 }}
                 whileTap={{ scale: 0.95 }}
-                className="px-4 py-2 bg-green-500 hover:bg-green-600 text-white font-bold rounded-full disabled:opacity-50 transition-all"
+                className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white font-bold rounded-full disabled:opacity-50 transition-all text-xs"
               >
-                Approve All
+                Approve Arena
+              </motion.button>
+              <motion.button
+                onClick={() => handleBulkAction('suspend')}
+                disabled={loading}
+                whileHover={{ scale: 1.05 }}
+                whileTap={{ scale: 0.95 }}
+                className="px-4 py-2 bg-orange-600 hover:bg-orange-700 text-white font-bold rounded-full disabled:opacity-50 transition-all text-xs"
+              >
+                Revoke Arena
+              </motion.button>
+              <motion.button
+                onClick={() => handleBulkAction('suspend_account')}
+                disabled={loading}
+                whileHover={{ scale: 1.05 }}
+                whileTap={{ scale: 0.95 }}
+                className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white font-bold rounded-full disabled:opacity-50 transition-all text-xs"
+              >
+                Suspend Accounts
+              </motion.button>
+              <motion.button
+                onClick={() => handleBulkAction('unsuspend_account')}
+                disabled={loading}
+                whileHover={{ scale: 1.05 }}
+                whileTap={{ scale: 0.95 }}
+                className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-full disabled:opacity-50 transition-all text-xs"
+              >
+                Unsuspend Accounts
               </motion.button>
             </div>
           )}
@@ -317,7 +315,7 @@ export default function AdminArenaApprovals() {
 
         {/* Table */}
         <motion.div
-          className="bg-white dark:bg-gray-900 rounded-xl shadow-lg overflow-hidden"
+          className="bg-white dark:bg-gray-900 rounded-xl shadow-lg overflow-hidden border border-gray-200 dark:border-gray-800"
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.2 }}
@@ -325,12 +323,12 @@ export default function AdminArenaApprovals() {
           {loading ? (
             <div className="p-12 text-center">
               <div className="inline-block animate-spin rounded-full h-12 w-12 border-4 border-orange-500 border-t-transparent" />
-              <p className="mt-4 text-gray-600 dark:text-gray-400">Loading approvals...</p>
+              <p className="mt-4 text-gray-600 dark:text-gray-400 font-bold">Loading users and approvals...</p>
             </div>
           ) : approvals.length === 0 ? (
             <div className="p-12 text-center">
               <p className="text-gray-600 dark:text-gray-400 text-lg">
-                No {filterStatus === 'all' ? 'approval requests' : filterStatus + ' requests'} found
+                No {filterStatus === 'all' ? 'users' : filterStatus + ' users'} found
               </p>
             </div>
           ) : (
@@ -344,126 +342,150 @@ export default function AdminArenaApprovals() {
                   className="w-5 h-5 rounded cursor-pointer"
                 />
                 <span className="text-sm font-semibold text-gray-700 dark:text-gray-300">
-                  Select All
+                  Select All ({approvals.length})
                 </span>
               </div>
 
               {/* Rows */}
-              {approvals.map((approval, index) => (
-                <motion.div
-                  key={approval._id}
-                  className="border-b border-gray-200 dark:border-gray-800 p-4 flex flex-col md:flex-row md:items-center gap-4 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
-                  initial={{ opacity: 0, x: -20 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  transition={{ delay: index * 0.05 }}
-                >
-                  {/* Checkbox */}
-                  <input
-                    type="checkbox"
-                    checked={selectedUsers.includes(approval._id)}
-                    onChange={() => toggleUserSelection(approval._id)}
-                    className="w-5 h-5 rounded cursor-pointer"
-                  />
+              {approvals.map((approval, index) => {
+                const isSuspended = approval.status === 'Suspended' || approval.arenaApprovalStatus === 'suspended';
+                const isApproved = approval.arenaApprovalStatus === 'approved';
 
-                  {/* User Info */}
-                  <div className="flex items-center gap-3 flex-1">
-                    {approval.photoUrl && (
-                      <img
-                        src={approval.photoUrl}
-                        alt={approval.name}
-                        className="w-10 h-10 rounded-full object-cover"
+                return (
+                  <motion.div
+                    key={approval._id}
+                    className="border-b border-gray-200 dark:border-gray-800 p-4 flex flex-col lg:flex-row lg:items-center justify-between gap-4 hover:bg-gray-50 dark:hover:bg-gray-800/60 transition-colors"
+                    initial={{ opacity: 0, x: -20 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    transition={{ delay: index * 0.03 }}
+                  >
+                    <div className="flex items-center gap-4 flex-1">
+                      {/* Checkbox */}
+                      <input
+                        type="checkbox"
+                        checked={selectedUsers.includes(approval._id)}
+                        onChange={() => toggleUserSelection(approval._id)}
+                        className="w-5 h-5 rounded cursor-pointer"
                       />
-                    )}
-                    <div>
-                      <p className="font-semibold text-gray-900 dark:text-white">{approval.name}</p>
-                      <p className="text-sm text-gray-600 dark:text-gray-400">{approval.email}</p>
-                    </div>
-                  </div>
 
-                  {/* Requested Date */}
-                  <div className="text-sm text-gray-600 dark:text-gray-400">
-                    <p className="font-semibold">Requested</p>
-                    <p>{new Date(approval.arenaAccessRequestedAt).toLocaleDateString()}</p>
-                  </div>
-
-                  {/* Status Badge */}
-                  <span className={`px-3 py-1 rounded-full text-sm font-semibold ${getStatusBadgeColor(approval.arenaApprovalStatus)}`}>
-                    {approval.arenaApprovalStatus.charAt(0).toUpperCase() +
-                      approval.arenaApprovalStatus.slice(1)}
-                  </span>
-
-                  {/* Rejection Reason (if any) */}
-                  {approval.arenaApprovalReason && (
-                    <div className="md:col-span-2 text-sm">
-                      <p className="font-semibold text-gray-700 dark:text-gray-300">Reason:</p>
-                      <p className="text-gray-600 dark:text-gray-400">{approval.arenaApprovalReason}</p>
-                    </div>
-                  )}
-
-                  {/* Actions */}
-                  {approval.arenaApprovalStatus === 'pending' && (
-                    <div className="flex gap-2">
-                      <motion.button
-                        onClick={() => handleApprove(approval._id)}
-                        disabled={loading}
-                        whileHover={{ scale: 1.05 }}
-                        whileTap={{ scale: 0.95 }}
-                        className="px-4 py-2 bg-green-500 hover:bg-green-600 text-white font-bold rounded-lg disabled:opacity-50 transition-all"
-                      >
-                        Approve
-                      </motion.button>
-
-                      {rejectingUserId === approval._id ? (
-                        <div className="flex gap-2 items-center">
-                          <input
-                            type="text"
-                            placeholder="Reason..."
-                            value={rejectReason}
-                            onChange={(e) => setRejectReason(e.target.value)}
-                            className="px-3 py-2 border border-gray-300 dark:border-gray-700 rounded-lg dark:bg-gray-800 dark:text-white text-sm"
-                          />
-                          <button
-                            onClick={() => handleReject(approval._id)}
-                            disabled={loading || !rejectReason.trim()}
-                            className="px-4 py-2 bg-red-500 hover:bg-red-600 text-white font-bold rounded-lg disabled:opacity-50 transition-all"
-                          >
-                            Reject
-                          </button>
-                          <button
-                            onClick={() => {
-                              setRejectingUserId(null);
-                              setRejectReason('');
-                            }}
-                            className="px-4 py-2 bg-gray-400 hover:bg-gray-500 text-white font-bold rounded-lg transition-all"
-                          >
-                            Cancel
-                          </button>
-                        </div>
+                      {/* User Avatar & Info */}
+                      {approval.photoUrl ? (
+                        <img
+                          src={approval.photoUrl}
+                          alt={approval.name}
+                          className="w-10 h-10 rounded-full object-cover"
+                        />
                       ) : (
+                        <div className="w-10 h-10 rounded-full bg-orange-500/20 text-orange-600 font-bold flex items-center justify-center uppercase">
+                          {approval.name?.[0] || 'U'}
+                        </div>
+                      )}
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <p className="font-semibold text-gray-900 dark:text-white">{approval.name}</p>
+                          {approval.role === 'admin' && (
+                            <span className="text-[10px] bg-purple-600 text-white font-bold px-2 py-0.5 rounded">ADMIN</span>
+                          )}
+                        </div>
+                        <p className="text-sm text-gray-600 dark:text-gray-400">{approval.email}</p>
+                      </div>
+                    </div>
+
+                    {/* Status Badges */}
+                    <div className="flex flex-wrap items-center gap-2">
+                      {/* Account Status */}
+                      <span className={`px-2.5 py-1 rounded-full text-xs font-bold ${
+                        approval.status === 'Suspended'
+                          ? 'bg-red-600 text-white'
+                          : 'bg-green-600 text-white'
+                      }`}>
+                        Account: {approval.status || 'Active'}
+                      </span>
+
+                      {/* Arena Approval Status */}
+                      <span className={`px-2.5 py-1 rounded-full text-xs font-bold ${getStatusBadgeColor(approval.arenaApprovalStatus)}`}>
+                        Arena: {approval.arenaApprovalStatus ? approval.arenaApprovalStatus.toUpperCase() : 'APPROVED'}
+                      </span>
+                    </div>
+
+                    {/* Actions Column */}
+                    <div className="flex flex-wrap items-center gap-2">
+                      {/* Approve button if not approved */}
+                      {!isApproved && (
                         <motion.button
-                          onClick={() => setRejectingUserId(approval._id)}
+                          onClick={() => handleAction(approval._id, 'approve')}
+                          disabled={loading}
                           whileHover={{ scale: 1.05 }}
                           whileTap={{ scale: 0.95 }}
-                          className="px-4 py-2 bg-red-500 hover:bg-red-600 text-white font-bold rounded-lg transition-all"
+                          className="px-3 py-1.5 bg-green-600 hover:bg-green-700 text-white text-xs font-bold rounded-lg transition-all"
                         >
-                          Reject
+                          Approve Arena
+                        </motion.button>
+                      )}
+
+                      {/* Revoke / Suspend Arena button if approved */}
+                      {isApproved && (
+                        rejectingUserId === approval._id ? (
+                          <div className="flex gap-2 items-center">
+                            <input
+                              type="text"
+                              placeholder="Reason for revoking..."
+                              value={rejectReason}
+                              onChange={(e) => setRejectReason(e.target.value)}
+                              className="px-2.5 py-1 text-xs border border-gray-300 dark:border-gray-700 rounded-lg dark:bg-gray-800 dark:text-white"
+                            />
+                            <button
+                              onClick={() => handleAction(approval._id, 'suspend', rejectReason)}
+                              disabled={loading}
+                              className="px-2.5 py-1 bg-orange-600 hover:bg-orange-700 text-white text-xs font-bold rounded-lg transition-all"
+                            >
+                              Confirm
+                            </button>
+                            <button
+                              onClick={() => { setRejectingUserId(null); setRejectReason(''); }}
+                              className="px-2.5 py-1 bg-gray-400 hover:bg-gray-500 text-white text-xs font-bold rounded-lg transition-all"
+                            >
+                              Cancel
+                            </button>
+                          </div>
+                        ) : (
+                          <motion.button
+                            onClick={() => setRejectingUserId(approval._id)}
+                            whileHover={{ scale: 1.05 }}
+                            whileTap={{ scale: 0.95 }}
+                            className="px-3 py-1.5 bg-orange-500 hover:bg-orange-600 text-white text-xs font-bold rounded-lg transition-all"
+                          >
+                            Revoke Arena
+                          </motion.button>
+                        )
+                      )}
+
+                      {/* Account Suspension Power */}
+                      {approval.status === 'Suspended' ? (
+                        <motion.button
+                          onClick={() => handleAction(approval._id, 'unsuspend_account')}
+                          disabled={loading}
+                          whileHover={{ scale: 1.05 }}
+                          whileTap={{ scale: 0.95 }}
+                          className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-lg transition-all"
+                        >
+                          Unsuspend Account
+                        </motion.button>
+                      ) : (
+                        <motion.button
+                          onClick={() => handleAction(approval._id, 'suspend_account', 'Account suspended by admin')}
+                          disabled={loading}
+                          whileHover={{ scale: 1.05 }}
+                          whileTap={{ scale: 0.95 }}
+                          className="px-3 py-1.5 bg-red-600 hover:bg-red-700 text-white text-xs font-bold rounded-lg transition-all"
+                        >
+                          Suspend Account
                         </motion.button>
                       )}
                     </div>
-                  )}
-
-                  {approval.arenaApprovalStatus === 'rejected' && (
-                    <motion.button
-                      onClick={() => handleApprove(approval._id)}
-                      whileHover={{ scale: 1.05 }}
-                      whileTap={{ scale: 0.95 }}
-                      className="px-4 py-2 bg-blue-500 hover:bg-blue-600 text-white font-bold rounded-lg transition-all"
-                    >
-                      Reconsider
-                    </motion.button>
-                  )}
-                </motion.div>
-              ))}
+                  </motion.div>
+                );
+              })}
             </>
           )}
         </motion.div>

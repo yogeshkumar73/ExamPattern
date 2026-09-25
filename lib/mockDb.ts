@@ -6,7 +6,7 @@ export interface MockUser {
   name: string;
   email: string;
   phone?: string;
-  status: "Active" | "Inactive";
+  status: "Active" | "Inactive" | "Suspended";
   isLabApproved: boolean;
   points: number;
   rank: "Bronze" | "Silver" | "Gold" | "Platinum";
@@ -22,14 +22,14 @@ export interface MockUser {
   createdAt: string;
   
   // Arena Approval Status
-  arenaApprovalStatus?: 'pending' | 'approved' | 'rejected';
+  arenaApprovalStatus?: 'pending' | 'approved' | 'rejected' | 'suspended';
   arenaApprovalReason?: string;
   arenaApprovedBy?: string;
   arenaApprovedAt?: Date | string | null;
   arenaRejectedAt?: Date | string | null;
   arenaAccessRequestedAt?: Date | string | null;
   arenaAccess?: {
-    status: 'pending' | 'approved' | 'rejected';
+    status: 'pending' | 'approved' | 'rejected' | 'suspended';
     approved: boolean;
     approvedAt: Date | string | null;
     rejectedAt: Date | string | null;
@@ -95,6 +95,14 @@ if (!g.mockUsers) {
       grade: "",
       role: "student",
       profileComplete: true,
+      arenaApprovalStatus: "approved",
+      arenaApprovalReason: "Auto-approved",
+      arenaAccess: {
+        status: "approved",
+        approved: true,
+        approvedAt: new Date().toISOString(),
+        rejectedAt: null,
+      },
       bio: "Aspiring software engineer exploring AI and Cloud computing.",
       createdAt: new Date().toISOString(),
     },
@@ -114,6 +122,14 @@ if (!g.mockUsers) {
       grade: "",
       role: "student",
       profileComplete: true,
+      arenaApprovalStatus: "approved",
+      arenaApprovalReason: "Auto-approved",
+      arenaAccess: {
+        status: "approved",
+        approved: true,
+        approvedAt: new Date().toISOString(),
+        rejectedAt: null,
+      },
       bio: "Data science enthusiast and competitive programmer.",
       createdAt: new Date().toISOString(),
     },
@@ -133,6 +149,14 @@ if (!g.mockUsers) {
       grade: "",
       role: "admin",
       profileComplete: true,
+      arenaApprovalStatus: "approved",
+      arenaApprovalReason: "Admin account",
+      arenaAccess: {
+        status: "approved",
+        approved: true,
+        approvedAt: new Date().toISOString(),
+        rejectedAt: null,
+      },
       bio: "Platform administrator.",
       createdAt: new Date().toISOString(),
     },

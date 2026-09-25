@@ -118,6 +118,7 @@ export async function POST(req: Request) {
 
       const hashedPassword = await bcrypt.hash(password, 12);
 
+      const now = new Date();
       const user = await User.create({
         name,
         email,
@@ -133,20 +134,38 @@ export async function POST(req: Request) {
         // Future email verification
         emailVerified: false,
 
-        arenaApprovalStatus: "pending",
-        arenaAccessRequestedAt: new Date(),
-        arenaApprovalReason: "",
-        arenaApprovedBy: "",
-        arenaApprovedAt: null,
+        arenaApprovalStatus: "approved",
+        arenaAccessRequestedAt: now,
+        arenaApprovalReason: "Auto-approved upon registration",
+        arenaApprovedBy: "System (Auto-Approved)",
+        arenaApprovedAt: now,
         arenaRejectedAt: null,
+        arenaAccess: {
+          status: "approved",
+          approved: true,
+          approvedAt: now,
+          rejectedAt: null,
+          requestedAt: now,
+          approvedBy: "System (Auto-Approved)",
+          rejectionReason: "",
+        },
       });
 
       return NextResponse.json(
         {
           success: true,
           message:
-            "Registration successful. Please complete your profile.",
+            "Registration successful! Your account and battle arena services are approved and active.",
           userId: user._id,
+          user: {
+            id: user._id,
+            name: user.name,
+            email: user.email,
+            role: user.role,
+            status: user.status,
+            isLabApproved: user.isLabApproved,
+            arenaApprovalStatus: user.arenaApprovalStatus,
+          },
         },
         { status: 201 }
       );
@@ -175,6 +194,7 @@ export async function POST(req: Request) {
         .substring(2, 11)
         .toUpperCase()}`;
 
+      const nowIso = new Date().toISOString();
       mockUsers.push({
         _id: mockId,
         name,
@@ -192,23 +212,37 @@ export async function POST(req: Request) {
 
         emailVerified: false,
 
-        arenaApprovalStatus: "pending",
-        arenaAccessRequestedAt:
-          new Date().toISOString(),
-        arenaApprovalReason: "",
-        arenaApprovedBy: "",
-        arenaApprovedAt: null,
+        arenaApprovalStatus: "approved",
+        arenaAccessRequestedAt: nowIso,
+        arenaApprovalReason: "Auto-approved upon registration",
+        arenaApprovedBy: "System (Auto-Approved)",
+        arenaApprovedAt: nowIso,
         arenaRejectedAt: null,
+        arenaAccess: {
+          status: "approved",
+          approved: true,
+          approvedAt: nowIso,
+          rejectedAt: null,
+        },
 
-        createdAt: new Date().toISOString(),
+        createdAt: nowIso,
       });
 
       return NextResponse.json(
         {
           success: true,
           message:
-            "Registration successful. Please complete your profile.",
+            "Registration successful! Your account and battle arena services are approved and active.",
           userId: mockId,
+          user: {
+            id: mockId,
+            name,
+            email,
+            role: "student",
+            status: "Active",
+            isLabApproved: true,
+            arenaApprovalStatus: "approved",
+          },
         },
         { status: 201 }
       );

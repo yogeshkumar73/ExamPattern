@@ -75,6 +75,16 @@ export async function POST(req: Request) {
         );
       }
 
+      if (user.status === "Suspended") {
+        return NextResponse.json(
+          {
+            message:
+              "Your account has been suspended by an administrator.",
+          },
+          { status: 403 }
+        );
+      }
+
       if (user.status === "Inactive") {
         return NextResponse.json(
           {
@@ -205,16 +215,32 @@ export async function POST(req: Request) {
           points: 0,
           rank: "Bronze" as const,
 
-          arenaApprovalStatus: "pending" as const,
-          arenaApprovalReason: "",
+          arenaApprovalStatus: "approved" as const,
+          arenaApprovalReason: "Auto-approved",
           arenaAccessRequestedAt:
             new Date().toISOString(),
-          arenaApprovedAt: null,
+          arenaApprovedAt: new Date().toISOString(),
           arenaRejectedAt: null,
+          arenaAccess: {
+            status: "approved" as const,
+            approved: true,
+            approvedAt: new Date().toISOString(),
+            rejectedAt: null,
+          },
         };
 
         mockUsers.push(newMock);
         user = newMock;
+      }
+
+      if (user.status === "Suspended") {
+        return NextResponse.json(
+          {
+            message:
+              "Your account has been suspended by an administrator.",
+          },
+          { status: 403 }
+        );
       }
 
       if (user.status === "Inactive") {

@@ -13,19 +13,26 @@ import { Switch } from "@/components/ui/switch"
 
 // --- ONBOARDING COMPONENT ---
 export function UserOnboarding() {
-  const { setRegistered, setStep } = useNav()
+  const { setRegistered, setStep, setSessionUser, setProfileComplete, setAdmin } = useNav()
   const [mode, setMode] = useState<"login" | "register" | "forgot">("register")
   const [formData, setFormData] = useState({ name: "", email: "", phone: "", password: "", confirmPassword: "" })
   const [loading, setLoading] = useState(false)
-  
 
   useEffect(() => {
     const saved = localStorage.getItem("aura_session")
     if (saved) {
-      setRegistered(true)
-      setStep("profile")
+      try {
+        const parsed = JSON.parse(saved)
+        if (parsed?.user) {
+          setSessionUser(parsed.user)
+          setRegistered(true)
+          setProfileComplete(Boolean(parsed.user.profileComplete))
+          setAdmin(parsed.user.role === 'admin' || parsed.user.isAdmin === true)
+          setStep("profile")
+        }
+      } catch {}
     }
-  }, [setRegistered, setStep])
+  }, [setRegistered, setStep, setSessionUser, setProfileComplete, setAdmin])
 
   // Captcha removed: handlers intentionally omitted
 
@@ -34,7 +41,6 @@ export function UserOnboarding() {
       alert("Please fill in all details.")
       return
     }
-
 
     setLoading(true)
     try {
@@ -54,7 +60,7 @@ export function UserOnboarding() {
         alert("Account already exists! Redirecting to Login to enter your credentials...")
         setMode("login")
       } else if (res.ok) {
-        alert("Registration Successful! Please login using your Gmail and Password.")
+        alert("Registration Successful! Your account and Battle Arena services are approved. Please login.")
         setMode("login")
       } else {
         alert(data.message || "Registration failed. Please try again.")
@@ -89,17 +95,32 @@ export function UserOnboarding() {
           id: data.user.id || data.user._id,
           name: data.user.name,
           email: data.user.email,
-          phone: data.user.phone,
+          phone: data.user.phone || "",
           photoUrl: data.user.photoUrl || "",
           branch: data.user.branch || "",
           bio: data.user.bio || "",
-          isLabApproved: data.user.isLabApproved || false,
+          stream: data.user.stream || "",
+          course: data.user.course || "",
+          department: data.user.department || "",
+          grade: data.user.grade || "",
+          isLabApproved: data.user.isLabApproved ?? true,
           status: data.user.status || "Active",
-          role: data.user.role || "student"
+          role: data.user.role || "student",
+          profileComplete: data.user.profileComplete || false,
+          arenaApprovalStatus: data.user.arenaApprovalStatus || "approved",
+          arenaApprovalReason: data.user.arenaApprovalReason || "",
+          arenaAccess: data.user.arenaAccess || { status: "approved", approved: true },
+          points: data.user.points || 0,
+          rank: data.user.rank || "Bronze",
         }
-        localStorage.setItem("aura_session", JSON.stringify({ user: sessionUser }))
+        localStorage.setItem("aura_session", JSON.stringify({ user: sessionUser, role: sessionUser.role, isAdmin: sessionUser.role === 'admin' }))
+        setSessionUser(sessionUser)
+        setProfileComplete(Boolean(sessionUser.profileComplete))
+        setAdmin(sessionUser.role === 'admin')
         setRegistered(true)
         setStep("profile")
+      } else if (res.status === 403) {
+        alert(data.message || "Your account has been suspended by an administrator.")
       } else {
         alert(data.message || "Invalid credentials! Check your Gmail and Password.")
       }
@@ -383,27 +404,72 @@ export function AdminPanel() {
     }
   }, [users, selectedUserId])
 
-  const toggleStatus = async (id: string, currentStatus: string) => {
-    const nextStatus = currentStatus === "Active" ? "Inactive" : "Active"
+  const handleAccountStatus = async (id: string, newStatus: "Active" | "Suspended" | "Inactive") => {
     try {
+      const adminUser = getAdminUserObj()
       const res = await fetch("/api/users", {
         method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ userId: id, status: nextStatus })
+        headers: {
+          "Content-Type": "application/json",
+          "x-session-user": encodeURIComponent(JSON.stringify(adminUser))
+        },
+        body: JSON.stringify({ userId: id, status: newStatus })
       })
       if (res.ok) {
-        setUsers(users.map(u => u._id === id ? { ...u, status: nextStatus } : u))
+        setUsers(users.map(u => u._id === id ? {
+          ...u,
+          status: newStatus,
+          arenaApprovalStatus: newStatus === "Suspended" ? "suspended" : (u.arenaApprovalStatus || "approved"),
+          isLabApproved: newStatus === "Suspended" ? false : u.isLabApproved
+        } : u))
+      } else {
+        const err = await res.json().catch(() => ({}))
+        alert(err.message || err.error || "Failed to update user status")
       }
-    } catch (e) {
+    } catch (e: any) {
       console.error(e)
+      alert("Failed to update status: " + e.message)
     }
+  }
+
+  const handleArenaControl = async (id: string, newApproval: "approved" | "rejected" | "suspended") => {
+    try {
+      const adminUser = getAdminUserObj()
+      const action = newApproval === "approved" ? "approve" : (newApproval === "suspended" ? "suspend" : "reject")
+      const res = await fetch("/api/admin/arena-approvals", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-session-user": encodeURIComponent(JSON.stringify(adminUser))
+        },
+        body: JSON.stringify({ userId: id, action, reason: newApproval === "approved" ? "" : "Admin decision" })
+      })
+      if (res.ok) {
+        setUsers(users.map(u => u._id === id ? { ...u, arenaApprovalStatus: newApproval } : u))
+      } else {
+        const err = await res.json().catch(() => ({}))
+        alert(err.error || "Failed to update arena approval")
+      }
+    } catch (e: any) {
+      console.error(e)
+      alert("Failed to update arena: " + e.message)
+    }
+  }
+
+  const toggleStatus = async (id: string, currentStatus: string) => {
+    const nextStatus = currentStatus === "Active" ? "Suspended" : "Active"
+    await handleAccountStatus(id, nextStatus as any)
   }
 
   const toggleLabAccess = async (id: string, currentAccess: boolean) => {
     try {
+      const adminUser = getAdminUserObj()
       const res = await fetch("/api/users", {
         method: "PUT",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          "x-session-user": encodeURIComponent(JSON.stringify(adminUser))
+        },
         body: JSON.stringify({ userId: id, isLabApproved: !currentAccess })
       })
       if (res.ok) {
@@ -488,20 +554,35 @@ export function AdminPanel() {
   }
 
   // Arena Approval Handlers
-  // Build admin identity for API headers: prefer real session, fall back to password-unlocked admin
+  // Build admin identity for API headers: prefer real session, ensure all fields present
   const getAdminUserObj = () => {
     const raw = localStorage.getItem('aura_session')
     if (raw) {
       try {
         const parsed = JSON.parse(raw)
-        if (parsed?.user) {
-          // Ensure role is set for API header
-          return { ...parsed.user, role: parsed.user.role || 'admin' }
+        const user = parsed?.user || parsed
+        
+        // Return user object with guaranteed admin fields
+        return {
+          ...user,
+          role: user?.role || 'admin',
+          isAdmin: user?.isAdmin !== false,
+          name: user?.name || 'Admin',
+          email: user?.email || 'admin@aura',
         }
-      } catch {}
+      } catch (err) {
+        console.error('Failed to parse admin session:', err)
+      }
     }
-    // Password-unlocked admin with no session: use a minimal identity
-    return { id: 'admin', name: 'Admin', email: 'admin@aura', role: 'admin' }
+    
+    // Fallback: minimal admin object with required fields
+    return { 
+      id: 'admin', 
+      name: 'Admin', 
+      email: 'admin@aura', 
+      role: 'admin',
+      isAdmin: true,
+    }
   }
 
   const fetchArenaApprovals = useCallback(async () => {
@@ -749,34 +830,110 @@ export function AdminPanel() {
                   <div className="p-8 text-center text-muted-foreground">No users found. Ensure MongoDB is connected.</div>
                 ) : (
                   <div className="divide-y-2">
-                    {users.map(user => (
-                      <div key={user._id} className="flex items-center justify-between p-6 hover:bg-muted/10 transition-colors">
-                        <div className="flex items-center gap-4">
-                          <div className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center font-bold text-primary uppercase">
-                            {user.name?.[0] || "?"}
+                    {users.map(user => {
+                      const isSuspended = user.status === "Suspended";
+                      const isActive = user.status === "Active";
+                      const arenaStatus = user.arenaApprovalStatus || "approved";
+                      const isArenaApproved = arenaStatus === "approved";
+
+                      return (
+                        <div key={user._id} className="flex flex-col md:flex-row md:items-center justify-between p-6 hover:bg-muted/10 transition-colors gap-4">
+                          <div className="flex items-center gap-4">
+                            <div className={`w-12 h-12 rounded-full flex items-center justify-center font-bold uppercase text-white ${isSuspended ? "bg-red-600 shadow-md shadow-red-500/20" : "bg-primary/80"}`}>
+                              {user.name?.[0] || "?"}
+                            </div>
+                            <div>
+                              <div className="flex items-center gap-2">
+                                <p className="font-black text-lg">{user.name}</p>
+                                {user.role === 'admin' && (
+                                  <Badge className="bg-purple-600 text-white text-[10px] px-2 py-0.5">ADMIN</Badge>
+                                )}
+                              </div>
+                              <p className="text-xs text-muted-foreground">{user.email}</p>
+                              <div className="flex items-center gap-2 mt-1">
+                                <span className="text-[11px] text-muted-foreground font-bold">Tier: {user.rank || 'Bronze'}</span>
+                                <span className="text-[11px] text-muted-foreground font-bold">• Points: {user.points || 0}</span>
+                              </div>
+                            </div>
                           </div>
-                          <div>
-                            <p className="font-black text-lg">{user.name}</p>
-                            <p className="text-xs text-muted-foreground font-bold uppercase">Tier: {user.rank || 'Bronze'} | Points: {user.points || 0}</p>
+
+                          <div className="flex flex-wrap items-center gap-3">
+                            {/* Account Status Badge */}
+                            <Badge className={
+                              isSuspended
+                                ? "bg-red-600 text-white font-bold"
+                                : isActive
+                                ? "bg-green-600 text-white font-bold"
+                                : "bg-gray-500 text-white font-bold"
+                            }>
+                              {user.status || "Active"}
+                            </Badge>
+
+                            {/* Arena Access Badge */}
+                            <Badge variant="outline" className={
+                              isArenaApproved
+                                ? "border-emerald-500 text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 font-bold"
+                                : "border-amber-500 text-amber-600 dark:text-amber-400 bg-amber-500/10 font-bold"
+                            }>
+                              Arena: {arenaStatus}
+                            </Badge>
+
+                            {/* Admin Action Buttons */}
+                            <div className="flex items-center gap-2">
+                              {/* Suspend / Reactivate Account Button */}
+                              {isSuspended ? (
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  className="text-green-600 border-green-600 hover:bg-green-50 dark:hover:bg-green-950 font-bold text-xs"
+                                  onClick={() => handleAccountStatus(user._id, "Active")}
+                                >
+                                  Reactivate
+                                </Button>
+                              ) : (
+                                <Button
+                                  size="sm"
+                                  variant="destructive"
+                                  className="font-bold text-xs"
+                                  onClick={() => handleAccountStatus(user._id, "Suspended")}
+                                >
+                                  Suspend Account
+                                </Button>
+                              )}
+
+                              {/* Revoke / Approve Arena Access Button */}
+                              {isArenaApproved ? (
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  className="text-orange-500 border-orange-500 hover:bg-orange-50 dark:hover:bg-orange-950 font-bold text-xs"
+                                  onClick={() => handleArenaControl(user._id, "rejected")}
+                                >
+                                  Revoke Arena
+                                </Button>
+                              ) : (
+                                <Button
+                                  size="sm"
+                                  className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs"
+                                  onClick={() => handleArenaControl(user._id, "approved")}
+                                >
+                                  Approve Arena
+                                </Button>
+                              )}
+
+                              {/* Lab Access Switch */}
+                              <div className="flex items-center gap-1.5 ml-2">
+                                <Label className="text-[10px] font-bold text-indigo-500 uppercase">Lab</Label>
+                                <Switch
+                                  checked={user.isLabApproved || false}
+                                  onCheckedChange={() => toggleLabAccess(user._id, user.isLabApproved || false)}
+                                />
+                              </div>
+                            </div>
                           </div>
                         </div>
-                        <div className="flex items-center gap-6">
-                          <Badge className={(user.status || "Active") === "Active" ? "bg-green-500 text-white" : "bg-destructive text-white"}>
-                            {user.status || "Active"}
-                          </Badge>
-                          <div className="flex flex-col gap-2">
-                            <div className="flex items-center justify-between gap-4">
-                              <Label className="text-xs font-bold uppercase tracking-widest">{(user.status || "Active") === "Active" ? "Lock" : "Unlock"}</Label>
-                              <Switch checked={(user.status || "Active") === "Active"} onCheckedChange={() => toggleStatus(user._id, user.status || "Active")} />
-                            </div>
-                            <div className="flex items-center justify-between gap-4">
-                              <Label className="text-[10px] font-bold text-indigo-500 uppercase">Lab Access</Label>
-                              <Switch checked={user.isLabApproved || false} onCheckedChange={() => toggleLabAccess(user._id, user.isLabApproved || false)} />
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 )}
               </CardContent>
@@ -1302,14 +1459,35 @@ export function PolicySection() {
 }
 
 export function CommunityChat() {
-  const { isRegistered } = useNav()
+  const { isRegistered, sessionUser } = useNav()
   const [activeUsers, setActiveUsers] = useState<any[]>([])
   const [messages, setMessages] = useState<any[]>([])
   const [newMessage, setNewMessage] = useState("")
   const chatScrollRef = useRef<HTMLDivElement>(null)
 
-  useEffect(() => {
-    // Load initial messages from localStorage or use defaults
+  const fetchChatMessages = useCallback(async () => {
+    try {
+      const res = await fetch("/api/chat?roomId=community-global&limit=50")
+      if (res.ok) {
+        const data = await res.json()
+        if (data.messages && Array.isArray(data.messages) && data.messages.length > 0) {
+          const formatted = data.messages.map((m: any) => ({
+            id: m._id || m.id,
+            user: m.senderName || "Student",
+            text: m.message,
+            time: m.timestamp ? new Date(m.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : "Just now",
+            isAi: m.type === "ai",
+            senderId: m.senderId
+          }))
+          setMessages(formatted)
+          return
+        }
+      }
+    } catch (e) {
+      console.warn("Failed to load community chat from server:", e)
+    }
+
+    // Fallback to localStorage or default
     const savedChat = localStorage.getItem("aura_global_chat")
     if (savedChat) {
       try {
@@ -1322,6 +1500,11 @@ export function CommunityChat() {
         { id: 3, user: "Sarah Smith", text: "Yes, just added them to the Community Archive!", time: "02:42", isAi: false },
       ])
     }
+  }, [])
+
+  useEffect(() => {
+    fetchChatMessages()
+    const timer = setInterval(fetchChatMessages, 4000)
 
     // Fetch Active Users for Leaderboard integration
     fetch("/api/users")
@@ -1332,7 +1515,9 @@ export function CommunityChat() {
           setActiveUsers(sorted)
         }
       })
-  }, [])
+
+    return () => clearInterval(timer)
+  }, [fetchChatMessages])
 
   useEffect(() => {
     if (messages.length > 0) {
@@ -1343,18 +1528,43 @@ export function CommunityChat() {
     }
   }, [messages])
 
-  const sendMessage = (e: React.FormEvent) => {
+  const sendMessage = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!newMessage.trim()) return
-    const msg = {
-      id: Date.now(),
-      user: "You (Authorized)",
-      text: newMessage,
-      time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-      isAi: false
-    }
-    setMessages([...messages, msg])
+
+    const currentName = sessionUser?.name || "Student"
+    const currentId = sessionUser?.id || "anonymous"
+    const textToSend = newMessage.trim()
     setNewMessage("")
+
+    const localMsg = {
+      id: Date.now().toString(),
+      user: currentName,
+      text: textToSend,
+      time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      isAi: false,
+      senderId: currentId
+    }
+
+    setMessages(prev => [...prev, localMsg])
+
+    try {
+      await fetch("/api/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          roomId: "community-global",
+          senderId: currentId,
+          senderName: currentName,
+          senderAvatar: sessionUser?.photoUrl || "",
+          message: textToSend,
+          type: "community"
+        })
+      })
+      fetchChatMessages()
+    } catch (e) {
+      console.warn("Offline sending chat message:", e)
+    }
   }
 
   if (!isRegistered) {

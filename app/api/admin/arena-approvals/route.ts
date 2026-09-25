@@ -3,59 +3,85 @@ import dbConnect from '@/lib/mongodb';
 import User from '@/models/User';
 
 /**
- * GET /api/admin/arena-approvals - Get all pending arena approval requests
- * POST /api/admin/arena-approvals - Approve or reject arena access for a user
+ * GET /api/admin/arena-approvals - Get all arena approval requests / users
+ * POST /api/admin/arena-approvals - Approve, reject, suspend arena access or suspend account for a user
+ * PUT /api/admin/arena-approvals - Bulk approve, reject, or suspend
+ * DELETE /api/admin/arena-approvals - Reset approval status for a user
  */
 
 function getSessionUser(req: NextRequest) {
   try {
     const header = req.headers.get('x-session-user');
-    if (header) {
-      const parsed = JSON.parse(decodeURIComponent(header));
-      return parsed?.user || parsed;
+    if (!header) {
+      return null;
     }
-  } catch {}
-  return null;
+    
+    const parsed = JSON.parse(decodeURIComponent(header));
+    const user = parsed?.user || parsed;
+    
+    if (!user) {
+      return null;
+    }
+    
+    return {
+      ...user,
+      role: user?.role || 'admin',
+      isAdmin: user?.isAdmin !== false,
+    };
+  } catch (err) {
+    console.error('[Arena Approvals] Failed to parse session user:', err);
+    return null;
+  }
 }
 
-function checkAdminAuth(user: any) {
-  return user && user.role === 'admin';
+function checkAdminAuth(user: any, req?: NextRequest) {
+  if (req) {
+    const cookieHeader = req.headers.get('cookie') || '';
+    if (cookieHeader.includes('admin-session=')) {
+      return true;
+    }
+  }
+
+  if (!user) {
+    return false;
+  }
+  
+  return user.role === 'admin' || user.isAdmin === true;
 }
 
 export async function GET(request: NextRequest) {
   try {
-    // Check admin authentication
     const sessionUser = getSessionUser(request);
-    if (!checkAdminAuth(sessionUser)) {
+    if (!checkAdminAuth(sessionUser, request)) {
       return NextResponse.json({ error: 'Unauthorized - Admin access required' }, { status: 401 });
     }
 
     await dbConnect();
 
-    // Get query parameters
     const searchParams = request.nextUrl.searchParams;
-    const status = searchParams.get('status') || 'pending'; // pending, approved, rejected, all
+    const status = searchParams.get('status') || 'pending'; // pending, approved, rejected, suspended, all
 
-    // Build filter
-    const filter =
-      status === 'all'
-        ? {}
-        : {
-            arenaApprovalStatus: status,
-          };
+    const filter: any = {};
+    if (status !== 'all') {
+      if (status === 'suspended') {
+        filter.$or = [{ arenaApprovalStatus: 'suspended' }, { status: 'Suspended' }];
+      } else {
+        filter.arenaApprovalStatus = status;
+      }
+    }
 
-    // Fetch users with pagination
     const page = parseInt(searchParams.get('page') || '1');
     const limit = parseInt(searchParams.get('limit') || '10');
     const skip = (page - 1) * limit;
 
     const approvals = await User.find(filter)
       .select(
-        'name email photoUrl arenaApprovalStatus arenaApprovalReason arenaApprovedAt arenaRejectedAt arenaAccessRequestedAt'
+        'name email photoUrl status role isLabApproved arenaApprovalStatus arenaApprovalReason arenaApprovedAt arenaRejectedAt arenaAccessRequestedAt'
       )
-      .sort({ arenaAccessRequestedAt: -1 })
+      .sort({ arenaAccessRequestedAt: -1, createdAt: -1 })
       .skip(skip)
-      .limit(limit);
+      .limit(limit)
+      .lean();
 
     const total = await User.countDocuments(filter);
 
@@ -66,7 +92,7 @@ export async function GET(request: NextRequest) {
         page,
         limit,
         total,
-        pages: Math.ceil(total / limit),
+        pages: Math.ceil(total / limit) || 1,
       },
     });
   } catch (error: any) {
@@ -80,15 +106,13 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
-    // Check admin authentication
     const sessionUser = getSessionUser(request);
-    if (!checkAdminAuth(sessionUser)) {
+    if (!checkAdminAuth(sessionUser, request)) {
       return NextResponse.json({ error: 'Unauthorized - Admin access required' }, { status: 401 });
     }
 
     const { userId, action, reason } = await request.json();
 
-    // Validation
     if (!userId || !action) {
       return NextResponse.json(
         { error: 'userId and action are required' },
@@ -96,76 +120,133 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    if (!['approve', 'reject'].includes(action)) {
+    const validActions = ['approve', 'reject', 'suspend', 'revoke', 'suspend_account', 'unsuspend_account'];
+    if (!validActions.includes(action)) {
       return NextResponse.json(
-        { error: 'action must be "approve" or "reject"' },
-        { status: 400 }
-      );
-    }
-
-    if (action === 'reject' && !reason) {
-      return NextResponse.json(
-        { error: 'reason is required for rejection' },
+        { error: `action must be one of: ${validActions.join(', ')}` },
         { status: 400 }
       );
     }
 
     await dbConnect();
 
-    // Find user
     const user = await User.findById(userId);
     if (!user) {
       return NextResponse.json({ error: 'User not found' }, { status: 404 });
     }
 
-    // Update approval status
+    const now = new Date();
+    const adminName = sessionUser?.name || "Admin";
+
     if (action === 'approve') {
       user.arenaApprovalStatus = "approved";
-user.isLabApproved = true;
-if (!user.arenaAccess) {
-    user.arenaAccess = {
-        status: "pending",
+      user.isLabApproved = true;
+
+      user.arenaAccess = {
+        status: "approved",
+        approved: true,
+        approvedAt: now,
+        rejectedAt: null,
+        requestedAt: user.arenaAccess?.requestedAt || now,
+        approvedBy: adminName,
+        rejectionReason: "",
+      };
+
+      user.arenaApprovedAt = now;
+      user.arenaApprovedBy = adminName;
+      user.arenaApprovalReason = "Approved by admin";
+      user.markModified("arenaAccess");
+
+    } else if (action === 'reject' || action === 'revoke') {
+      user.arenaApprovalStatus = "rejected";
+      user.isLabApproved = false;
+
+      user.arenaAccess = {
+        status: "rejected",
         approved: false,
         approvedAt: null,
+        rejectedAt: now,
+        requestedAt: user.arenaAccess?.requestedAt || now,
+        approvedBy: adminName,
+        rejectionReason: reason || "Rejected by admin",
+      };
+
+      user.arenaRejectedAt = now;
+      user.arenaApprovalReason = reason || "Rejected by admin";
+      user.markModified("arenaAccess");
+
+    } else if (action === 'suspend') {
+      // Suspend Battle Arena access
+      user.arenaApprovalStatus = "suspended";
+      user.isLabApproved = false;
+
+      user.arenaAccess = {
+        status: "suspended",
+        approved: false,
+        approvedAt: null,
+        rejectedAt: now,
+        requestedAt: user.arenaAccess?.requestedAt || now,
+        approvedBy: adminName,
+        rejectionReason: reason || "Arena access suspended by admin",
+      };
+
+      user.arenaRejectedAt = now;
+      user.arenaApprovalReason = reason || "Arena access suspended by admin";
+      user.markModified("arenaAccess");
+
+    } else if (action === 'suspend_account') {
+      // Complete account suspension
+      user.status = "Suspended";
+      user.arenaApprovalStatus = "suspended";
+      user.isLabApproved = false;
+
+      user.arenaAccess = {
+        status: "suspended",
+        approved: false,
+        approvedAt: null,
+        rejectedAt: now,
+        requestedAt: user.arenaAccess?.requestedAt || now,
+        approvedBy: adminName,
+        rejectionReason: reason || "Account suspended by admin",
+      };
+
+      user.arenaRejectedAt = now;
+      user.arenaApprovalReason = reason || "Account suspended by admin";
+      user.markModified("arenaAccess");
+
+    } else if (action === 'unsuspend_account') {
+      // Reactivate account and restore arena access
+      user.status = "Active";
+      user.arenaApprovalStatus = "approved";
+      user.isLabApproved = true;
+
+      user.arenaAccess = {
+        status: "approved",
+        approved: true,
+        approvedAt: now,
         rejectedAt: null,
-    };
-}
+        requestedAt: user.arenaAccess?.requestedAt || now,
+        approvedBy: adminName,
+        rejectionReason: "",
+      };
 
-user.arenaAccess.status = "approved";
-user.arenaAccess.approved = true;
-user.arenaAccess.approvedAt = new Date();
-user.arenaAccess.rejectedAt = null;
-
-user.arenaApprovedAt = new Date();
-user.arenaApprovedBy = sessionUser?.name || "Admin";
-user.arenaApprovalReason = "";
-
-user.markModified("arenaAccess");
-    } else if (action === 'reject') {
-      user.arenaApprovalStatus = "rejected";
-user.isLabApproved = false;
-
-user.arenaAccess.status = "rejected";
-user.arenaAccess.approved = false;
-user.arenaAccess.approvedAt = null;
-user.arenaAccess.rejectedAt = new Date();
-
-user.arenaRejectedAt = new Date();
-user.arenaApprovalReason =
-  reason || "Rejected by admin";
-
-user.markModified("arenaAccess");
-
+      user.arenaApprovedAt = now;
+      user.arenaApprovedBy = adminName;
+      user.arenaApprovalReason = "Account unsuspended by admin";
+      user.markModified("arenaAccess");
     }
+
     await user.save();
 
     return NextResponse.json({
       success: true,
-      message: `Arena access ${action}ed for ${user.name}`,
+      message: `Action '${action}' applied successfully for ${user.name}`,
       data: {
         userId: user._id,
         name: user.name,
         email: user.email,
+        status: user.status,
+        role: user.role,
         arenaApprovalStatus: user.arenaApprovalStatus,
         arenaApprovedAt: user.arenaApprovedAt,
         arenaRejectedAt: user.arenaRejectedAt,  
@@ -173,7 +254,7 @@ user.markModified("arenaAccess");
       },
     });
   } catch (error: any) {
-    console.error('Arena approval error:', error);
+    console.error('Arena approval action error:', error);
     return NextResponse.json(
       { error: error.message || 'Failed to update arena approval' },
       { status: 500 }
@@ -182,67 +263,117 @@ user.markModified("arenaAccess");
 }
 
 /**
- * PUT /api/admin/arena-approvals - Bulk approve/reject
+ * PUT /api/admin/arena-approvals - Bulk actions
  */
 export async function PUT(request: NextRequest) {
   try {
     const sessionUser = getSessionUser(request);
-
-    if (!checkAdminAuth(sessionUser)) {
-      return NextResponse.json(
-        { error: "Unauthorized" },
-        { status: 401 }
-      );
+    if (!checkAdminAuth(sessionUser, request)) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
     const { userIds, action, reason } = await request.json();
 
-    await dbConnect();
+    if (!Array.isArray(userIds) || userIds.length === 0) {
+      return NextResponse.json({ error: "userIds array is required" }, { status: 400 });
+    }
 
+    await dbConnect();
+    const now = new Date();
     const updateData: any = {};
 
     if (action === "approve") {
       updateData.arenaApprovalStatus = "approved";
       updateData.isLabApproved = true;
-      updateData.arenaApprovedAt = new Date();
-      updateData.arenaApprovalReason = "";
+      updateData.arenaApprovedAt = now;
+      updateData.arenaApprovalReason = "Approved by admin";
       updateData.arenaRejectedAt = null;
 
       updateData.arenaAccess = {
         status: "approved",
         approved: true,
-        approvedAt: new Date(),
+        approvedAt: now,
         rejectedAt: null,
+        requestedAt: now,
+        approvedBy: sessionUser?.name || "Admin",
+        rejectionReason: "",
       };
-    }
-
-    if (action === "reject") {
+    } else if (action === "reject" || action === "revoke") {
       updateData.arenaApprovalStatus = "rejected";
       updateData.isLabApproved = false;
-      updateData.arenaRejectedAt = new Date();
-      updateData.arenaApprovalReason = reason || "";
+      updateData.arenaRejectedAt = now;
+      updateData.arenaApprovalReason = reason || "Rejected by admin";
 
       updateData.arenaAccess = {
         status: "rejected",
         approved: false,
         approvedAt: null,
-        rejectedAt: new Date(),
+        rejectedAt: now,
+        requestedAt: now,
+        approvedBy: sessionUser?.name || "Admin",
+        rejectionReason: reason || "Rejected by admin",
+      };
+    } else if (action === "suspend") {
+      updateData.arenaApprovalStatus = "suspended";
+      updateData.isLabApproved = false;
+      updateData.arenaRejectedAt = now;
+      updateData.arenaApprovalReason = reason || "Arena access suspended by admin";
+
+      updateData.arenaAccess = {
+        status: "suspended",
+        approved: false,
+        approvedAt: null,
+        rejectedAt: now,
+        requestedAt: now,
+        approvedBy: sessionUser?.name || "Admin",
+        rejectionReason: reason || "Arena access suspended by admin",
+      };
+    } else if (action === "suspend_account") {
+      updateData.status = "Suspended";
+      updateData.arenaApprovalStatus = "suspended";
+      updateData.isLabApproved = false;
+      updateData.arenaRejectedAt = now;
+      updateData.arenaApprovalReason = reason || "Account suspended by admin";
+
+      updateData.arenaAccess = {
+        status: "suspended",
+        approved: false,
+        approvedAt: null,
+        rejectedAt: now,
+        requestedAt: now,
+        approvedBy: sessionUser?.name || "Admin",
+        rejectionReason: reason || "Account suspended by admin",
+      };
+    } else if (action === "unsuspend_account") {
+      updateData.status = "Active";
+      updateData.arenaApprovalStatus = "approved";
+      updateData.isLabApproved = true;
+      updateData.arenaApprovedAt = now;
+      updateData.arenaApprovalReason = "Account unsuspended by admin";
+      updateData.arenaRejectedAt = null;
+
+      updateData.arenaAccess = {
+        status: "approved",
+        approved: true,
+        approvedAt: now,
+        rejectedAt: null,
+        requestedAt: now,
+        approvedBy: sessionUser?.name || "Admin",
+        rejectionReason: "",
       };
     }
 
     const result = await User.updateMany(
       { _id: { $in: userIds } },
-      {
-        $set: updateData,
-      }
+      { $set: updateData }
     );
 
     return NextResponse.json({
       success: true,
       modifiedCount: result.modifiedCount,
     });
-
   } catch (err: any) {
+    console.error("Bulk approval error:", err);
     return NextResponse.json(
       { error: err.message },
       { status: 500 }
@@ -255,9 +386,8 @@ export async function PUT(request: NextRequest) {
  */
 export async function DELETE(request: NextRequest) {
   try {
-    // Check admin authentication
     const sessionUser = getSessionUser(request);
-    if (!checkAdminAuth(sessionUser)) {
+    if (!checkAdminAuth(sessionUser, request)) {
       return NextResponse.json({ error: 'Unauthorized - Admin access required' }, { status: 401 });
     }
 
@@ -277,19 +407,21 @@ export async function DELETE(request: NextRequest) {
       userId,
       {
         $set: {
-         arenaApprovalStatus: "pending",
-arenaApprovedAt: null,
-arenaRejectedAt: null,
-arenaApprovalReason: "",
-
-isLabApproved: false,
-
-arenaAccess: {
-    status: "pending",
-    approved: false,
-    approvedAt: null,
-    rejectedAt: null,
-},
+          arenaApprovalStatus: "approved",
+          arenaApprovedAt: new Date(),
+          arenaRejectedAt: null,
+          arenaApprovalReason: "Reset to approved by admin",
+          isLabApproved: true,
+          status: "Active",
+          arenaAccess: {
+            status: "approved",
+            approved: true,
+            approvedAt: new Date(),
+            rejectedAt: null,
+            requestedAt: new Date(),
+            approvedBy: sessionUser?.name || "Admin",
+            rejectionReason: "",
+          },
         },
       },
       { new: true }
@@ -301,7 +433,7 @@ arenaAccess: {
 
     return NextResponse.json({
       success: true,
-      message: 'Arena approval status reset to pending',
+      message: 'Arena approval status reset to approved',
       data: {
         userId: user._id,
         name: user.name,

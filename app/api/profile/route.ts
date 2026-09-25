@@ -208,15 +208,13 @@ export async function GET(req: Request) {
   stream: user.stream || "",
   course: user.course || "",
   department: user.department || "",
-  grade: user.grade || "",
-  status: user.status,
   status: user.status || "Active",
 
   // ==========================
   // Profile
   // ==========================
   profileComplete: user.profileComplete ?? false,
-  isLabApproved: user.isLabApproved ?? false,
+  isLabApproved: user.status === "Suspended" ? false : (user.isLabApproved ?? true),
 
   // ==========================
   // Arena Statistics
@@ -226,7 +224,7 @@ export async function GET(req: Request) {
   level: user.level ?? 1,
   coins: user.coins ?? 0,
 
-  arenaPoints: user.arenaPoints ?? 0,
+  arenaPoints: user.arenaPoints ?? 1200,
 
   wins: user.wins ?? 0,
   losses: user.losses ?? 0,
@@ -239,20 +237,23 @@ export async function GET(req: Request) {
   currentStreak: user.currentStreak ?? 0,
   bestStreak: user.bestStreak ?? 0,
 
- rank: user.rank, 
+ rank: user.rank || "Bronze", 
 
   // ==========================
   // Arena Approval
   // ==========================
-  arenaApprovalStatus: user.arenaApprovalStatus,
-  arenaApprovalReason: user.arenaApprovalReason,
+  arenaApprovalStatus: user.arenaApprovalStatus || "approved",
+  arenaApprovalReason: user.arenaApprovalReason || "",
   arenaApprovedAt: user.arenaApprovedAt || null,
   arenaRejectedAt: user.arenaRejectedAt || null,
   arenaAccessRequestedAt: user.arenaAccessRequestedAt || null,
 
- arenaAccess: user.arenaAccess,
+  arenaAccess: user.arenaAccess || {
+    status: user.arenaApprovalStatus || "approved",
+    approved: user.status !== "Suspended" && user.arenaApprovalStatus !== "rejected" && user.arenaApprovalStatus !== "suspended",
+  },
 
- arenaCanAccess: Boolean(user.arenaAccess?.approved),
+  arenaCanAccess: user.status !== "Suspended" && (user.arenaApprovalStatus === "approved" || user.arenaAccess?.approved === true || user.role === "admin"),
 },
         });
       }

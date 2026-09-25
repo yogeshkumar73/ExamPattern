@@ -13,34 +13,58 @@ export interface IUser extends Document {
   department?: string;
   grade?: string;
   role: "student" | "admin";
-  status: "Active" | "Inactive";
+  status: "Active" | "Inactive" | "Suspended";
+  profileComplete?: boolean;
+  isLabApproved?: boolean;
+  emailVerified?: boolean;
+  customId?: string;
+  isOnline?: boolean;
+  friends?: string[];
+  friendRequests?: string[];
+  followers?: string[];
+  following?: string[];
+  arenaApprovalStatus?: "pending" | "approved" | "rejected" | "suspended";
+  arenaApprovalReason?: string;
+  arenaApprovedBy?: string;
+  arenaApprovedAt?: Date | null;
+  arenaRejectedAt?: Date | null;
+  arenaAccessRequestedAt?: Date | null;
+  arenaAccess?: {
+    status: "pending" | "approved" | "rejected" | "suspended";
+    approved: boolean;
+    approvedAt?: Date | null;
+    rejectedAt?: Date | null;
+    requestedAt?: Date | null;
+    approvedBy?: string;
+    rejectionReason?: string;
+  };
   xp: number;
-level: number;
-points: number;
-coins: number;
+  level: number;
+  points: number;
+  coins: number;
 
-arenaPoints: number;
-arenaRank: string;
+  arenaPoints: number;
+  arenaRank: string;
 
-wins: number;
-losses: number;
-draws: number;
-totalBattles: number;
+  wins: number;
+  losses: number;
+  draws: number;
+  totalBattles: number;
 
-winRate: number;
+  winRate: number;
 
-currentStreak: number;
-bestStreak: number;
+  currentStreak: number;
+  bestStreak: number;
 
-totalCorrect: number;
-totalAttempted: number;
-accuracy: number;
+  totalCorrect: number;
+  totalAttempted: number;
+  accuracy: number;
 
-badges: string[];
+  badges: string[];
 
-gameStats: Record<string, any>;
+  gameStats: Record<string, any>;
 
-battleHistory: any[];
+  battleHistory: any[];
 }
 
 export type StreamType =
@@ -122,13 +146,48 @@ const UserSchema = new Schema<IUser>(
 
     isLabApproved: {
       type: Boolean,
-      default: false,
+      default: true,
     },
 
     status: {
       type: String,
-      enum: ["Active", "Inactive"],
+      enum: ["Active", "Inactive", "Suspended"],
       default: "Active",
+    },
+
+    emailVerified: {
+      type: Boolean,
+      default: false,
+    },
+
+    customId: {
+      type: String,
+      default: "",
+    },
+
+    isOnline: {
+      type: Boolean,
+      default: false,
+    },
+
+    friends: {
+      type: [String],
+      default: [],
+    },
+
+    friendRequests: {
+      type: [String],
+      default: [],
+    },
+
+    followers: {
+      type: [String],
+      default: [],
+    },
+
+    following: {
+      type: [String],
+      default: [],
     },
 
           // =====================
@@ -169,7 +228,6 @@ const UserSchema = new Schema<IUser>(
     arenaRank: {
       type: String,
       enum: [
-        "Unranked",
         "Bronze",
         "Silver",
         "Gold",
@@ -315,23 +373,23 @@ const UserSchema = new Schema<IUser>(
     // =====================
     arenaApprovalStatus: {
       type: String,
-      enum: ["pending", "approved", "rejected"],
-      default: "pending",
+      enum: ["pending", "approved", "rejected", "suspended"],
+      default: "approved",
     },
 
     arenaApprovalReason: {
       type: String,
-      default: "",
+      default: "Auto-approved upon registration",
     },
 
     arenaApprovedBy: {
       type: String,
-      default: "",
+      default: "System",
     },
 
     arenaApprovedAt: {
       type: Date,
-      default: null,
+      default: Date.now,
     },
 
     arenaRejectedAt: {
@@ -350,18 +408,18 @@ const UserSchema = new Schema<IUser>(
     arenaAccess: {
       status: {
         type: String,
-        enum: ["pending", "approved", "rejected"],
-        default: "pending",
+        enum: ["pending", "approved", "rejected", "suspended"],
+        default: "approved",
       },
 
       approved: {
         type: Boolean,
-        default: false,
+        default: true,
       },
 
       approvedAt: {
         type: Date,
-        default: null,
+        default: Date.now,
       },
 
       rejectedAt: {
@@ -376,7 +434,7 @@ const UserSchema = new Schema<IUser>(
 
       approvedBy: {
         type: String,
-        default: "",
+        default: "System",
       },
 
       rejectionReason: {
@@ -425,20 +483,27 @@ UserSchema.pre<IUser>("save", function (next) {
   // Automatically update arena rank
   this.arenaRank = calculateArenaRank(this.arenaPoints);
 
-  // Auto approve admin
-  if (this.isNew && this.role === "admin") {
-    this.arenaApprovalStatus = "approved";
-    this.arenaApprovedAt = new Date();
+  // Auto approve all new users for battle arena and lab access
+  if (this.isNew) {
+    if (!this.arenaApprovalStatus || this.arenaApprovalStatus === "pending") {
+      this.arenaApprovalStatus = "approved";
+      this.arenaApprovedAt = new Date();
+      this.arenaApprovedBy = this.role === "admin" ? "Admin" : "System (Auto-Approved)";
+      this.arenaApprovalReason = "Auto-approved upon registration";
 
-    this.arenaAccess = {
-      status: "approved",
-      approved: true,
-      approvedAt: new Date(),
-      rejectedAt: null,
-      requestedAt: new Date(),
-      approvedBy: "System",
-      rejectionReason: "",
-    };
+      this.arenaAccess = {
+        status: "approved",
+        approved: true,
+        approvedAt: new Date(),
+        rejectedAt: null,
+        requestedAt: new Date(),
+        approvedBy: this.role === "admin" ? "Admin" : "System (Auto-Approved)",
+        rejectionReason: "",
+      };
+    }
+    if (this.isLabApproved === undefined) {
+      this.isLabApproved = true;
+    }
   }
 
   next();

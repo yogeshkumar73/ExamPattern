@@ -195,6 +195,16 @@ useEffect(() => {
       try {
         const data = await response.json();
 
+        if (data?.success === true && data?.user) {
+          // Store admin session in localStorage for API validation
+          localStorage.setItem('aura_session', JSON.stringify({
+            user: data.user,
+            role: data.user.role,
+            isAdmin: data.user.isAdmin,
+            loginTime: new Date().toISOString()
+          }));
+        }
+
         return data?.success === true;
       } catch {
         console.error("Admin login returned invalid JSON.");

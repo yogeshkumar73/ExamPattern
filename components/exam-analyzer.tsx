@@ -73,33 +73,44 @@ export default function ExamAnalyzer() {
   const [outputTypes, setOutputTypes] = useState<string[]>(["mcq", "written"])
   const [hybridMode, setHybridMode] = useState(true)
 
-  // Session Persistence
+  // Session Persistence with multi-user isolation
+  const userKey = sessionUser?.id || "guest"
+
   useEffect(() => {
     try {
-      const savedSyllabus = localStorage.getItem("aura_syllabus")
-      const savedOldPaper = localStorage.getItem("aura_old_paper")
-      const savedResult = localStorage.getItem("aura_result")
+      const savedSyllabus = localStorage.getItem(`aura_syllabus_${userKey}`) || localStorage.getItem("aura_syllabus")
+      const savedOldPaper = localStorage.getItem(`aura_old_paper_${userKey}`) || localStorage.getItem("aura_old_paper")
+      const savedResult = localStorage.getItem(`aura_result_${userKey}`) || localStorage.getItem("aura_result")
       
       if (savedSyllabus) setSyllabusText(savedSyllabus)
+      else setSyllabusText("")
+
       if (savedOldPaper) setOldPaperText(savedOldPaper)
+      else setOldPaperText("")
+
       if (savedResult) setAnalysisResult(JSON.parse(savedResult))
+      else setAnalysisResult(null)
     } catch (e) {
       console.error("Failed to load session:", e)
     }
-  }, [])
+  }, [userKey])
 
   useEffect(() => {
-    localStorage.setItem("aura_syllabus", syllabusText)
-    localStorage.setItem("aura_old_paper", oldPaperText)
-    if (analysisResult) {
-      localStorage.setItem("aura_result", JSON.stringify(analysisResult))
+    if (syllabusText) {
+      localStorage.setItem(`aura_syllabus_${userKey}`, syllabusText)
     }
-  }, [syllabusText, oldPaperText, analysisResult])
-
-  // isAdmin comes from useNav context — set by the password unlock flow in header.tsx
-  // sessionUser?.role === "admin" is a secondary check for arena access only
+    if (oldPaperText) {
+      localStorage.setItem(`aura_old_paper_${userKey}`, oldPaperText)
+    }
+    if (analysisResult) {
+      localStorage.setItem(`aura_result_${userKey}`, JSON.stringify(analysisResult))
+    }
+  }, [syllabusText, oldPaperText, analysisResult, userKey])
 
   const clearSession = () => {
+    localStorage.removeItem(`aura_syllabus_${userKey}`)
+    localStorage.removeItem(`aura_old_paper_${userKey}`)
+    localStorage.removeItem(`aura_result_${userKey}`)
     localStorage.removeItem("aura_syllabus")
     localStorage.removeItem("aura_old_paper")
     localStorage.removeItem("aura_result")
@@ -130,22 +141,24 @@ export default function ExamAnalyzer() {
   if (currentStep === "feedback") return <FeedbackSection />
   if (currentStep === "community-join") return <WhatsAppCommunity />
   
-  // Arena: Show request form for students, battle arena for approved
+  // Arena: All new users auto-approved. Only students suspended or explicitly rejected by admin show request/status form.
   if (currentStep === "arena") {
     const isArenaAdmin = isAdmin || sessionUser?.role === "admin"
-    const isApproved = sessionUser?.arenaApprovalStatus === "approved"
+    const isSuspended = sessionUser?.status === "Suspended" || sessionUser?.arenaApprovalStatus === "suspended"
+    const isRejected = sessionUser?.arenaApprovalStatus === "rejected"
     
-    // Admins bypass approval checks
+    // Admins bypass all approval checks
     if (isArenaAdmin) {
       return <BattleArena userId={sessionUser?.id || null} userEmail={sessionUser?.email || null} isAdmin={true} />
     }
     
-    // Non-admins: if approved, show arena; otherwise show request form
-    if (isApproved) {
-      return <BattleArena userId={sessionUser?.id || null} userEmail={sessionUser?.email || null} isAdmin={false} />
-    } else {
+    // If account is suspended or arena explicitly rejected by admin, show request / warning form
+    if (isSuspended || isRejected) {
       return <StudentArenaRequest />
     }
+
+    // Auto-approved new users and all active users get direct battle arena access
+    return <BattleArena userId={sessionUser?.id || null} userEmail={sessionUser?.email || null} isAdmin={false} />
   }
 
   const toggleOutputType = (type: string) => {

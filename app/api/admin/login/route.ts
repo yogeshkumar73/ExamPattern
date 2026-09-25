@@ -117,7 +117,14 @@ export async function POST(req: NextRequest) {
 
     // ── 4. Set secure HTTP-only cookie ────────────────────────────
     const response = NextResponse.json(
-      { success: true, message: "Admin access granted." },
+      { 
+        success: true, 
+        message: "Admin access granted.",
+        user: {
+          role: "admin",
+          isAdmin: true,
+        }
+      },
       { status: 200, headers: { "Cache-Control": "no-store" } }
     );
 

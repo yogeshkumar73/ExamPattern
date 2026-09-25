@@ -38,11 +38,12 @@ export interface SessionUser {
   status?: string
   points?: number
   rank?: string
-  arenaApprovalStatus?: "pending" | "approved" | "rejected"
+  arenaApprovalStatus?: "pending" | "approved" | "rejected" | "suspended"
   arenaApprovalReason?: string
   arenaAccessRequestedAt?: string
   arenaApprovedAt?: string
   arenaRejectedAt?: string
+  arenaAccess?: any
 }
 
 interface NavContextType {
@@ -69,25 +70,43 @@ export function NavProvider({ children }: { children: React.ReactNode }) {
   const [sessionUser, setSessionUser] = useState<SessionUser | null>(null)
   const [profileComplete, setProfileComplete] = useState(false)
 
-  // Sync global session state from localStorage on client-side mount
+  // Sync global session state from localStorage on client-side mount & cross-tab events
   useEffect(() => {
     if (typeof window !== "undefined") {
-      const saved = localStorage.getItem("aura_session")
-      if (saved) {
-        try {
-          const parsed = JSON.parse(saved)
-          if (parsed?.user) {
-            setSessionUser(parsed.user)
-            setRegistered(true)
-            setProfileComplete(parsed.user.profileComplete || false)
-            if (parsed.user.role === "admin") {
-              setAdmin(true)
+      const syncSession = () => {
+        const saved = localStorage.getItem("aura_session")
+        if (saved) {
+          try {
+            const parsed = JSON.parse(saved)
+            if (parsed?.user) {
+              setSessionUser(parsed.user)
+              setRegistered(true)
+              setProfileComplete(parsed.user.profileComplete || false)
+              if (parsed.user.role === "admin" || parsed.user.isAdmin === true) {
+                setAdmin(true)
+              }
             }
+          } catch (e) {
+            console.error("Failed to restore session in NavProvider:", e)
           }
-        } catch (e) {
-          console.error("Failed to restore session in NavProvider:", e)
+        } else {
+          setSessionUser(null)
+          setRegistered(false)
+          setAdmin(false)
+          setProfileComplete(false)
         }
       }
+
+      syncSession()
+
+      const handleStorageChange = (e: StorageEvent) => {
+        if (e.key === "aura_session") {
+          syncSession()
+        }
+      }
+
+      window.addEventListener("storage", handleStorageChange)
+      return () => window.removeEventListener("storage", handleStorageChange)
     }
   }, [])
 
