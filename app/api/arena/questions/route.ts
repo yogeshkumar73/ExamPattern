@@ -233,6 +233,8 @@ export async function GET(req: NextRequest) {
   const page = Math.max(1, parseInt(searchParams.get('page') || '1'));
   const excludeIds = searchParams.get('exclude_ids') || '';
   const topic = searchParams.get('topic') || '';
+  const document = searchParams.get('document') || '';
+  const userId = searchParams.get('user_id') || searchParams.get('userId') || '';
 
   // ── 1. Python Battle Service (primary) ───────────────────
   const BATTLE_SERVICE_URL = process.env.BATTLE_SERVICE_URL || ['http://', 'localhost:8001'].join('');
@@ -244,6 +246,8 @@ export async function GET(req: NextRequest) {
       page: String(page),
       ...(excludeIds && { exclude_ids: excludeIds }),
       ...(topic && { topic }),
+      ...(document && { document }),
+      ...(userId && { user_id: userId }),
     });
 
     const res = await fetch(`${BATTLE_SERVICE_URL}/api/questions/random?${params}`, {
@@ -314,7 +318,84 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
-  // Seed questions into DB
+  const BATTLE_SERVICE_URL = process.env.BATTLE_SERVICE_URL || ['http://', 'localhost:8001'].join('');
+  let body: any = {};
+  try {
+    body = await req.json();
+  } catch (_) {}
+
+  // 1. If action is answer, forward to python service for telemetry
+  if (body?.action === 'answer' || body?.isCorrect !== undefined) {
+    try {
+      const res = await fetch(`${BATTLE_SERVICE_URL}/api/questions/answer`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          user_id: body.userId || body.user_id,
+          question_id: body.questionId || body.question_id || 'q_answer',
+          is_correct: Boolean(body.isCorrect),
+          selected_answer: String(body.selectedAnswer || ''),
+        }),
+        signal: AbortSignal.timeout(2000),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        return NextResponse.json(data);
+      }
+    } catch (_) {}
+    return NextResponse.json({ success: true, data: { is_correct: body.isCorrect } });
+  }
+
+  // 2. If topic or document generation requested
+  if (body?.topic || body?.document) {
+    try {
+      const endpoint = body.document
+        ? `${BATTLE_SERVICE_URL}/api/questions/generate-from-document`
+        : `${BATTLE_SERVICE_URL}/api/questions/generate-from-topic`;
+
+      const res = await fetch(endpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          topic: body.topic || 'General Mathematics & Patterns',
+          document: body.document || '',
+          difficulty: body.difficulty || 'beginner',
+          count: body.count || 10,
+          user_id: body.userId || body.user_id,
+        }),
+        signal: AbortSignal.timeout(3000),
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        if (data?.data?.questions?.length > 0) {
+          const questions = data.data.questions.map((q: any) => ({
+            _id: q.id,
+            category: q.mode || 'document',
+            difficulty: q.difficulty,
+            title: q.question?.slice(0, 80) || 'Question',
+            description: q.question,
+            options: q.options || [],
+            correctAnswer: q.correct_answer,
+            boilerplate: q.boilerplate || '',
+            xpReward: q.xp || 50,
+            pointsReward: q.coins ? q.coins * 10 : 100,
+            timeLimit: q.time_limit || 60,
+            explanation: q.explanation || '',
+            hint: q.hint || '',
+            tags: q.tags || [],
+          }));
+          return NextResponse.json({
+            questions,
+            source: data.data.source || 'python-engine',
+            total: questions.length,
+          });
+        }
+      }
+    } catch (_) {}
+  }
+
+  // Fallback to seeding questions into DB
   await dbConnect();
   let seeded = 0;
   for (const [category, diffs] of Object.entries(QUESTION_BANK)) {

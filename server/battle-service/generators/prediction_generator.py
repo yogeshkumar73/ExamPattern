@@ -493,7 +493,7 @@ class PredictionGenerator(BaseGenerator):
         else:
             skip = random.choice([3, 4, 5])
 
-        start_idx = random.randint(0, 25 - (5 * (skip + 1)))
+        start_idx = random.randint(0, 25)
         indices = [start_idx + i * (skip + 1) for i in range(5)]
         indices = [i % 26 for i in indices]
 

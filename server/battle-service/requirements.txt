@@ -9,3 +9,7 @@ redis==5.0.8
 pymongo>=4.5,<4.9
 pytest==8.3.2
 pytest-asyncio==0.23.8
+numpy>=1.26.0
+pandas>=2.2.0
+prometheus-client>=0.20.0
+

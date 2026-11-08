@@ -15,9 +15,10 @@ All existing endpoints on port 8000 are UNAFFECTED.
 """
 
 import asyncio
+import time
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from motor.motor_asyncio import AsyncIOMotorClient  # pyrefly: ignore[missing-import]
@@ -32,9 +33,18 @@ from services.ai_service import AIService
 from services.question_service import QuestionService
 from services.matchmaking_service import MatchmakingService
 from services.leaderboard_service import LeaderboardService
+from services.high_throughput_engine import engine
+from services.metrics_service import (
+    telemetry,
+    HTTP_REQUESTS_TOTAL,
+    REQUEST_DURATION_SECONDS,
+    generate_latest,
+    CONTENT_TYPE_LATEST,
+)
 from routes.questions import router as questions_router
 from routes.matchmaking import router as matchmaking_router
 from routes.leaderboard import router as leaderboard_router
+from routes.exam_analyzer import router as exam_analyzer_router
 from utils.logger import get_logger
 
 logger = get_logger("battle-service")
@@ -85,6 +95,9 @@ async def lifespan(app: FastAPI):
     matchmaking_service = MatchmakingService()
     leaderboard_service = LeaderboardService(player_repo, lb_repo, cache)
 
+    # ── High-Throughput Queue Engine ─────────────────────────
+    await engine.start()
+
     # ── Inject into app state ─────────────────────────────────
     app.state.mongo_client = mongo_client
     app.state.db = db
@@ -94,6 +107,7 @@ async def lifespan(app: FastAPI):
     app.state.leaderboard_service = leaderboard_service
     app.state.match_repo = match_repo
     app.state.player_repo = player_repo
+    app.state.engine = engine
 
     # ── Auto-seed DB if empty ─────────────────────────────────
     try:
@@ -129,6 +143,7 @@ async def lifespan(app: FastAPI):
 
     # ── Shutdown ──────────────────────────────────────────────
     cleanup_task.cancel()
+    await engine.stop()
     mongo_client.close()
     logger.info("Battle Service shut down cleanly.")
 
@@ -157,6 +172,25 @@ app.add_middleware(
 )
 
 
+# ── Prometheus Request Timing Middleware ──────────────────────
+@app.middleware("http")
+async def prometheus_metrics_middleware(request: Request, call_next):
+    start_time = time.time()
+    try:
+        response = await call_next(request)
+        status_code = str(response.status_code)
+    except Exception:
+        status_code = "500"
+        raise
+    finally:
+        latency = time.time() - start_time
+        path = request.url.path
+        HTTP_REQUESTS_TOTAL.labels(method=request.method, endpoint=path, status=status_code).inc()
+        REQUEST_DURATION_SECONDS.labels(endpoint=path).observe(latency)
+    return response
+
+
+
 # ── Global exception handler ──────────────────────────────────
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
@@ -171,6 +205,14 @@ async def global_exception_handler(request: Request, exc: Exception):
 app.include_router(questions_router)
 app.include_router(matchmaking_router)
 app.include_router(leaderboard_router)
+app.include_router(exam_analyzer_router)
+
+
+# ── Metrics (Prometheus / Grafana) ────────────────────────────
+@app.get("/metrics", tags=["Monitoring"])
+async def metrics():
+    """Prometheus metrics endpoint for Grafana scraping."""
+    return Response(content=generate_latest(), media_type=CONTENT_TYPE_LATEST)
 
 
 # ── Health check ──────────────────────────────────────────────

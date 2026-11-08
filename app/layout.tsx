@@ -71,6 +71,9 @@ export const metadata: Metadata = {
 export const viewport: Viewport = {
   themeColor: "#0f172a",
   colorScheme: "dark",
+  width: "device-width",
+  initialScale: 1,
+  maximumScale: 5,
 };
 
 export default function RootLayout({
@@ -87,6 +90,8 @@ export default function RootLayout({
       <body
         className="
           min-h-screen
+          w-full
+          max-w-full
           bg-background
           text-foreground
           antialiased

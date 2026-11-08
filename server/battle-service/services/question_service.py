@@ -21,6 +21,7 @@ from generators.coding_generator import CodingGenerator
 from generators.puzzle_generator import PuzzleGenerator
 from generators.prediction_generator import PredictionGenerator
 from generators.random_generator import RandomGenerator
+from generators.document_topic_generator import DocumentTopicGenerator
 from models.question import QuestionModel, QuestionBatch, GameMode, Difficulty
 from repositories.question_repo import QuestionRepository
 from services.cache_service import CacheService
@@ -38,6 +39,8 @@ _GENERATORS: dict[str, object] = {
     GameMode.PUZZLE.value: PuzzleGenerator(),
     GameMode.PREDICTION.value: PredictionGenerator(),
     GameMode.MIXED.value: RandomGenerator(),
+    GameMode.DOCUMENT.value: DocumentTopicGenerator(),
+    GameMode.CUSTOM.value: DocumentTopicGenerator(),
 }
 
 

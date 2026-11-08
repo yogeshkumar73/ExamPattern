@@ -21,6 +21,10 @@ interface Question {
   xpReward: number
   pointsReward: number
   timeLimit: number
+  explanation?: string
+  hint?: string
+  tags?: string[]
+  topic?: string
 }
 
 interface BattleRoomProps {
@@ -28,6 +32,8 @@ interface BattleRoomProps {
     mode: string
     difficulty: string
     battleType: string
+    topic?: string
+    document?: string
   }
   user: any
   onBattleEnd: (result: any) => void
@@ -40,6 +46,8 @@ const MODE_CONFIG: Record<string, { label: string; icon: any; color: string; gra
   gk:         { label: 'GK Battle',        icon: BookOpen,    color: '#f59e0b', gradient: 'from-amber-600 to-orange-500' },
   prediction: { label: 'Prediction Game',  icon: TrendingUp,  color: '#ec4899', gradient: 'from-pink-600 to-rose-500' },
   mixed:      { label: 'Mixed Mode',       icon: Shuffle,     color: '#f97316', gradient: 'from-orange-600 to-red-500' },
+  custom:     { label: 'Topic & Document AI', icon: TrendingUp, color: '#06b6d4', gradient: 'from-cyan-600 to-blue-500' },
+  document:   { label: 'Topic & Document AI', icon: TrendingUp, color: '#06b6d4', gradient: 'from-cyan-600 to-blue-500' },
 }
 
 const DIFF_XP: Record<string, number> = {
@@ -98,10 +106,14 @@ export function BattleRoom({ config, user, onBattleEnd }: BattleRoomProps) {
           ? `&exclude_ids=${[...answeredIdsRef.current].slice(-100).join(',')}`
           : ''
 
-        const randomLimit = Math.floor(Math.random() * 11) + 10;
+        const topicParam = config.topic ? `&topic=${encodeURIComponent(config.topic)}` : ''
+        const docParam = config.document ? `&document=${encodeURIComponent(config.document)}` : ''
+        const userParam = user?.id ? `&user_id=${encodeURIComponent(user.id)}` : ''
+
+        const randomLimit = Math.floor(Math.random() * 6) + 10;
         // Single unified endpoint — handles Python service → DB → memory internally
         const res = await fetch(
-          `/api/arena/questions?mode=${mode}&difficulty=${config.difficulty}&limit=${randomLimit}${excludeParam}`,
+          `/api/arena/questions?mode=${mode}&difficulty=${config.difficulty}&limit=${randomLimit}${excludeParam}${topicParam}${docParam}${userParam}`,
           { signal: AbortSignal.timeout(8000) }
         )
 
@@ -139,7 +151,7 @@ export function BattleRoom({ config, user, onBattleEnd }: BattleRoomProps) {
           hint: 'Multiply 15 by 7.',
           xpReward: DIFF_XP[config.difficulty] || 50,
           pointsReward: 100,
-          timeLimit: TIME_MAP?.[config.difficulty] || 60,
+          timeLimit: 60,
         }])
         setPhase('countdown')
       }
@@ -233,6 +245,19 @@ export function BattleRoom({ config, user, onBattleEnd }: BattleRoomProps) {
       setPlayerScore(prev => prev + xpGain)
       setPlayerCorrect(prev => prev + 1)
     }
+
+    // Report answer to game engine for live Grafana accuracy tracking
+    fetch('/api/arena/questions', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        action: 'answer',
+        userId: user?.id,
+        questionId: q?._id,
+        isCorrect: correct,
+        selectedAnswer: answer || '',
+      }),
+    }).catch(() => {})
 
     // Move to next question after 1.5s
     setTimeout(() => {
@@ -496,14 +521,14 @@ export function BattleRoom({ config, user, onBattleEnd }: BattleRoomProps) {
                       key={i}
                       onClick={() => !showResult && handleAnswer(opt)}
                       disabled={showResult}
-                      className={`p-3 rounded-xl border transition-all text-left text-sm font-medium flex items-center gap-3 ${optStyle}`}
+                      className={`p-3 rounded-xl border transition-all text-left text-xs sm:text-sm font-medium flex items-center gap-2 sm:gap-3 ${optStyle}`}
                     >
                       <span className="w-6 h-6 rounded-full border border-current flex items-center justify-center text-xs font-black flex-shrink-0">
                         {String.fromCharCode(65 + i)}
                       </span>
-                      {opt}
-                      {showResult && opt === q.correctAnswer && <CheckCircle className="w-4 h-4 text-green-400 ml-auto" />}
-                      {showResult && selectedAnswer === opt && !isCorrect && <XCircle className="w-4 h-4 text-red-400 ml-auto" />}
+                      <span className="flex-1 break-words">{opt}</span>
+                      {showResult && opt === q.correctAnswer && <CheckCircle className="w-4 h-4 text-green-400 ml-auto flex-shrink-0" />}
+                      {showResult && selectedAnswer === opt && !isCorrect && <XCircle className="w-4 h-4 text-red-400 ml-auto flex-shrink-0" />}
                     </button>
                   )
                 })}
@@ -523,15 +548,23 @@ export function BattleRoom({ config, user, onBattleEnd }: BattleRoomProps) {
               </Button>
             )}
 
-            {/* Answer feedback */}
+            {/* Answer feedback & mathematical explanation */}
             {showResult && (
-              <div className={`flex items-center gap-2 p-3 rounded-xl font-bold text-sm ${isCorrect ? 'bg-green-500/10 text-green-400' : 'bg-red-500/10 text-red-400'}`}>
-                {isCorrect
-                  ? <><CheckCircle className="w-4 h-4" /> Correct! +{Math.floor(q.xpReward * (questionTimeLeft / q.timeLimit))} XP</>
-                  : selectedAnswer
-                    ? <><XCircle className="w-4 h-4" /> Wrong! Correct: {q.correctAnswer}</>
-                    : <><AlertTriangle className="w-4 h-4" /> Time's up!</>
-                }
+              <div className="space-y-2">
+                <div className={`flex items-center gap-2 p-3 rounded-xl font-bold text-sm ${isCorrect ? 'bg-green-500/10 text-green-400' : 'bg-red-500/10 text-red-400'}`}>
+                  {isCorrect
+                    ? <><CheckCircle className="w-4 h-4" /> Correct! +{Math.floor(q.xpReward * (questionTimeLeft / q.timeLimit))} XP</>
+                    : selectedAnswer
+                      ? <><XCircle className="w-4 h-4" /> Wrong! Correct: {q.correctAnswer}</>
+                      : <><AlertTriangle className="w-4 h-4" /> Time&apos;s up! Correct: {q.correctAnswer}</>
+                  }
+                </div>
+                {q.explanation && (
+                  <div className="p-3 bg-white/5 border border-white/10 rounded-xl text-xs text-white/80 leading-relaxed">
+                    <span className="font-bold text-indigo-400">💡 Analysis & Formula: </span>
+                    {q.explanation}
+                  </div>
+                )}
               </div>
             )}
           </div>

@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useCallback } from "react"
+import { useState, useEffect, useCallback, useRef } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -68,6 +68,7 @@ interface Achievement {
 }
 
 interface FullProfile extends SessionUser {
+  photoUrl?: string
   bio?: string
   xp?: number
   level?: number
@@ -123,6 +124,48 @@ export function StudentProfile() {
       }
     } catch {}
   }, [])
+
+  // ── Profile Photo Upload via Device (Camera / Gallery / Files) ─────────────
+  const fileInputRef = useRef<HTMLInputElement>(null)
+
+  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+
+    // Limit size to 5MB
+    if (file.size > 5 * 1024 * 1024) {
+      showToast("⚠️ Image file is too large (> 5MB). Please choose a smaller photo.")
+      return
+    }
+
+    const reader = new FileReader()
+    reader.onload = async (event) => {
+      const base64 = event.target?.result as string
+      if (base64) {
+        const updated = { ...profile, photoUrl: base64 }
+        setProfile(updated)
+        persistToSession({ photoUrl: base64 })
+        showToast("📸 Saving profile photo...")
+
+        try {
+          await fetch("/api/profile", {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              userId: profile.id,
+              email: profile.email,
+              name: profile.name,
+              photoUrl: base64,
+            }),
+          })
+          showToast("✅ Profile photo updated successfully!")
+        } catch {
+          showToast("💾 Profile photo saved locally!")
+        }
+      }
+    }
+    reader.readAsDataURL(file)
+  }
 
   // ── Fetch fresh profile from DB ───────────────────────────────────────────────
   const fetchProfileFromDB = useCallback(async (email: string, localData: Partial<FullProfile>) => {
@@ -343,7 +386,7 @@ export function StudentProfile() {
   }
 
   return (
-    <div className="container mx-auto py-8 max-w-5xl animate-in fade-in zoom-in-95 duration-500">
+    <div className="container mx-auto py-6 sm:py-8 px-4 max-w-5xl animate-in fade-in zoom-in-95 duration-500">
       {/* Toast */}
       {toast && (
         <div className="fixed top-6 right-6 z-50 px-6 py-3 bg-primary text-white rounded-2xl shadow-2xl font-bold text-sm animate-in slide-in-from-right-4 duration-300">
@@ -352,21 +395,21 @@ export function StudentProfile() {
       )}
 
       {/* Navigation Row */}
-      <div className="flex items-center justify-between mb-8">
-        <Button variant="ghost" className="gap-2 font-bold text-muted-foreground hover:text-primary" onClick={() => navigate("upload")}>
+      <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 mb-6 sm:mb-8">
+        <Button variant="ghost" className="gap-2 font-bold text-muted-foreground hover:text-primary justify-start sm:justify-center" onClick={() => navigate("upload")}>
           <ChevronLeft className="w-4 h-4" /> Back to Dashboard
         </Button>
-        <div className="flex gap-2">
-          <Button variant="outline" size="sm" className="gap-2 font-bold" onClick={handleRefresh} disabled={isLoadingProfile}>
+        <div className="flex flex-wrap items-center gap-2">
+          <Button variant="outline" size="sm" className="gap-2 font-bold text-xs sm:text-sm" onClick={handleRefresh} disabled={isLoadingProfile}>
             <RefreshCw className={`w-4 h-4 ${isLoadingProfile ? "animate-spin" : ""}`} /> Refresh
           </Button>
-          <Button variant="outline" className="gap-2 font-bold" onClick={() => navigate("community")}>
+          <Button variant="outline" size="sm" className="gap-2 font-bold text-xs sm:text-sm" onClick={() => navigate("community")}>
             <BookOpen className="w-4 h-4" /> Community
           </Button>
-          <Button variant="outline" className="gap-2 font-bold" onClick={() => navigate("guider")}>
+          <Button variant="outline" size="sm" className="gap-2 font-bold text-xs sm:text-sm" onClick={() => navigate("guider")}>
             <Zap className="w-4 h-4" /> AI Guider
           </Button>
-          <Button className="gap-2 font-bold" onClick={() => navigate("upload")}>
+          <Button size="sm" className="gap-2 font-bold text-xs sm:text-sm" onClick={() => navigate("upload")}>
             Next <ChevronRight className="w-4 h-4" />
           </Button>
         </div>
@@ -388,7 +431,7 @@ export function StudentProfile() {
 
       {/* Hero Card */}
       <div
-        className="relative overflow-hidden rounded-3xl mb-8 p-8 border-2 border-white/10"
+        className="relative overflow-hidden rounded-2xl sm:rounded-3xl mb-6 sm:mb-8 p-4 sm:p-8 border-2 border-white/10"
         style={{
           background: "linear-gradient(135deg, hsl(var(--primary)/0.15) 0%, hsl(250 80% 60%/0.12) 50%, hsl(200 80% 50%/0.1) 100%)",
           backdropFilter: "blur(20px)",
@@ -397,25 +440,39 @@ export function StudentProfile() {
         <div className="absolute top-0 right-0 w-64 h-64 rounded-full bg-primary/5 -translate-y-32 translate-x-32 blur-3xl pointer-events-none" />
         <div className="absolute bottom-0 left-0 w-48 h-48 rounded-full bg-blue-500/5 translate-y-24 -translate-x-24 blur-3xl pointer-events-none" />
 
-        <div className="relative flex flex-col md:flex-row items-center md:items-start gap-8">
-          {/* Avatar */}
+        <div className="relative flex flex-col md:flex-row items-center md:items-start gap-6 sm:gap-8">
+          {/* Avatar with click-to-upload */}
           <div className="relative flex-shrink-0">
+            <input
+              type="file"
+              ref={fileInputRef}
+              accept="image/*"
+              className="hidden"
+              onChange={handleImageUpload}
+              aria-label="Upload profile picture"
+            />
             <div
-              className="w-28 h-28 rounded-3xl border-4 border-white/20 shadow-2xl overflow-hidden cursor-pointer group"
+              onClick={() => fileInputRef.current?.click()}
+              title="Click to upload profile photo from your device"
+              className="w-28 h-28 rounded-3xl border-4 border-white/20 shadow-2xl overflow-hidden cursor-pointer group relative"
               style={{ background: "linear-gradient(135deg, hsl(var(--primary)/0.3), hsl(250 80% 60%/0.3))" }}
             >
               {profile.photoUrl ? (
-                <img src={profile.photoUrl} alt="Profile" className="w-full h-full object-cover" />
+                <img src={profile.photoUrl} alt="Profile" className="w-full h-full object-cover transition-transform group-hover:scale-105 duration-300" />
               ) : (
                 <div className="w-full h-full flex items-center justify-center">
-                  <span className="text-4xl font-black text-white/80">{profile.name?.[0]?.toUpperCase() || "?"}</span>
+                  <span className="text-4xl font-black text-white/90">{profile.name?.[0]?.toUpperCase() || "?"}</span>
                 </div>
               )}
-              <div className="absolute inset-0 bg-black/40 flex flex-col items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
-                <Camera className="w-6 h-6 text-white" />
+              <div className="absolute inset-0 bg-black/50 backdrop-blur-[2px] flex flex-col items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                <Camera className="w-7 h-7 text-white mb-1" />
+                <span className="text-[10px] text-white font-extrabold uppercase tracking-wider">Change Photo</span>
               </div>
             </div>
-            <div className={`absolute -bottom-2 -right-2 px-2 py-1 rounded-full text-[10px] font-black text-white shadow-lg ${profile.role === "admin" ? "bg-red-500" : "bg-primary"}`}>
+            {/* Role Badge - fixed legible background & styling */}
+            <div className={`absolute -bottom-2 -right-2 px-2.5 py-0.5 rounded-full text-[10px] font-black tracking-wider shadow-lg border border-white/30 uppercase ${
+              profile.role === "admin" ? "bg-red-600 text-white" : "bg-indigo-600 text-white"
+            }`}>
               {profile.role === "admin" ? "ADMIN" : "STUDENT"}
             </div>
           </div>
@@ -483,18 +540,18 @@ export function StudentProfile() {
       </div>
 
       {/* Tabs */}
-      <div className="flex flex-wrap gap-1 border-b-2 border-muted mb-8">
+      <div className="flex items-center gap-1 border-b-2 border-muted mb-6 sm:mb-8 pb-1 overflow-x-auto no-scrollbar flex-nowrap sm:flex-wrap">
         {tabs.map((tab) => (
           <button
             key={tab.id}
             onClick={() => setActiveTab(tab.id)}
-            className={`flex items-center gap-2 px-5 py-3 font-bold text-sm rounded-t-xl transition-all ${
+            className={`flex items-center gap-1.5 sm:gap-2 px-3.5 sm:px-5 py-2.5 sm:py-3 font-bold text-xs sm:text-sm whitespace-nowrap rounded-t-xl transition-all ${
               activeTab === tab.id
                 ? "bg-primary text-primary-foreground shadow-lg"
                 : "text-muted-foreground hover:bg-muted/20"
             }`}
           >
-            <tab.icon className="w-4 h-4" />
+            <tab.icon className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
             {tab.label}
             {tab.id === "achievements" && unlockedCount > 0 && (
               <span className="ml-1 text-[10px] bg-yellow-500 text-white px-1.5 py-0.5 rounded-full font-black">
@@ -858,15 +915,60 @@ export function StudentProfile() {
                 <Settings className="w-5 h-5 text-primary" /> Account Settings
               </CardTitle>
             </CardHeader>
-            <CardContent className="pt-6 space-y-4">
-              <div className="space-y-2">
-                <Label className="font-black text-sm">Profile Photo URL</Label>
-                <Input
-                  value={profile.photoUrl || ""}
-                  onChange={(e) => setProfile({ ...profile, photoUrl: e.target.value })}
-                  placeholder="https://your-photo-url.com/image.jpg"
-                  className="h-12 border-2 rounded-xl"
-                />
+            <CardContent className="pt-6 space-y-6">
+              {/* Profile Photo Uploader & Preview */}
+              <div className="space-y-3">
+                <Label className="font-black text-sm">Profile Picture</Label>
+                <div className="flex flex-col sm:flex-row items-center gap-4 p-4 rounded-2xl bg-muted/30 border-2">
+                  <div className="w-20 h-20 rounded-2xl border-2 border-white/20 overflow-hidden flex-shrink-0 bg-muted/50 flex items-center justify-center relative shadow-md">
+                    {profile.photoUrl ? (
+                      <img src={profile.photoUrl} alt="Preview" className="w-full h-full object-cover" />
+                    ) : (
+                      <span className="text-2xl font-black text-muted-foreground">{profile.name?.[0]?.toUpperCase() || "?"}</span>
+                    )}
+                  </div>
+                  <div className="flex-1 space-y-2 text-center sm:text-left">
+                    <p className="text-xs text-muted-foreground font-medium">
+                      Select or capture a photo from your phone or laptop (PNG, JPG, WebP supported).
+                    </p>
+                    <div className="flex flex-wrap gap-2 justify-center sm:justify-start">
+                      <Button
+                        type="button"
+                        variant="secondary"
+                        size="sm"
+                        onClick={() => fileInputRef.current?.click()}
+                        className="font-bold text-xs gap-1.5 rounded-xl border"
+                      >
+                        <Camera className="w-4 h-4 text-primary" /> Choose Image from Device
+                      </Button>
+                      {profile.photoUrl && (
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => {
+                            setProfile(prev => ({ ...prev, photoUrl: "" }))
+                            persistToSession({ photoUrl: "" })
+                            showToast("Photo removed")
+                          }}
+                          className="font-bold text-xs text-destructive hover:bg-destructive/10 rounded-xl"
+                        >
+                          Remove Photo
+                        </Button>
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="space-y-1.5 pt-1">
+                  <Label className="font-semibold text-xs text-muted-foreground">Or direct photo URL link</Label>
+                  <Input
+                    value={profile.photoUrl || ""}
+                    onChange={(e) => setProfile({ ...profile, photoUrl: e.target.value })}
+                    placeholder="https://your-photo-url.com/image.jpg"
+                    className="h-11 border-2 rounded-xl text-xs"
+                  />
+                </div>
               </div>
               <div className="flex gap-3">
                 <Button className="flex-1 h-12 font-black rounded-xl" onClick={handleSave} disabled={isSaving}>

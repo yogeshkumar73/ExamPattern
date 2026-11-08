@@ -57,22 +57,22 @@ export function GuiderAgent() {
   }
 
   return (
-    <div className="container mx-auto py-12 max-w-3xl animate-in slide-in-from-bottom-8 duration-500">
-      <Card className="border-2 shadow-2xl overflow-hidden flex flex-col h-[70vh]">
-        <CardHeader className="bg-green-500/10 border-b border-green-500/20">
-          <CardTitle className="flex items-center gap-3 text-green-600 font-black text-2xl">
-            <Sparkles className="w-8 h-8" /> 
+    <div className="container mx-auto py-8 sm:py-12 px-4 max-w-3xl animate-in slide-in-from-bottom-8 duration-500">
+      <Card className="border-2 shadow-2xl overflow-hidden flex flex-col h-[75vh] min-h-[500px]">
+        <CardHeader className="bg-green-500/10 border-b border-green-500/20 py-4 sm:py-6 px-4 sm:px-6">
+          <CardTitle className="flex items-center gap-2 sm:gap-3 text-green-600 font-black text-xl sm:text-2xl">
+            <Sparkles className="w-6 h-6 sm:w-8 sm:h-8 flex-shrink-0" /> 
             AI Guider Agent
           </CardTitle>
-          <CardDescription className="font-bold text-muted-foreground">
+          <CardDescription className="font-bold text-xs sm:text-sm text-muted-foreground">
             Personalized guidance and resource suggestions
           </CardDescription>
         </CardHeader>
         
-        <CardContent className="flex-1 overflow-y-auto p-6 space-y-4 scrollbar-hide bg-muted/10">
+        <CardContent className="flex-1 overflow-y-auto p-3 sm:p-6 space-y-4 scrollbar-hide bg-muted/10">
           {messages.map((m, i) => (
             <div key={i} className={`flex ${m.isAi ? "justify-start" : "justify-end"}`}>
-              <div className={`flex gap-3 max-w-[80%] ${m.isAi ? "flex-row" : "flex-row-reverse"}`}>
+              <div className={`flex gap-2 sm:gap-3 max-w-[90%] sm:max-w-[80%] ${m.isAi ? "flex-row" : "flex-row-reverse"}`}>
                 <div className="w-8 h-8 rounded-full bg-background border shadow-sm flex items-center justify-center flex-shrink-0">
                   {m.isAi ? <Bot className="w-4 h-4 text-green-500" /> : <div className="w-4 h-4 bg-primary rounded-full" />}
                 </div>

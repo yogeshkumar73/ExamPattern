@@ -14,8 +14,17 @@ import time
 from fastapi import APIRouter, Depends, Query, Request, HTTPException, status
 
 from middleware.rate_limiter import rate_limiter
-from middleware.validation import QuestionQueryParams, StartSessionRequest, AnswerSessionRequest
-from models.question import GameMode, Difficulty
+from middleware.validation import (
+    QuestionQueryParams,
+    StartSessionRequest,
+    AnswerSessionRequest,
+    TopicQuestionRequest,
+    DocumentQuestionRequest,
+    AnswerQuestionRequest,
+    BenchmarkRequest,
+)
+from models.question import GameMode, Difficulty, QuestionBatch
+from services.metrics_service import telemetry
 from utils.logger import get_logger
 from utils.helpers import get_difficulty_for_level
 
@@ -87,26 +96,192 @@ async def get_random_questions(
     mode: Optional[str] = Query(default=None),
     difficulty: Optional[str] = Query(default=None),
     limit: int = Query(default=20, ge=1, le=100),
+    topic: Optional[str] = Query(default=None),
+    document: Optional[str] = Query(default=None),
     exclude_ids: Optional[str] = Query(default=None),
+    user_id: Optional[str] = Query(default=None),
 ):
     """
-    Get completely random questions.
-
-    If mode/difficulty not specified, randomly selects them.
+    Get completely random, freshly generated procedural questions.
+    Generates new questions on every request using random, math, numpy, and pandas.
+    Supports user topic/document input with sub-millisecond hot-buffer dispatch.
     """
     await rate_limiter.check(request)
 
-    exclude = [e.strip() for e in (exclude_ids or "").split(",") if e.strip()]
+    exclude = set(e.strip() for e in (exclude_ids or "").split(",") if e.strip())
+    eff_mode = mode or "math"
+    eff_diff = difficulty or "beginner"
+
+    # Use HighThroughputQuestionEngine if available
+    engine = getattr(request.app.state, "engine", None)
+    if engine is not None:
+        qs_list = await engine.get_fast_questions(
+            mode=eff_mode,
+            difficulty=eff_diff,
+            count=limit,
+            topic=topic,
+            document=document,
+            user_id=user_id,
+            exclude_ids=exclude,
+        )
+        batch = QuestionBatch(
+            questions=qs_list,
+            total=len(qs_list),
+            page=1,
+            limit=limit,
+            source="high_throughput_engine",
+        )
+        return _build_response(batch, {"topic": topic, "mode": eff_mode})
 
     qs = request.app.state.question_service
     batch = await qs.get_random(
         limit=limit,
-        mode=mode,
-        difficulty=difficulty,
-        exclude_ids=exclude,
+        mode=eff_mode,
+        difficulty=eff_diff,
+        exclude_ids=list(exclude),
     )
-
     return _build_response(batch)
+
+
+@router.post("/generate-from-topic")
+async def generate_from_topic(request: Request, body: TopicQuestionRequest):
+    """
+    Generate questions directly tailored to user's custom topic
+    using NumPy, random, and mathematical procedural engines.
+    """
+    await rate_limiter.check(request)
+    engine = getattr(request.app.state, "engine", None)
+    if engine is not None:
+        qs = await engine.get_fast_questions(
+            mode="custom",
+            difficulty=body.difficulty or "beginner",
+            count=body.count,
+            topic=body.topic,
+            user_id=body.user_id,
+        )
+    else:
+        from generators.document_topic_generator import DocumentTopicGenerator
+        from models.question import Difficulty
+        gen = DocumentTopicGenerator()
+        diff = Difficulty(body.difficulty.lower()) if body.difficulty else Difficulty.BEGINNER
+        qs = gen.generate(difficulty=diff, count=body.count, topic=body.topic)
+
+    batch = QuestionBatch(
+        questions=qs,
+        total=len(qs),
+        page=1,
+        limit=body.count,
+        source="topic_generator",
+    )
+    return _build_response(batch, {"topic": body.topic})
+
+
+@router.post("/generate-from-document")
+async def generate_from_document(request: Request, body: DocumentQuestionRequest):
+    """
+    Extract patterns (trends, stats, correlations, term frequencies)
+    from user document/dataset using Pandas & NumPy, then generate questions.
+    """
+    await rate_limiter.check(request)
+    engine = getattr(request.app.state, "engine", None)
+    if engine is not None:
+        qs = await engine.get_fast_questions(
+            mode="document",
+            difficulty=body.difficulty or "beginner",
+            count=body.count,
+            topic=body.topic,
+            document=body.document,
+            user_id=body.user_id,
+        )
+    else:
+        from generators.document_topic_generator import DocumentTopicGenerator
+        from models.question import Difficulty
+        gen = DocumentTopicGenerator()
+        diff = Difficulty(body.difficulty.lower()) if body.difficulty else Difficulty.BEGINNER
+        qs = gen.generate(
+            difficulty=diff, count=body.count, topic=body.topic, document=body.document
+        )
+
+    batch = QuestionBatch(
+        questions=qs,
+        total=len(qs),
+        page=1,
+        limit=body.count,
+        source="document_pattern_generator",
+    )
+    return _build_response(batch, {"topic": body.topic})
+
+
+@router.post("/answer")
+async def record_user_answer(request: Request, body: AnswerQuestionRequest):
+    """
+    Record user answer for live accuracy analytics in Grafana and frontend widgets.
+    """
+    telemetry.record_answer(body.is_correct)
+    if body.user_id:
+        telemetry.register_user(body.user_id)
+    snapshot = telemetry.get_snapshot()
+    return {
+        "success": True,
+        "data": {
+            "is_correct": body.is_correct,
+            "accuracy_rate_pct": snapshot["accuracy_rate_pct"],
+            "total_answers": snapshot["total_answers"],
+        },
+    }
+
+
+@router.get("/telemetry")
+async def get_engine_telemetry(request: Request):
+    """
+    Real-time engine telemetry snapshot for Grafana and the frontend monitoring dashboard.
+    """
+    snapshot = telemetry.get_snapshot()
+    return {
+        "success": True,
+        "data": snapshot,
+    }
+
+
+@router.post("/benchmark")
+async def run_throughput_benchmark(request: Request, body: BenchmarkRequest):
+    """
+    Stress-test the queue and multi-threaded engine with N requests
+    to verify capacity to handle 1,000 requests/second.
+    """
+    import asyncio
+    engine = getattr(request.app.state, "engine", None)
+    if engine is None:
+        raise HTTPException(status_code=500, detail="Engine not initialized")
+
+    start_bench = time.time()
+    n = body.num_requests
+    concurrency = body.concurrency
+    sem = asyncio.Semaphore(concurrency)
+
+    async def _task():
+        async with sem:
+            return await engine.get_fast_questions(
+                mode="math", difficulty="beginner", count=2
+            )
+
+    results = await asyncio.gather(*[_task() for _ in range(n)])
+    elapsed = max(0.001, time.time() - start_bench)
+    qps = round(n / elapsed, 1)
+
+    return {
+        "success": True,
+        "data": {
+            "total_requests": n,
+            "concurrency": concurrency,
+            "elapsed_seconds": round(elapsed, 3),
+            "achieved_qps": qps,
+            "target_qps": 1000,
+            "meets_1000_qps_target": qps >= 1000,
+            "sample_questions_retrieved": len(results),
+        },
+    }
+
 
 
 @router.get("/mode/{mode}")

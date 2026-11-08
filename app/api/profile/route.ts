@@ -166,7 +166,6 @@ export async function PUT(req: Request) {
         course: user.course || "",
         department: user.department || "",
         grade: user.grade || "",
-        status: user.status,
         profileComplete: user.profileComplete ?? false,
         isLabApproved: user.isLabApproved,
         status: user.status,

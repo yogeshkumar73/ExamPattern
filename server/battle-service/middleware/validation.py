@@ -62,6 +62,34 @@ class AnswerSessionRequest(BaseModel):
     answer: str = Field(...)
 
 
+class TopicQuestionRequest(BaseModel):
+    topic: str = Field(..., min_length=1, description="Topic or subject for question generation")
+    difficulty: Optional[str] = Field(default="beginner")
+    count: int = Field(default=10, ge=1, le=100)
+    user_id: Optional[str] = None
+
+
+class DocumentQuestionRequest(BaseModel):
+    document: str = Field(..., min_length=1, description="Document, text, or CSV dataset")
+    topic: Optional[str] = None
+    difficulty: Optional[str] = Field(default="beginner")
+    count: int = Field(default=10, ge=1, le=100)
+    user_id: Optional[str] = None
+
+
+class AnswerQuestionRequest(BaseModel):
+    user_id: Optional[str] = None
+    question_id: str = Field(..., min_length=1)
+    is_correct: bool
+    selected_answer: Optional[str] = None
+
+
+class BenchmarkRequest(BaseModel):
+    num_requests: int = Field(default=1000, ge=10, le=5000)
+    concurrency: int = Field(default=50, ge=1, le=200)
+
+
+
 # ── Matchmaking API ───────────────────────────────────────────
 
 class JoinQueueRequest(BaseModel):

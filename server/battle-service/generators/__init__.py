@@ -7,3 +7,5 @@ from .gk_generator import GKGenerator
 from .coding_generator import CodingGenerator
 from .puzzle_generator import PuzzleGenerator
 from .random_generator import RandomGenerator
+from .document_topic_generator import DocumentTopicGenerator
+

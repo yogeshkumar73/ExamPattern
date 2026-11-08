@@ -7,24 +7,24 @@ export default function Home() {
   return (
     <main className="flex-1">
       {/* Hero / Welcome Section */}
-      <section className="relative pt-20 pb-32 overflow-hidden border-b bg-muted/20">
+      <section className="relative pt-12 sm:pt-20 pb-16 sm:pb-32 overflow-hidden border-b bg-muted/20">
         <div className="container mx-auto px-4 relative z-10 text-center">
-          <Badge variant="outline" className="mb-6 py-1.5 px-4 bg-primary/5 border-primary/20 text-primary animate-bounce">
+          <Badge variant="outline" className="mb-4 sm:mb-6 py-1.5 px-3 sm:px-4 text-xs sm:text-sm bg-primary/5 border-primary/20 text-primary animate-bounce">
             Introducing Aura Prime v2.0
           </Badge>
-          <h1 className="text-6xl md:text-7xl font-extrabold tracking-tight mb-8 bg-clip-text text-transparent bg-gradient-to-r from-foreground via-primary to-indigo-600">
-            Intelligent Exam Analysis <br />
+          <h1 className="text-3xl sm:text-5xl md:text-6xl lg:text-7xl font-extrabold tracking-tight mb-6 sm:mb-8 bg-clip-text text-transparent bg-gradient-to-r from-foreground via-primary to-indigo-600 leading-tight">
+            Intelligent Exam Analysis <br className="hidden sm:inline" />
             Powered by Deep Learning
           </h1>
-          <p className="text-xl text-muted-foreground max-w-3xl mx-auto mb-12 leading-relaxed">
+          <p className="text-base sm:text-xl text-muted-foreground max-w-3xl mx-auto mb-8 sm:mb-12 leading-relaxed px-2">
             Upload your source materials and let our advanced AI models identify hidden patterns, 
             weight topics, and predict potential examination questions with 94% accuracy.
           </p>
-          <div className="flex justify-center gap-4">
-            <Button size="lg" className="h-14 px-10 text-lg font-bold rounded-full" asChild>
+          <div className="flex flex-col sm:flex-row justify-center items-center gap-3 sm:gap-4 max-w-sm sm:max-w-none mx-auto">
+            <Button size="lg" className="w-full sm:w-auto h-12 sm:h-14 px-6 sm:px-10 text-base sm:text-lg font-bold rounded-full" asChild>
               <a href="#analyzer">Start Analyzing</a>
             </Button>
-            <Button size="lg" variant="outline" className="h-14 px-10 text-lg font-medium rounded-full bg-background/50">
+            <Button size="lg" variant="outline" className="w-full sm:w-auto h-12 sm:h-14 px-6 sm:px-10 text-base sm:text-lg font-medium rounded-full bg-background/50">
               View Sample Results
             </Button>
           </div>
@@ -38,15 +38,15 @@ export default function Home() {
       </section>
 
       {/* Technical Feature Section (The "Code Try Catch" section) */}
-      <section className="py-24 border-b bg-background">
+      <section className="py-12 sm:py-24 border-b bg-background">
         <div className="container mx-auto px-4">
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-16 items-center">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 lg:gap-16 items-center">
             <div>
               <div className="w-12 h-12 bg-primary/10 rounded-xl flex items-center justify-center mb-6">
                 <Code2 className="w-6 h-6 text-primary" />
               </div>
-              <h2 className="text-4xl font-bold mb-6 tracking-tight">Robust Error-Resilient Processing</h2>
-              <p className="text-lg text-muted-foreground mb-8">
+              <h2 className="text-2xl sm:text-4xl font-bold mb-4 sm:mb-6 tracking-tight">Robust Error-Resilient Processing</h2>
+              <p className="text-base sm:text-lg text-muted-foreground mb-6 sm:mb-8">
                 We take stability seriously. Every analysis step is protected by multi-layered error handling 
                 and fallback mechanisms to ensure you get results even when models fluctuate.
               </p>

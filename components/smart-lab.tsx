@@ -156,51 +156,51 @@ export function SmartLab() {
   }
 
   return (
-    <div className="container mx-auto py-12 max-w-6xl animate-in fade-in zoom-in duration-700">
-      <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 gap-4 border-b pb-6 border-indigo-500/10">
+    <div className="container mx-auto py-8 sm:py-12 px-4 max-w-6xl animate-in fade-in zoom-in duration-700">
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 sm:mb-8 gap-4 border-b pb-6 border-indigo-500/10">
         <div>
-          <h1 className="text-4xl font-black tracking-tight flex items-center gap-3 bg-clip-text text-transparent bg-gradient-to-r from-indigo-500 to-purple-600">
-            <Brain className="w-10 h-10 text-indigo-500" /> 
+          <h1 className="text-2xl sm:text-3xl md:text-4xl font-black tracking-tight flex items-center gap-2 sm:gap-3 bg-clip-text text-transparent bg-gradient-to-r from-indigo-500 to-purple-600">
+            <Brain className="w-8 h-8 sm:w-10 sm:h-10 text-indigo-500 flex-shrink-0" /> 
             SMART EXPERIMENT LAB
           </h1>
-          <p className="text-muted-foreground font-bold">Coding, Practice, and Activities Room</p>
+          <p className="text-muted-foreground font-bold text-xs sm:text-sm mt-1">Coding, Practice, and Activities Room</p>
         </div>
         
-        <div className="flex gap-4 flex-wrap items-center">
+        <div className="flex gap-2 sm:gap-4 flex-wrap items-center">
           <Button 
             variant="outline" 
             size="sm" 
             onClick={handleSeedDatabase}
             disabled={isSeeding}
-            className="h-9 px-4 font-bold border-indigo-500/20 text-indigo-500 hover:bg-indigo-500/10"
+            className="h-8 sm:h-9 px-3 sm:px-4 text-xs sm:text-sm font-bold border-indigo-500/20 text-indigo-500 hover:bg-indigo-500/10"
           >
             {isSeeding ? "Seeding..." : "Seed Questions"}
           </Button>
-          <Badge className="bg-yellow-500 hover:bg-yellow-600 text-black text-sm py-1 px-4 flex gap-2 h-9 items-center border-none">
-            <Star className="w-4 h-4 fill-current" /> {points} PTS
+          <Badge className="bg-yellow-500 hover:bg-yellow-600 text-black text-xs sm:text-sm py-1 px-3 sm:px-4 flex gap-1.5 sm:gap-2 h-8 sm:h-9 items-center border-none">
+            <Star className="w-3.5 h-3.5 sm:w-4 sm:h-4 fill-current" /> {points} PTS
           </Badge>
-          <Badge className="bg-gradient-to-r from-amber-200 to-yellow-500 text-black text-sm py-1 px-4 flex gap-2 h-9 items-center border-none">
-            <Trophy className="w-4 h-4" /> {rank} TIER
+          <Badge className="bg-gradient-to-r from-amber-200 to-yellow-500 text-black text-xs sm:text-sm py-1 px-3 sm:px-4 flex gap-1.5 sm:gap-2 h-8 sm:h-9 items-center border-none">
+            <Trophy className="w-3.5 h-3.5 sm:w-4 sm:h-4" /> {rank} TIER
           </Badge>
         </div>
       </div>
 
       <Tabs defaultValue="coding" className="w-full">
-        <TabsList className="grid grid-cols-2 md:grid-cols-5 h-auto p-2 gap-2 mb-8 bg-muted/50 rounded-2xl">
-          <TabsTrigger value="games" className="rounded-xl font-bold py-3 data-[state=active]:bg-indigo-500 data-[state=active]:text-white">
-            <Gamepad2 className="w-4 h-4 mr-2" /> Games & Quizzes
+        <TabsList className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 h-auto p-1.5 sm:p-2 gap-1.5 sm:gap-2 mb-6 sm:mb-8 bg-muted/50 rounded-xl sm:rounded-2xl">
+          <TabsTrigger value="games" className="rounded-lg sm:rounded-xl font-bold py-2 sm:py-3 px-2 sm:px-3 text-xs sm:text-sm data-[state=active]:bg-indigo-500 data-[state=active]:text-white">
+            <Gamepad2 className="w-3.5 h-3.5 sm:w-4 sm:h-4 mr-1.5 sm:mr-2" /> Games & Quizzes
           </TabsTrigger>
-          <TabsTrigger value="arena" className="rounded-xl font-bold py-3 data-[state=active]:bg-rose-500 data-[state=active]:text-white">
-            <Swords className="w-4 h-4 mr-2" /> Battle Arena
+          <TabsTrigger value="arena" className="rounded-lg sm:rounded-xl font-bold py-2 sm:py-3 px-2 sm:px-3 text-xs sm:text-sm data-[state=active]:bg-rose-500 data-[state=active]:text-white">
+            <Swords className="w-3.5 h-3.5 sm:w-4 sm:h-4 mr-1.5 sm:mr-2" /> Battle Arena
           </TabsTrigger>
-          <TabsTrigger value="coding" className="rounded-xl font-bold py-3 data-[state=active]:bg-blue-500 data-[state=active]:text-white">
-            <Code2 className="w-4 h-4 mr-2" /> Coding Practice
+          <TabsTrigger value="coding" className="rounded-lg sm:rounded-xl font-bold py-2 sm:py-3 px-2 sm:px-3 text-xs sm:text-sm data-[state=active]:bg-blue-500 data-[state=active]:text-white">
+            <Code2 className="w-3.5 h-3.5 sm:w-4 sm:h-4 mr-1.5 sm:mr-2" /> Coding Practice
           </TabsTrigger>
-          <TabsTrigger value="interview" className="rounded-xl font-bold py-3 data-[state=active]:bg-purple-500 data-[state=active]:text-white">
-            <Users className="w-4 h-4 mr-2" /> Interview Prep
+          <TabsTrigger value="interview" className="rounded-lg sm:rounded-xl font-bold py-2 sm:py-3 px-2 sm:px-3 text-xs sm:text-sm data-[state=active]:bg-purple-500 data-[state=active]:text-white">
+            <Users className="w-3.5 h-3.5 sm:w-4 sm:h-4 mr-1.5 sm:mr-2" /> Interview Prep
           </TabsTrigger>
-          <TabsTrigger value="community" className="rounded-xl font-bold py-3 data-[state=active]:bg-orange-500 data-[state=active]:text-white">
-            <Users2 className="w-4 h-4 mr-2" /> Group Discussion
+          <TabsTrigger value="community" className="rounded-lg sm:rounded-xl font-bold py-2 sm:py-3 px-2 sm:px-3 text-xs sm:text-sm data-[state=active]:bg-orange-500 data-[state=active]:text-white">
+            <Users2 className="w-3.5 h-3.5 sm:w-4 sm:h-4 mr-1.5 sm:mr-2" /> Group Discussion
           </TabsTrigger>
         </TabsList>
 

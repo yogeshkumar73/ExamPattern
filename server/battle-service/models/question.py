@@ -20,6 +20,8 @@ class GameMode(str, Enum):
     PUZZLE = "puzzle"
     PREDICTION = "prediction"
     MIXED = "mixed"
+    DOCUMENT = "document"
+    CUSTOM = "custom"
 
 
 class Difficulty(str, Enum):
