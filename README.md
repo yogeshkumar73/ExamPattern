@@ -29,15 +29,62 @@ A modern, production-ready academic intelligence and gamified learning platform 
   - **Objective Suite (MCQ)**: 4 distinct options, highlighted correct answer, conceptual explanation, difficulty rating, and disclaimer.
   - **Subjective Suite (Theory)**: Detailed academic model answers, scoring rubric criteria checklist, verified reference sources, verification status, and disclaimer.
   - **Mandatory Disclaimer**: All practice sets carry clear academic disclaimers (*"Estimated practice question; not a guaranteed exam question"*).
-- **Executive Blueprint Report**: Integrated printable/exportable report payload with methodology, year coverage, topic ranking tables, and evaluation disclaimers.
 
 ---
 
-### 2. ⚡ High-Throughput Game Engine & Grafana Telemetry
+### 2. 📚 Community Repository & Examination Archive
+- **Multi-Category Archive**: Access curated previous year exam papers across **CBSE**, **GATE**, **UPSC**, **University**, and **Standard** curriculum streams.
+- **Student & Contributor Upload**: Students and teachers can contribute papers with title, subject, academic year, and PDF document upload.
+- **Admin Moderation & One-Click Approvals**:
+  - Student uploads enter a moderation queue marked `Pending Review`.
+  - Admins can toggle the **Admin Review** filter to review and **Approve** (publish to community) or **Reject** submissions.
+  - Admin uploads are published instantly to the repository.
+- **Unrestricted 1-Click Downloads**: Any student can download approved examination papers immediately without stream blocking or mandatory review gates.
+- **Detailed Examination Preview / Review**: Interactive modal presenting paper metadata, syllabus breakdown (Part A 30%, Part B 40%, Part C 30%), topics covered, and direct download links.
+
+---
+
+### 3. ⚔️ Battle Arena, Dynamic Ranks (1–10) & 2-Minute Live Updates
+- **Top 1 to 10 Descending Leaderboard**:
+  - Strictly presents players in descending order of points.
+  - **Podium Display (Top 3)**: #1 Gold (center), #2 Silver (left), #3 Bronze (right).
+  - **Rankings Table (Ranks #4 to #10)**: Displays rank, avatar, tier badge, W/L record, win percentage, XP, and points.
+- **2-Minute Dynamic Auto-Refresh**:
+  - Integrated 120-second countdown timer (`Live • In 1m 45s`) that automatically re-queries and updates leaderboard scores dynamically.
+  - Dynamic live score shifts simulate real-time battle results with smooth CSS transition animations.
+  - **Update Now Button**: Allows users and testers to instantly trigger live updates on demand.
+- **530+ Static Question Bank**:
+  - Over 530 questions across Coding, Puzzle, Math, GK, Prediction, Mixed Mode, and Topic & Doc AI.
+  - Scaled attempt limits (15 to 40 questions) and difficulty-tuned countdown timers (90s down to 25s).
+
+---
+
+### 4. 💬 Real-Time Multicast Global Chat (24-Hour TTL)
+- **End-to-End Multicasting**: High-performance real-time chat with fast incremental sync and active student roster.
+- **Mobile-Responsive UI**: Clean responsive chatroom with drawer toggle for mobile devices.
+- **Auto-Cleanup (24-Hour TTL)**: MongoDB TTL indexes automatically prune messages older than 24 hours to preserve database performance and privacy.
+
+---
+
+### 5. 🔔 Notifications & Multi-User Admin Message Center
+- **Admin-Only Broadcasts & Direct Messages**: Protected message composition for administrators to send platform-wide announcements or direct alerts to individual students.
+- **Privacy-Safe Student Identifiers**: User identifiers masked (e.g. `#D84A12`) without exposing raw emails to other users.
+- **Social Connection Actions**: One-click Profile redirect, Follow, and Connection request approvals.
+- **Interactive Notification Drawer**: In-app inbox with unread badges, priority indicators (Urgent, High, Normal), and auto-expiry after 7 days.
+
+---
+
+### 6. 🎙️ AI Smart Lab & Speech Interviewer
+- **Interactive AI Voice Interviewer**: Voice-based mock interviews powered by browser Speech Recognition, Google Gemini AI, and Text-to-Speech audio synthesis.
+- **Curated Question Pool**: Comprehensive technical, system design, and behavioral questions tailored for competitive campus placements and technical evaluations.
+
+---
+
+### 7. ⚡ High-Throughput Game Engine & Grafana Telemetry
 - **Multi-User Real-time Architecture**:
   - Built to sustain **1,000+ requests/second** during live exam events.
   - Asynchronous priority queues with background worker pools and in-memory pre-seeded ring buffers.
-  - Non-repeating procedural math and algorithmic variations via `random.math` and NumPy.
+  - Non-repeating procedural math and algorithmic variations via NumPy.
 - **Prometheus & Grafana Monitoring**:
   - Built-in `/metrics` endpoint formatted for standard Prometheus scraping.
   - Pre-configured Grafana dashboard (`server/battle-service/grafana_dashboard.json`) tracking real-time QPS throughput, active players, p50/p95 queue latencies, and platform accuracy.
@@ -46,7 +93,7 @@ A modern, production-ready academic intelligence and gamified learning platform 
 
 ---
 
-### 3. 🛡️ Secure Admin Clearance & Authentication
+### 8. 🛡️ Secure Admin Clearance & Authentication
 - **Admin Switch at Registration & Login**:
   - Switch between Student Registration, Student Login, and **Administrator Clearance** directly on the onboarding portal.
   - Master Administrator Password verification with cryptographic HMAC tokens.
@@ -56,14 +103,14 @@ A modern, production-ready academic intelligence and gamified learning platform 
 
 ---
 
-### 4. 👤 Student Profile & Device Photo Upload
+### 9. 👤 Student Profile & Device Photo Upload
 - **Device Camera & Gallery Picker**:
   - Click on the profile avatar or account settings button to select or capture an image directly from mobile cameras or desktop storage.
   - Automatic base64 encoding with immediate live preview and persistent database synchronization (`PUT /api/profile`).
 - **High-Contrast Legible Badges**:
   - Distinct badges for `STUDENT` and `ADMIN` roles across both light and dark modes.
 - **Battle Statistics**:
-  - Tracks XP points, ranks (Bronze, Silver, Gold, Platinum), ELO ratings, win/loss records, and unlocked achievements.
+  - Tracks XP points, ranks (Bronze, Silver, Gold, Platinum, Diamond, Master, Grandmaster), ELO ratings, win/loss records, and unlocked achievements.
 
 ---
 
@@ -77,7 +124,7 @@ A modern, production-ready academic intelligence and gamified learning platform 
 | **Document Processing** | PyMuPDF (`fitz`), `pypdf`, Tesseract OCR |
 | **Telemetry & Metrics** | Prometheus (`prometheus_client`), Grafana |
 | **Database** | MongoDB (Mongoose for Next.js, Motor for async Python) |
-| **AI Integration** | Google Gemini 2.5 API (`@google/genai`) with offline fallback support |
+| **AI Integration** | Google Gemini API (`@google/genai`) with offline fallback support |
 | **Testing** | pytest, pytest-asyncio, Next.js build verification |
 
 ---
@@ -88,44 +135,40 @@ A modern, production-ready academic intelligence and gamified learning platform 
 Local LLM/
 ├── app/                                # Next.js App Router
 │   ├── api/                            # API Route Handlers
-│   │   ├── admin/game-engine/          # Admin-only Game Engine runner & benchmarks
-│   │   ├── admin/login/                # Admin Master Password verification
+│   │   ├── admin/                      # Admin routes (arena approvals, engine benchmarks, auth)
 │   │   ├── analyze-paper/              # Bridge to FastAPI Exam Pattern Engine
-│   │   ├── extract-text/               # PDF / Image / OCR text extractor
-│   │   ├── profile/                    # User profile sync & photo upload
-│   │   └── arena/                      # Battle, matchmaking, and leaderboard
+│   │   ├── arena/                      # Battle matchmaking, leaderboard & questions
+│   │   ├── chat/                       # Global real-time chat with 24-hour TTL
+│   │   ├── interview/                  # Smart Lab voice & question generator
+│   │   ├── notifications/              # Multi-user notification center
+│   │   ├── papers/                     # Community repository, upload & download
+│   │   └── profile/                    # User profile sync & photo upload
 │   ├── layout.tsx                      # Root Layout
 │   └── page.tsx                        # Main Application Landing Page
 ├── components/                         # UI Components
-│   ├── admin-community.tsx             # Onboarding with Admin Switch & Command Center
+│   ├── admin-community.tsx             # Community Repository, Admin Panel & Policy
 │   ├── exam-analyzer.tsx               # 3-Step Exam Pattern Analyzer Interface
 │   ├── topic-analysis.tsx              # Strategic Topic Ranking & Evidence Cards
 │   ├── question-predictor.tsx          # MCQ & Subjective Practice Suite with Rubrics
 │   ├── header.tsx                      # Header with Student Profile Menu & Navigation
+│   ├── notifications-center.tsx        # Multi-User Notifications & Admin Messaging
+│   ├── smart-lab.tsx                   # Smart Lab & AI Voice Interviewer
 │   ├── student-profile.tsx             # User Profile, Device Image Upload & Settings
-│   └── battle-arena/                   # Battle Arena & High-Throughput Engine UI
+│   └── battle-arena/                   # Battle Arena, Leaderboard & 530+ Question Bank
+├── lib/
+│   ├── data/arenaQuestionBank.ts       # 530+ Curated Static Arena Questions
+│   ├── mongodb.ts                      # Mongoose Database Connection
+│   └── mockDb.ts                       # Offline Resilience & Fallback Data
 ├── models/                             # Mongoose MongoDB Models
+│   ├── ArenaQuestion.ts
+│   ├── ChatMessage.ts
+│   ├── Notification.ts
+│   ├── Paper.ts
+│   └── User.ts
 ├── server/
 │   └── battle-service/                 # FastAPI High-Performance Backend (Port 8001)
-│       ├── main.py                     # FastAPI entry point & metrics
-│       ├── run_server.py               # Standalone daemon launcher
-│       ├── grafana_dashboard.json      # Pre-configured Grafana telemetry dashboard
-│       ├── routes/
-│       │   ├── exam_analyzer.py        # Blueprint API endpoints
-│       │   └── questions.py            # Battle questions & benchmark routes
-│       ├── services/
-│       │   ├── exam_analyzer/          # Core Exam Pattern Analyzer Pipeline
-│       │   │   ├── models.py           # Pydantic data schemas
-│       │   │   ├── pdf_parser.py       # PyMuPDF / pypdf document reader
-│       │   │   ├── syllabus_analyzer.py# Unit & topic hierarchy extractor
-│       │   │   ├── question_extractor.py# Multi-paper question parser
-│       │   │   ├── topic_mapper.py     # TF-IDF semantic topic matcher
-│       │   │   ├── pattern_analyzer.py # Pandas & NumPy scoring engine
-│       │   │   ├── question_generator.py# Practice question & rubric generator
-│       │   │   └── report_service.py   # Executive report compiler
-│       │   └── high_throughput_engine.py# 1,000 req/s queue & buffer engine
-│       └── tests/                      # pytest test suite (84 passing tests)
 ├── package.json                        # Node dependencies & build scripts
+├── .gitignore                          # Git Ignore Configuration
 └── README.md                           # Project Documentation
 ```
 
@@ -187,24 +230,11 @@ Open [http://localhost:3000](http://localhost:3000) in your browser.
 ```bash
 pytest server/battle-service/tests
 ```
-Verifies PDF extraction, syllabus segmentation, question parsing, TF-IDF mapping, Pandas/NumPy pattern analysis, model answer rubrics, and high-throughput queues.
 
 ### Run Next.js Production Build
 ```bash
 npm run build
 ```
-Compiles all pages and serverless API routes with Turbopack with 0 errors.
-
----
-
-## 📊 Prometheus & Grafana Integration
-
-1. **Prometheus Target**: Configure your `prometheus.yml` to scrape `http://localhost:8001/metrics`.
-2. **Grafana Dashboard**: Import `server/battle-service/grafana_dashboard.json` into Grafana to monitor:
-   - Real-time QPS throughput & peak capacity
-   - Active concurrent player sessions
-   - p50 and p95 queue latencies
-   - Platform overall accuracy rate
 
 ---
 

@@ -46,12 +46,33 @@ const MODE_CONFIG: Record<string, { label: string; icon: any; color: string; gra
   gk:         { label: 'GK Battle',        icon: BookOpen,    color: '#f59e0b', gradient: 'from-amber-600 to-orange-500' },
   prediction: { label: 'Prediction Game',  icon: TrendingUp,  color: '#ec4899', gradient: 'from-pink-600 to-rose-500' },
   mixed:      { label: 'Mixed Mode',       icon: Shuffle,     color: '#f97316', gradient: 'from-orange-600 to-red-500' },
+  topicdoc:   { label: 'Topic & Doc AI',   icon: BookOpen,    color: '#06b6d4', gradient: 'from-cyan-600 to-blue-500' },
   custom:     { label: 'Topic & Document AI', icon: TrendingUp, color: '#06b6d4', gradient: 'from-cyan-600 to-blue-500' },
   document:   { label: 'Topic & Document AI', icon: TrendingUp, color: '#06b6d4', gradient: 'from-cyan-600 to-blue-500' },
 }
 
 const DIFF_XP: Record<string, number> = {
   beginner: 50, intermediate: 100, advanced: 200, expert: 400, master: 700, grandmaster: 1000,
+}
+
+// Question attempt count increases with difficulty level
+const ATTEMPTS_SCALE: Record<string, number> = {
+  beginner: 15,
+  intermediate: 20,
+  advanced: 25,
+  expert: 30,
+  master: 35,
+  grandmaster: 40,
+}
+
+// Time per question scales dynamically with difficulty level
+const TIME_MAP: Record<string, number> = {
+  beginner: 90,
+  intermediate: 75,
+  advanced: 60,
+  expert: 45,
+  master: 35,
+  grandmaster: 25,
 }
 
 export function BattleRoom({ config, user, onBattleEnd }: BattleRoomProps) {
@@ -95,25 +116,26 @@ export function BattleRoom({ config, user, onBattleEnd }: BattleRoomProps) {
   useEffect(() => {
     const load = async () => {
       try {
-        // Determine actual mode (mixed picks random)
-        const modes = ['coding', 'puzzle', 'math', 'gk', 'prediction']
+        // Determine actual mode (mixed picks random from all modes including topicdoc)
+        const modes = ['coding', 'puzzle', 'math', 'gk', 'prediction', 'topicdoc']
         const mode = config.mode === 'mixed'
           ? modes[Math.floor(Math.random() * modes.length)]
           : config.mode
 
         // Build exclude_ids to prevent repeating answered questions (keep last 100 to avoid giant URLs)
         const excludeParam = answeredIdsRef.current.size > 0
-          ? `&exclude_ids=${[...answeredIdsRef.current].slice(-100).join(',')}`
+          ? `&exclude_ids=${encodeURIComponent([...answeredIdsRef.current].slice(-100).join(','))}`
           : ''
 
         const topicParam = config.topic ? `&topic=${encodeURIComponent(config.topic)}` : ''
         const docParam = config.document ? `&document=${encodeURIComponent(config.document)}` : ''
         const userParam = user?.id ? `&user_id=${encodeURIComponent(user.id)}` : ''
 
-        const randomLimit = Math.floor(Math.random() * 6) + 10;
+        // Scale question attempt limit based on user difficulty level
+        const targetLimit = ATTEMPTS_SCALE[config.difficulty] || 15;
         // Single unified endpoint — handles Python service → DB → memory internally
         const res = await fetch(
-          `/api/arena/questions?mode=${mode}&difficulty=${config.difficulty}&limit=${randomLimit}${excludeParam}${topicParam}${docParam}${userParam}`,
+          `/api/arena/questions?mode=${mode}&difficulty=${config.difficulty}&limit=${targetLimit}${excludeParam}${topicParam}${docParam}${userParam}`,
           { signal: AbortSignal.timeout(8000) }
         )
 
@@ -125,8 +147,8 @@ export function BattleRoom({ config, user, onBattleEnd }: BattleRoomProps) {
           const uniqueQs = Array.from(new Map(data.questions.map((q: any) => [q.title, q])).values()) as any;
           let qs = uniqueQs;
           
-          if (qs.length > randomLimit) {
-            qs = qs.slice(0, randomLimit);
+          if (qs.length > targetLimit) {
+            qs = qs.slice(0, targetLimit);
           }
           
           setQuestions(qs)
@@ -190,10 +212,12 @@ export function BattleRoom({ config, user, onBattleEnd }: BattleRoomProps) {
     return () => clearInterval(timerRef.current)
   }, [phase, currentQ, showResult])
 
-  // Total battle timer
+  // Total battle timer - dynamically scaled to attempts and difficulty time limit
   useEffect(() => {
     if (phase !== 'playing') return
-    setTotalTimeLeft(300)
+    const perQTime = questions[0]?.timeLimit || TIME_MAP[config.difficulty] || 60
+    const estTime = Math.max(300, (questions.length || 15) * Math.round(perQTime * 0.75))
+    setTotalTimeLeft(estTime)
     totalTimerRef.current = setInterval(() => {
       setTotalTimeLeft(prev => {
         if (prev <= 1) { clearInterval(totalTimerRef.current); endBattle(); return 0 }
@@ -201,7 +225,7 @@ export function BattleRoom({ config, user, onBattleEnd }: BattleRoomProps) {
       })
     }, 1000)
     return () => clearInterval(totalTimerRef.current)
-  }, [phase])
+  }, [phase, questions, config.difficulty])
 
   // Opponent AI simulation
   useEffect(() => {
@@ -229,16 +253,15 @@ export function BattleRoom({ config, user, onBattleEnd }: BattleRoomProps) {
     setShowResult(true)
     setTotalAnswered(prev => prev + 1)
     
-    // Add to answered list and persist
-    if (q?._id) {
-      answeredIdsRef.current.add(q._id)
-      try {
-        localStorage.setItem(
-          `answered_qs_${user?.id || 'guest'}`, 
-          JSON.stringify([...answeredIdsRef.current])
-        )
-      } catch(e) {}
-    }
+    // Add to answered list and persist both ID and title to guarantee no repeating questions
+    if (q?._id) answeredIdsRef.current.add(q._id);
+    if (q?.title) answeredIdsRef.current.add(q.title);
+    try {
+      localStorage.setItem(
+        `answered_qs_${user?.id || 'guest'}`, 
+        JSON.stringify([...answeredIdsRef.current])
+      )
+    } catch(e) {}
 
     if (correct) {
       const xpGain = Math.floor((q?.xpReward || 50) * (questionTimeLeft / (q?.timeLimit || 60)))

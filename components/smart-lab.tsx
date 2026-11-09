@@ -94,7 +94,7 @@ export function SmartLab() {
       const res = await fetch("/api/seed", { method: "POST" })
       const data = await res.json()
       if (res.ok && data.success) {
-        alert("Database seeded successfully with sample questions! Loading challenges...")
+        alert("500+ questions loaded into the battle arena across all modes and levels!")
         window.location.reload()
       } else {
         throw new Error(data.message || "Failed seeding")

@@ -1,7 +1,7 @@
 import mongoose from 'mongoose';
 
 const ArenaQuestionSchema = new mongoose.Schema({
-  category: { type: String, enum: ['coding', 'puzzle', 'math', 'gk', 'prediction', 'mixed'], required: true },
+  category: { type: String, enum: ['coding', 'puzzle', 'math', 'gk', 'prediction', 'mixed', 'topicdoc'], required: true },
   difficulty: { type: String, enum: ['beginner', 'intermediate', 'advanced', 'expert', 'master', 'grandmaster'], required: true },
   title: { type: String, required: true },
   description: { type: String, required: true },

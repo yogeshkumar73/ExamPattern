@@ -132,41 +132,81 @@ export function ArenaChat({ user }: ArenaChatProps) {
     timestamp: string
   } | null>(null)
   const bottomRef = useRef<HTMLDivElement>(null)
+  const lastTimestampRef = useRef<string>('')
   const currentRoom =
-  ROOMS.find((room) => room.id === activeRoom) ?? ROOMS[0];
+    ROOMS.find((room) => room.id === activeRoom) ?? ROOMS[0];
 
-const getAvatar = (avatar?: string, name?: string) => {
-  if (avatar?.trim()) return avatar;
+  const getAvatar = (avatar?: string, name?: string) => {
+    if (avatar?.trim()) return avatar;
 
-  return `https://ui-avatars.com/api/?name=${encodeURIComponent(
-    name || "User"
-  )}&background=6366f1&color=ffffff`;
-};
+    return `https://ui-avatars.com/api/?name=${encodeURIComponent(
+      name || "User"
+    )}&background=6366f1&color=ffffff`;
+  };
 
+  const handleSelectRoom = (roomId: string) => {
+    if (roomId === activeRoom) return;
+    setActiveRoom(roomId);
+    setIsSidebarFolded(true);
+    setUnreadRooms(prev => ({ ...prev, [roomId]: false }));
+    lastTimestampRef.current = '';
+  };
+
+  // ── Load history & Real-Time Sync Loop ──────────────────────────────────────
   useEffect(() => {
-    // Load history
+    let isMounted = true;
+    lastTimestampRef.current = '';
+
     const loadHistory = async () => {
       try {
-       const res = await fetch(
-  `/api/chat?roomId=${activeRoom}`
-);
+        const res = await fetch(`/api/chat?roomId=${activeRoom}`);
+        const data = await res.json();
+        if (!isMounted) return;
 
-const data = await res.json();
-
-setMessages(data.messages);
-        if (data.messages?.length > 0) {
-          setMessages(data.messages)
+        if (Array.isArray(data.messages)) {
+          setMessages(data.messages);
+          if (data.messages.length > 0) {
+            lastTimestampRef.current = data.messages[data.messages.length - 1].timestamp;
+          }
         } else {
-          setMessages(generateMockMessages(activeRoom, 12))
+          setMessages([]);
         }
       } catch {
-        setMessages(generateMockMessages(activeRoom, 12))
+        if (isMounted) setMessages([]);
       }
-    }
-    loadHistory()
-    setOnline(['AlgoMaster', 'CodeNinja', 'MathGenius'])
-  }, [activeRoom])
+    };
 
+    loadHistory();
+    setOnline(['AlgoMaster', 'CodeNinja', 'MathGenius']);
+
+    // Real-time incremental polling for serverless (Netlify) & multi-tab sync
+    const pollInterval = setInterval(async () => {
+      if (!lastTimestampRef.current) return;
+      try {
+        const res = await fetch(
+          `/api/chat?roomId=${activeRoom}&since=${encodeURIComponent(lastTimestampRef.current)}`
+        );
+        if (!isMounted || !res.ok) return;
+        const data = await res.json();
+        if (Array.isArray(data.messages) && data.messages.length > 0) {
+          setMessages(prev => {
+            const existingIds = new Set(prev.map(m => m.id));
+            const newOnes = data.messages.filter((m: Message) => !existingIds.has(m.id));
+            if (newOnes.length === 0) return prev;
+            return [...prev, ...newOnes];
+          });
+          lastTimestampRef.current = data.messages[data.messages.length - 1].timestamp;
+        }
+      } catch {}
+    }, 1200);
+
+    return () => {
+      isMounted = false;
+      clearInterval(pollInterval);
+    };
+  }, [activeRoom]);
+
+  // ── Socket.io Listener (when available on custom servers/dev) ───────────────
   useEffect(() => {
     if (!user?.id || !socket) return;
     
@@ -175,7 +215,11 @@ setMessages(data.messages);
 
     const handleNewMessage = (msg: Message) => {
       if (msg.roomId === activeRoom && msg.senderId !== user.id) {
-        setMessages(prev => [...prev, msg]);
+        setMessages(prev => {
+          if (prev.some(m => m.id === msg.id)) return prev;
+          return [...prev, msg];
+        });
+        if (msg.timestamp) lastTimestampRef.current = msg.timestamp;
       }
     };
 
@@ -201,7 +245,12 @@ setMessages(data.messages);
       fetch(`/api/chat?roomId=${activeRoom}`)
         .then(r => r.json())
         .then(data => {
-          if (Array.isArray(data.messages)) setMessages(data.messages);
+          if (Array.isArray(data.messages)) {
+            setMessages(data.messages);
+            if (data.messages.length > 0) {
+              lastTimestampRef.current = data.messages[data.messages.length - 1].timestamp;
+            }
+          }
         })
         .catch(() => {});
     };
@@ -216,45 +265,73 @@ setMessages(data.messages);
       socket.off('chat-notification', handleChatNotification);
       socket.off('chat-nightly-restored', handleNightlyRestore);
     };
-  }, [activeRoom, user])
+  }, [activeRoom, user]);
 
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }, [messages])
+    bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [messages]);
 
+  // ── Send Message with Optimistic Update & Multi-Service Multicast ───────────
   const sendMessage = async () => {
-    if (!input.trim() || !user) return
-    setSending(true)
-    const msg: Message = {
-      id: `local-${Date.now()}`,
+    const trimmed = input.trim();
+    if (!trimmed || !user || sending) return;
+    setSending(true);
+
+    const tempId = `local-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`;
+    const optimisticMsg: Message = {
+      id: tempId,
+      roomId: activeRoom,
       senderId: user.id,
       senderName: user.name,
-     senderAvatar: getAvatar(user.avatar, user.name),
-      message: input.trim(),
+      senderAvatar: getAvatar(user.avatar, user.name),
+      message: trimmed,
       timestamp: new Date().toISOString(),
       type: 'arena',
-    }
-    setMessages(prev => [...prev, msg])
-    setInput('')
-    setSending(false)
+    };
 
-    // Live update others via WebSocket
+    // Instant local rendering (0ms lag)
+    setMessages(prev => [...prev, optimisticMsg]);
+    setInput('');
+
+    // Multicast to Socket.IO if connected
     socket?.emit('send-message', {
       roomId: activeRoom,
       userId: user.id,
       name: user.name,
       avatar: user.avatar,
-      message: msg.message,
-      type: 'arena'
+      message: trimmed,
+      type: 'arena',
     });
 
-    // Persist to API
-    fetch('/api/chat', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ roomId: activeRoom, senderId: user.id, senderName: user.name, senderAvatar: user.avatar, message: msg.message }),
-    }).catch(() => {})
-  }
+    // Multicast to Database API & Serverless Sync
+    try {
+      const res = await fetch('/api/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          roomId: activeRoom,
+          senderId: user.id,
+          senderName: user.name,
+          senderAvatar: user.avatar,
+          message: trimmed,
+          type: 'arena',
+        }),
+      });
+
+      const data = await res.json();
+      if (data.success && data.message) {
+        // Upgrade temporary message with confirmed database message
+        setMessages(prev =>
+          prev.map(m => (m.id === tempId ? data.message : m))
+        );
+        lastTimestampRef.current = data.message.timestamp;
+      }
+    } catch (err) {
+      console.warn('[Chat] Message persistence failed:', err);
+    } finally {
+      setSending(false);
+    }
+  };
 
   const formatTime = (ts: string) => {
     try { return new Date(ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) } catch { return '' }

@@ -5,6 +5,25 @@ import { mockUsers } from "@/lib/mockDb";
 
 const VALID_STREAMS = ["class10","class11","class12","ssc","upsc","gate","jee","neet","university","other",""];
 
+function computeRankTier(points: number): string {
+  if (points >= 5000) return "Diamond";
+  if (points >= 3000) return "Platinum";
+  if (points >= 1500) return "Gold";
+  if (points >= 500)  return "Silver";
+  return "Bronze";
+}
+
+function computeArenaRank(points: number): string {
+  if (points >= 5000) return "Grandmaster";
+  if (points >= 3000) return "Master";
+  if (points >= 2000) return "Diamond";
+  if (points >= 1500) return "Platinum";
+  if (points >= 1200) return "Gold";
+  if (points >= 1000) return "Silver";
+  if (points >= 800)  return "Bronze";
+  return "Unranked";
+}
+
 export async function PUT(req: Request) {
   try {
     const body = await req.json();
@@ -99,6 +118,30 @@ export async function PUT(req: Request) {
         return NextResponse.json({ message: "User not found." }, { status: 404 });
       }
 
+      const userPoints = Math.max(user.xp || 0, user.points || 0);
+      const dynamicRank = computeRankTier(userPoints);
+      const dynamicArenaRank = user.arenaRank && user.arenaRank !== "Unranked"
+        ? user.arenaRank
+        : computeArenaRank(user.arenaPoints ?? 0);
+
+      let leaderboardRank = 1;
+      let arenaLeaderboardRank = 1;
+      try {
+        leaderboardRank = (await User.countDocuments({
+          $or: [
+            { xp: { $gt: userPoints } },
+            { points: { $gt: userPoints } }
+          ]
+        })) + 1;
+        arenaLeaderboardRank = (await User.countDocuments({
+          arenaPoints: { $gt: user.arenaPoints || 0 }
+        })) + 1;
+      } catch (_) {}
+
+      if (user.rank !== dynamicRank || user.arenaRank !== dynamicArenaRank) {
+        User.updateOne({ _id: user._id }, { $set: { rank: dynamicRank, arenaRank: dynamicArenaRank } }).catch(() => {});
+      }
+
       return NextResponse.json({
         message: "Profile updated successfully.",
         user: {
@@ -116,8 +159,8 @@ export async function PUT(req: Request) {
           status: user.status || "Active",
           profileComplete: user.profileComplete || false,
           isLabApproved: user.isLabApproved || false,
-          points: user.points || 0,
-          xp: user.xp || 0,
+          points: userPoints,
+          xp: user.xp || userPoints,
           level: user.level || 1,
           coins: user.coins || 0,
           elo: user.elo || 1200,
@@ -128,7 +171,10 @@ export async function PUT(req: Request) {
           currentStreak: user.currentStreak || 0,
           bestStreak: user.bestStreak || 0,
           arenaPoints: user.arenaPoints || 0,
-          rank: user.rank || "Bronze",
+          rank: dynamicRank,
+          arenaRank: dynamicArenaRank,
+          leaderboardRank,
+          arenaLeaderboardRank,
         },
       });
     } catch (dbErr) {
@@ -192,6 +238,30 @@ export async function GET(req: Request) {
       await dbConnect();
       const user = await User.findOne({ email }).select("-password");
       if (user) {
+        const userPoints = Math.max(user.xp || 0, user.points || 0);
+        const dynamicRank = computeRankTier(userPoints);
+        const dynamicArenaRank = user.arenaRank && user.arenaRank !== "Unranked"
+          ? user.arenaRank
+          : computeArenaRank(user.arenaPoints ?? 0);
+
+        let leaderboardRank = 1;
+        let arenaLeaderboardRank = 1;
+        try {
+          leaderboardRank = (await User.countDocuments({
+            $or: [
+              { xp: { $gt: userPoints } },
+              { points: { $gt: userPoints } }
+            ]
+          })) + 1;
+          arenaLeaderboardRank = (await User.countDocuments({
+            arenaPoints: { $gt: user.arenaPoints || 0 }
+          })) + 1;
+        } catch (_) {}
+
+        if (user.rank !== dynamicRank || user.arenaRank !== dynamicArenaRank) {
+          User.updateOne({ _id: user._id }, { $set: { rank: dynamicRank, arenaRank: dynamicArenaRank } }).catch(() => {});
+        }
+
         return NextResponse.json({
          user: {
   // ==========================
@@ -236,7 +306,11 @@ export async function GET(req: Request) {
   currentStreak: user.currentStreak ?? 0,
   bestStreak: user.bestStreak ?? 0,
 
- rank: user.rank || "Bronze", 
+  rank: dynamicRank,
+  arenaRank: dynamicArenaRank,
+  leaderboardRank,
+  arenaLeaderboardRank,
+  points: userPoints,
 
   // ==========================
   // Arena Approval

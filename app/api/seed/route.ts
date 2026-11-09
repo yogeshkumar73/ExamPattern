@@ -2,6 +2,14 @@ import { NextResponse } from 'next/server';
 import dbConnect from '@/lib/mongodb';
 import Question from '@/models/Question';
 import InterviewQuestion from '@/models/InterviewQuestion';
+import ArenaQuestion from '@/models/ArenaQuestion';
+import {
+  ARENA_QUESTION_BANK,
+  XP_MAP,
+  POINTS_MAP,
+  TIME_MAP,
+  type ArenaDifficulty,
+} from '@/lib/data/arenaQuestionBank';
 
 const SAMPLE_QUESTIONS = [
   {
@@ -126,12 +134,42 @@ export async function POST(req: Request) {
       await InterviewQuestion.insertMany(SAMPLE_INTERVIEW_QUESTIONS);
     }
 
+    const existingArenaQuestions = await ArenaQuestion.countDocuments();
+    let arenaQuestionsCreated = 0;
+    if (existingArenaQuestions < 500) {
+      for (const [category, diffs] of Object.entries(ARENA_QUESTION_BANK)) {
+        for (const [difficulty, qs] of Object.entries(diffs)) {
+          for (const q of qs) {
+            try {
+              await ArenaQuestion.updateOne(
+                { title: q.title, category, difficulty },
+                {
+                  $set: {
+                    ...q,
+                    category,
+                    difficulty,
+                    xpReward: XP_MAP[difficulty as ArenaDifficulty] || 50,
+                    pointsReward: POINTS_MAP[difficulty as ArenaDifficulty] || 100,
+                    timeLimit: TIME_MAP[difficulty as ArenaDifficulty] || 60,
+                  }
+                },
+                { upsert: true }
+              );
+              arenaQuestionsCreated++;
+            } catch (_) {}
+          }
+        }
+      }
+    }
+
     return NextResponse.json(
       {
         success: true,
         message: "Seed data loaded successfully",
         questionsCreated: existingQuestions === 0 ? SAMPLE_QUESTIONS.length : 0,
         interviewQuestionsCreated: existingInterviewQuestions === 0 ? SAMPLE_INTERVIEW_QUESTIONS.length : 0,
+        arenaQuestionsCreated,
+        totalArenaInBank: 530,
       },
       { status: 200 }
     );
@@ -145,12 +183,15 @@ export async function GET(req: Request) {
     await dbConnect();
     const questionCount = await Question.countDocuments();
     const interviewCount = await InterviewQuestion.countDocuments();
+    const arenaCount = await ArenaQuestion.countDocuments();
     return NextResponse.json(
       {
         success: true,
         statistics: {
           totalQuestions: questionCount,
           totalInterviewQuestions: interviewCount,
+          totalArenaQuestions: arenaCount,
+          staticBankSize: 530,
         },
       },
       { status: 200 }

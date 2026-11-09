@@ -27,11 +27,15 @@ export async function createMockInterview(payload: { userId: string; categories:
     // Fallback 2: Dynamically seed the DB with base interview questions if completely empty
     if (questionDocs.length === 0) {
       const defaults = [
-        { prompt: "Explain the difference between var, let, and const in JavaScript.", category: "React", difficulty: "Easy" },
-        { prompt: "What is the Virtual DOM and how does React use it?", category: "React", difficulty: "Medium" },
-        { prompt: "How does the Node.js event loop work? Explain the different phases.", category: "Node", difficulty: "Medium" },
-        { prompt: "Explain the difference between SQL and NoSQL databases.", category: "DSA", difficulty: "Easy" },
-        { prompt: "Design a URL shortening service like bit.ly. How would you handle scale?", category: "SystemDesign", difficulty: "Hard" }
+        { prompt: "Explain the React reconciliation algorithm and how the Virtual DOM uses Fiber trees to prioritize updates.", category: "React", difficulty: "Medium", tags: ["React", "Fiber"] },
+        { prompt: "What is the difference between useEffect and useLayoutEffect? When can improper dependencies cause memory leaks?", category: "React", difficulty: "Medium", tags: ["React", "Hooks"] },
+        { prompt: "Compare Server-Side Rendering (SSR), SSG, and ISR in Next.js. How do you decide caching trade-offs?", category: "NextJs", difficulty: "Medium", tags: ["NextJs", "SSR"] },
+        { prompt: "Explain the phases of the Node.js event loop and how process.nextTick() prioritizes execution.", category: "Node", difficulty: "Medium", tags: ["Node", "Async"] },
+        { prompt: "How do you implement an LRU Cache with O(1) get and put operations using a Doubly Linked List and Hash Map?", category: "DSA", difficulty: "Hard", tags: ["DSA", "Cache"] },
+        { prompt: "Design a high-throughput URL shortening service like bit.ly. How do you generate unique Base62 keys and handle 100,000 QPS?", category: "SystemDesign", difficulty: "Medium", tags: ["SystemDesign", "Scalability"] },
+        { prompt: "What is the Global Interpreter Lock (GIL) in CPython, and how does it impact concurrency for CPU vs I/O tasks?", category: "Python", difficulty: "Medium", tags: ["Python", "GIL"] },
+        { prompt: "Explain the internal bucket architecture and collision resolution in Java 8+ HashMap.", category: "Java", difficulty: "Medium", tags: ["Java", "HashMap"] },
+        { prompt: "Explain Clustered vs Non-Clustered indexes in SQL and how a B-Tree index optimizes range scans.", category: "SQL", difficulty: "Medium", tags: ["SQL", "Indexing"] }
       ];
       questionDocs = await InterviewQuestion.insertMany(defaults);
     }

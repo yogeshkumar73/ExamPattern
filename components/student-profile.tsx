@@ -31,8 +31,10 @@ import {
   Target,
   Flame,
   ShieldCheck,
+  Bell,
 } from "lucide-react"
 import { useNav, type SessionUser } from "@/hooks/use-nav"
+import { NotificationsCenter } from "@/components/notifications-center"
 
 const STREAMS = [
   { value: "class10", label: "Class 10 – Board", color: "bg-blue-500" },
@@ -51,7 +53,27 @@ const RANK_CONFIG = {
   Bronze:   { min: 0,    max: 500,  color: "from-amber-700 to-yellow-600",  next: "Silver" },
   Silver:   { min: 500,  max: 1500, color: "from-gray-400 to-slate-300",    next: "Gold" },
   Gold:     { min: 1500, max: 3000, color: "from-yellow-400 to-amber-300",  next: "Platinum" },
-  Platinum: { min: 3000, max: 3000, color: "from-cyan-400 to-blue-300",     next: null },
+  Platinum: { min: 3000, max: 5000, color: "from-cyan-400 to-blue-300",     next: "Diamond" },
+  Diamond:  { min: 5000, max: 5000, color: "from-purple-500 to-pink-500",    next: null },
+}
+
+export function computeRankTier(points: number): keyof typeof RANK_CONFIG {
+  if (points >= 5000) return "Diamond"
+  if (points >= 3000) return "Platinum"
+  if (points >= 1500) return "Gold"
+  if (points >= 500)  return "Silver"
+  return "Bronze"
+}
+
+export function computeArenaRank(points: number): string {
+  if (points >= 5000) return "Grandmaster"
+  if (points >= 3000) return "Master"
+  if (points >= 2000) return "Diamond"
+  if (points >= 1500) return "Platinum"
+  if (points >= 1200) return "Gold"
+  if (points >= 1000) return "Silver"
+  if (points >= 800)  return "Bronze"
+  return "Unranked"
 }
 
 const PRESET_AVATARS = [
@@ -63,7 +85,7 @@ const PRESET_AVATARS = [
   { id: "matrix", label: "Matrix", url: "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><defs><linearGradient id='g6' x1='0%25' y1='0%25' x2='100%25' y2='100%25'><stop offset='0%25' stop-color='%230f172a'/><stop offset='100%25' stop-color='%23334155'/></linearGradient></defs><rect width='100' height='100' rx='24' fill='url(%23g6)'/><circle cx='50' cy='42' r='18' fill='%2322c55e'/><path d='M25 84c0-14 11-25 25-25s25 11 25 25' fill='%2322c55e'/></svg>" },
 ]
 
-type ProfileTab = "overview" | "academic" | "activity" | "achievements" | "settings"
+type ProfileTab = "overview" | "academic" | "activity" | "achievements" | "notifications" | "settings"
 
 interface Achievement {
   id: string
@@ -91,6 +113,9 @@ interface FullProfile extends SessionUser {
   currentStreak?: number
   bestStreak?: number
   arenaPoints?: number
+  arenaRank?: string
+  leaderboardRank?: number
+  arenaLeaderboardRank?: number
 }
 
 export function StudentProfile() {
@@ -102,6 +127,7 @@ export function StudentProfile() {
     role: "student", profileComplete: false, points: 0, rank: "Bronze",
     xp: 0, level: 1, coins: 0, elo: 1200, wins: 0, losses: 0,
     totalBattles: 0, accuracy: 0, currentStreak: 0, bestStreak: 0, arenaPoints: 0,
+    arenaRank: "Unranked", leaderboardRank: 1, arenaLeaderboardRank: 1,
   })
 
   const [isEditing, setIsEditing] = useState(false)
@@ -389,22 +415,29 @@ export function StudentProfile() {
 
   // ── Derived values ────────────────────────────────────────────────────────────
   const streamInfo = STREAMS.find((s) => s.value === profile.stream)
-  const rankKey = (profile.rank || "Bronze") as keyof typeof RANK_CONFIG
-  const rankCfg = RANK_CONFIG[rankKey] || RANK_CONFIG.Bronze
-  const pts = profile.points || profile.xp || 0
+  const pts = Math.max(profile.xp ?? 0, profile.points ?? 0)
+  const calculatedTier = computeRankTier(pts)
+  const rankKey = (profile.rank && profile.rank !== "Bronze" ? profile.rank : calculatedTier) as keyof typeof RANK_CONFIG
+  const rankCfg = RANK_CONFIG[rankKey] || RANK_CONFIG[calculatedTier] || RANK_CONFIG.Bronze
   const rankProgress = rankCfg.max > rankCfg.min
-    ? Math.min(100, ((pts - rankCfg.min) / (rankCfg.max - rankCfg.min)) * 100)
+    ? Math.min(100, Math.max(0, ((pts - rankCfg.min) / (rankCfg.max - rankCfg.min)) * 100))
     : 100
+
+  const arenaPts = (profile as any).arenaPoints ?? profile.elo ?? 0
+  const dynamicArenaRank = (profile as any).arenaRank && (profile as any).arenaRank !== "Unranked"
+    ? (profile as any).arenaRank
+    : computeArenaRank(arenaPts)
   const winRate = (profile.totalBattles || 0) > 0
     ? Math.round(((profile.wins || 0) / (profile.totalBattles || 1)) * 100)
     : 0
 
   const tabs: { id: ProfileTab; label: string; icon: any }[] = [
-    { id: "overview",     label: "Overview",     icon: User },
-    { id: "academic",     label: "Academic",      icon: GraduationCap },
-    { id: "activity",     label: "Activity",      icon: Activity },
-    { id: "achievements", label: "Achievements",  icon: Trophy },
-    { id: "settings",     label: "Settings",      icon: Settings },
+    { id: "overview",      label: "Overview",          icon: User },
+    { id: "academic",      label: "Academic",          icon: GraduationCap },
+    { id: "notifications", label: "Messages & Alerts", icon: Bell },
+    { id: "activity",      label: "Activity",          icon: Activity },
+    { id: "achievements",  label: "Achievements",      icon: Trophy },
+    { id: "settings",      label: "Settings",          icon: Settings },
   ]
 
   const unlockedCount = achievements.filter(a => a.unlocked).length
@@ -566,23 +599,29 @@ export function StudentProfile() {
               )}
             </div>
 
-            {/* Rank + XP */}
-            <div className="bg-white/10 rounded-2xl p-4 max-w-xs mx-auto md:mx-0">
+            {/* Dynamic Rank + XP */}
+            <div className="bg-white/10 rounded-2xl p-4 max-w-xs mx-auto md:mx-0 border border-white/10 shadow-lg">
               <div className="flex items-center justify-between mb-2">
                 <div className="flex items-center gap-2">
-                  <div className={`w-8 h-8 rounded-lg bg-gradient-to-br ${rankCfg.color} flex items-center justify-center`}>
+                  <div className={`w-8 h-8 rounded-lg bg-gradient-to-br ${rankCfg.color} flex items-center justify-center shadow`}>
                     <Award className="w-4 h-4 text-white" />
                   </div>
-                  <span className="font-black text-sm">{profile.rank || "Bronze"}</span>
+                  <div>
+                    <span className="font-black text-sm block leading-none">{calculatedTier}</span>
+                    <span className="text-[10px] text-muted-foreground font-bold">
+                      {profile.leaderboardRank ? `Rank #${profile.leaderboardRank}` : "Top Student"}
+                    </span>
+                  </div>
                 </div>
-                <span className="text-xs font-bold text-muted-foreground">{pts} XP</span>
+                <div className="text-right">
+                  <span className="text-xs font-black text-foreground">{pts} XP</span>
+                </div>
               </div>
               <Progress value={rankProgress} className="h-2 rounded-full" />
-              {rankCfg.next && (
-                <p className="text-[10px] text-muted-foreground mt-1 font-bold">
-                  {Math.max(0, rankCfg.max - pts)} XP to {rankCfg.next}
-                </p>
-              )}
+              <div className="flex justify-between items-center text-[10px] text-muted-foreground mt-2 font-bold">
+                <span>{rankCfg.next ? `${Math.max(0, rankCfg.max - pts)} XP to ${rankCfg.next}` : "Max Rank Achieved"}</span>
+                <span>{Math.round(rankProgress)}%</span>
+              </div>
             </div>
           </div>
 
@@ -676,10 +715,12 @@ export function StudentProfile() {
             </CardHeader>
             <CardContent className="pt-6 space-y-3">
               {[
-                { label: "Total XP Points", value: profile.xp ?? profile.points ?? 0, icon: "⚡" },
-                { label: "Rank", value: profile.rank || "Unranked", icon: "🏆" },
-                { label: "Arena Rank", value: (profile as any).arenaRank || "Unranked", icon: "⚔️" },
-                { label: "Arena Points", value: (profile as any).arenaPoints ?? 0, icon: "🎯" },
+                { label: "Total XP Points", value: pts, icon: "⚡" },
+                { label: "Rank", value: calculatedTier, icon: "🏆" },
+                { label: "Standing", value: profile.leaderboardRank ? `#${profile.leaderboardRank} on Leaderboard` : "#1 on Leaderboard", icon: "🥇" },
+                { label: "Arena Rank", value: dynamicArenaRank, icon: "⚔️" },
+                { label: "Arena Standing", value: (profile as any).arenaLeaderboardRank ? `#${(profile as any).arenaLeaderboardRank} in Arena` : "Active", icon: "🎖️" },
+                { label: "Arena Points", value: arenaPts, icon: "🎯" },
                 { label: "Arena Level", value: `Level ${profile.level ?? 1}`, icon: "🎮" },
                 { label: "Coins", value: profile.coins ?? 0, icon: "🪙" },
                 { label: "ELO Rating", value: profile.elo ?? 0, icon: "📊" },
@@ -824,6 +865,21 @@ export function StudentProfile() {
               ))}
             </CardContent>
           </Card>
+        </div>
+      )}
+
+      {/* ── NOTIFICATIONS & MESSAGES TAB ────────────────────────────────────── */}
+      {activeTab === "notifications" && (
+        <div className="animate-in fade-in duration-300">
+          <NotificationsCenter
+            variant="embedded"
+            currentUserId={profile.id}
+            currentUserEmail={profile.email}
+            currentUserName={profile.name}
+            currentUserPhotoUrl={profile.photoUrl}
+            isAdmin={profile.role === "admin" || isAdmin}
+            onNavigate={(st) => navigate(st as any)}
+          />
         </div>
       )}
 

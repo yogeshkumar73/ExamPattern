@@ -97,7 +97,6 @@ const UserSchema = new Schema<IUser>(
       unique: true,
       lowercase: true,
       trim: true,
-      index: true,
     },
 
     password: {
@@ -510,8 +509,6 @@ UserSchema.pre<IUser>("save", function (next) {
 });
 
 // Indexes
-UserSchema.index({ email: 1 }, { unique: true });
-
 UserSchema.index({
   arenaPoints: -1,
 });

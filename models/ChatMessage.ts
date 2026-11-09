@@ -13,7 +13,7 @@ const ChatMessageSchema = new mongoose.Schema({
 });
 
 ChatMessageSchema.index({ roomId: 1, timestamp: -1 });
-// Auto-expire chat messages after 12 hours (43200 seconds)
-ChatMessageSchema.index({ timestamp: 1 }, { expireAfterSeconds: 43200 });
+// Auto-expire chat messages after 1 day (24 hours = 86400 seconds)
+ChatMessageSchema.index({ timestamp: 1 }, { expireAfterSeconds: 86400 });
 
 export default mongoose.models.ChatMessage || mongoose.model('ChatMessage', ChatMessageSchema);

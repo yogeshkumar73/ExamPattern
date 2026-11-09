@@ -7,7 +7,7 @@ import { Badge } from "@/components/ui/badge"
 import { Textarea } from "@/components/ui/textarea"
 import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Users, Play, RotateCcw, CheckCircle, RefreshCw, Star, Sparkles, Mic, PhoneCall, Send, PhoneOff, MessageSquare, Bot, MicOff, AlertCircle } from "lucide-react"
+import { Users, Play, RotateCcw, CheckCircle, RefreshCw, Star, Sparkles, Mic, PhoneCall, Send, PhoneOff, MessageSquare, Bot, MicOff, AlertCircle, Volume2, Radio, Check, HelpCircle } from "lucide-react"
 
 interface InterviewQuestion {
   _id: string
@@ -36,8 +36,28 @@ interface VoiceConvMessage {
   content: string
 }
 
-const categories = ["React", "NextJs", "Node", "Python", "Java", "DSA", "SystemDesign"]
+const categories = ["React", "NextJs", "Node", "DSA", "SystemDesign", "Python", "Java", "SQL"]
 const difficulties = ["Easy", "Medium", "Hard"]
+
+const HIGH_PROB_TOPICS = [
+  { label: "React Fiber & Hooks", category: "React", difficulty: "Medium" },
+  { label: "Next.js RSC & App Router", category: "NextJs", difficulty: "Hard" },
+  { label: "Node.js Event Loop & Streams", category: "Node", difficulty: "Medium" },
+  { label: "DSA: LRU Cache & Pointers", category: "DSA", difficulty: "Hard" },
+  { label: "System Design: TinyURL & Scale", category: "SystemDesign", difficulty: "Medium" },
+  { label: "SQL: B-Tree Indexing & ACID", category: "SQL", difficulty: "Medium" },
+]
+
+const HIGH_PROBABILITY_STARTERS: Record<string, string> = {
+  React: "Welcome to your React technical interview! Let's start with component architecture: could you explain how React's reconciliation algorithm and Fiber architecture prioritize render updates?",
+  NextJs: "Welcome to your Next.js interview! Let's discuss performance: how do React Server Components differ from Client Components in the App Router, and how do you optimize data fetching with caching?",
+  Node: "Welcome to your Node.js technical screening! Could you explain the phases of the Node.js event loop and how process.nextTick differs from setImmediate?",
+  DSA: "Welcome to your Data Structures and Algorithms interview! Let's explore cache design: how would you implement an LRU cache with constant O(1) time complexity for both get and put operations?",
+  SystemDesign: "Welcome to your System Design interview! Today we are designing a high-throughput URL shortening service like bit.ly. How would you generate unique keys, handle 100,000 QPS, and structure the cache?",
+  Python: "Welcome to your Python technical interview! Could you explain the Global Interpreter Lock (GIL) and how it affects CPU-bound vs I/O-bound concurrency in production systems?",
+  Java: "Welcome to your Java interview! Could you walk me through the internal bucket architecture and collision resolution in a Java 8+ HashMap?",
+  SQL: "Welcome to your Database interview! What is the architectural difference between Clustered and Non-Clustered B-tree indexes, and how do they impact range queries?"
+}
 
 export function InterviewPrepWorkspace() {
   const [questions, setQuestions] = useState<InterviewQuestion[]>([])
@@ -58,6 +78,9 @@ export function InterviewPrepWorkspace() {
   // Voice Call State
   const [isCalling, setIsCalling] = useState(false)
   const [isListening, setIsListening] = useState(false)
+  const [isAiSpeaking, setIsAiSpeaking] = useState(false)
+  const [autoListen, setAutoListen] = useState(true)
+  const [voiceInputText, setVoiceInputText] = useState("")
   const [voiceTranscript, setVoiceTranscript] = useState("")
   const [aiVoiceResponse, setAiVoiceResponse] = useState("")
   const [voiceConvHistory, setVoiceConvHistory] = useState<VoiceConvMessage[]>([])
@@ -66,6 +89,16 @@ export function InterviewPrepWorkspace() {
   const [voiceError, setVoiceError] = useState("")
   const callTimerRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const recognitionRef = useRef<any>(null)
+  const isCallingRef = useRef(isCalling)
+  const autoListenRef = useRef(autoListen)
+
+  useEffect(() => {
+    isCallingRef.current = isCalling
+  }, [isCalling])
+
+  useEffect(() => {
+    autoListenRef.current = autoListen
+  }, [autoListen])
 
   // Chat Coach State
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([
@@ -281,25 +314,35 @@ export function InterviewPrepWorkspace() {
   // ─── Voice Call (Google Gemini + Browser SpeechRecognition + TTS) ─────────────
   const startVoiceCall = async () => {
     setIsCalling(true)
+    setIsListening(false)
+    setIsAiSpeaking(false)
     setVoiceConvHistory([])
     setVoiceTranscript("")
     setVoiceError("")
+    setVoiceInputText("")
 
-    const openingMessage = `Hello! I'm your AI Voice Interviewer. Let's do a live mock technical interview for ${selectedCategory} at ${selectedDifficulty} level. Are you ready to begin?`
-    setAiVoiceResponse(openingMessage)
-    setVoiceConvHistory([{ role: "assistant", content: openingMessage }])
-    speakText(openingMessage)
+    // Tailored high-probability starter question
+    const starter = HIGH_PROBABILITY_STARTERS[selectedCategory] || 
+      `Hello! I'm your AI Technical Interviewer. Let's do a live mock interview for ${selectedCategory} at ${selectedDifficulty} level. Are you ready to begin?`
+    
+    setAiVoiceResponse(starter)
+    setVoiceConvHistory([{ role: "assistant", content: starter }])
+    speakText(starter)
   }
 
   const endVoiceCall = () => {
     setIsCalling(false)
     setIsListening(false)
+    setIsAiSpeaking(false)
     setVoiceTranscript("")
     setAiVoiceResponse("")
     setVoiceConvHistory([])
     setVoiceError("")
+    setVoiceInputText("")
     // Stop any ongoing speech
-    window.speechSynthesis?.cancel()
+    if (typeof window !== "undefined" && window.speechSynthesis) {
+      window.speechSynthesis.cancel()
+    }
     if (recognitionRef.current) {
       try { recognitionRef.current.stop() } catch (_) {}
       recognitionRef.current = null
@@ -307,7 +350,7 @@ export function InterviewPrepWorkspace() {
   }
 
   const speakText = (text: string) => {
-    if (!window.speechSynthesis) return
+    if (typeof window === "undefined" || !window.speechSynthesis) return
     window.speechSynthesis.cancel()
     const utterance = new SpeechSynthesisUtterance(text)
     utterance.rate = 1.0
@@ -318,23 +361,37 @@ export function InterviewPrepWorkspace() {
     const preferred = voices.find(v => v.lang.startsWith('en') && v.name.toLowerCase().includes('google'))
       || voices.find(v => v.lang.startsWith('en'))
     if (preferred) utterance.voice = preferred
+
+    utterance.onstart = () => {
+      setIsAiSpeaking(true)
+    }
+
+    utterance.onend = () => {
+      setIsAiSpeaking(false)
+      // Auto-listen when AI finishes asking the question
+      if (autoListenRef.current && isCallingRef.current) {
+        startListening()
+      }
+    }
+
+    utterance.onerror = () => {
+      setIsAiSpeaking(false)
+    }
+
     window.speechSynthesis.speak(utterance)
   }
 
-  const toggleMic = () => {
-    if (isListening) {
-      // Stop listening
-      if (recognitionRef.current) {
-        try { recognitionRef.current.stop() } catch (_) {}
-      }
-      setIsListening(false)
+  const startListening = () => {
+    if (typeof window === "undefined") return
+    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition
+    if (!SpeechRecognition) {
+      setVoiceError("Speech recognition is not supported in this browser. Please use Chrome or type your answer below.")
       return
     }
 
-    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition
-    if (!SpeechRecognition) {
-      setVoiceError("Speech recognition is not supported in this browser. Please use Chrome.")
-      return
+    if (recognitionRef.current) {
+      try { recognitionRef.current.stop() } catch (_) {}
+      recognitionRef.current = null
     }
 
     setVoiceError("")
@@ -350,31 +407,30 @@ export function InterviewPrepWorkspace() {
     }
 
     recognition.onresult = async (event: any) => {
-      const transcript = event.results[0][0].transcript
-      setVoiceTranscript(transcript)
+      const transcript = event.results?.[0]?.[0]?.transcript || ""
       setIsListening(false)
       recognitionRef.current = null
 
-      // Send to OpenAI Voice API
-      await sendVoiceMessage(transcript)
+      if (transcript.trim()) {
+        setVoiceTranscript(transcript)
+        await sendVoiceMessage(transcript)
+      }
     }
 
     recognition.onerror = (event: any) => {
-      // Use warn (not error) so Next.js dev overlay is not triggered
       console.warn("Speech recognition event:", event.error)
       setIsListening(false)
       recognitionRef.current = null
       if (event.error === "no-speech") {
-        // "no-speech" is benign — mic was open but user didn't speak. Reset silently.
         setVoiceError("")
       } else if (event.error === "not-allowed") {
-        setVoiceError("Microphone access denied. Please allow microphone access in your browser settings.")
+        setVoiceError("Microphone access denied. You can type your answers below or allow microphone access in browser settings.")
       } else if (event.error === "audio-capture") {
-        setVoiceError("No microphone found. Please connect a microphone and try again.")
+        setVoiceError("No microphone found. You can type your answers below.")
       } else if (event.error === "network") {
-        setVoiceError("Network error during speech recognition. Please check your connection.")
+        setVoiceError("Network issue with speech service. You can type your answers below.")
       } else {
-        setVoiceError(`Speech recognition error: ${event.error}. Please try again.`)
+        setVoiceError(`Speech recognition error: ${event.error}. You can type below.`)
       }
     }
 
@@ -382,7 +438,36 @@ export function InterviewPrepWorkspace() {
       setIsListening(false)
     }
 
-    recognition.start()
+    try {
+      recognition.start()
+    } catch (e) {
+      console.warn("Could not start recognition:", e)
+    }
+  }
+
+  const stopListening = () => {
+    if (recognitionRef.current) {
+      try { recognitionRef.current.stop() } catch (_) {}
+      recognitionRef.current = null
+    }
+    setIsListening(false)
+  }
+
+  const toggleMic = () => {
+    if (isListening) {
+      stopListening()
+    } else {
+      startListening()
+    }
+  }
+
+  const handleSendVoiceTextInput = async () => {
+    if (!voiceInputText.trim() || isAiThinking) return
+    const text = voiceInputText.trim()
+    setVoiceInputText("")
+    stopListening()
+    setVoiceTranscript(text)
+    await sendVoiceMessage(text)
   }
 
   const sendVoiceMessage = async (transcript: string) => {
@@ -723,103 +808,277 @@ export function InterviewPrepWorkspace() {
         </Card>
       )}
 
-      {/* --- LIVE VOICE CALL (Real OpenAI + Web Speech API) --- */}
+      {/* --- LIVE VOICE CALL (Google Gemini + Web Speech API + Text Fallback) --- */}
       {activeTab === "voice" && !mockInterview && (
-        <Card className={`border-4 shadow-2xl max-w-3xl mx-auto transition-colors duration-500 ${isCalling ? "border-green-500" : "border-slate-300"}`}>
-          <CardHeader className="text-center py-10 space-y-4">
-            <div className="mx-auto w-32 h-32 rounded-full flex items-center justify-center relative shadow-xl bg-muted border-4 border-background">
+        <Card className={`border-4 shadow-2xl max-w-3xl mx-auto transition-colors duration-500 ${isCalling ? "border-green-500 bg-background" : "border-slate-300 dark:border-slate-800"}`}>
+          <CardHeader className="text-center py-8 space-y-4">
+            <div className="mx-auto w-28 h-28 rounded-full flex items-center justify-center relative shadow-xl bg-muted border-4 border-background">
               {isCalling && (
                 <>
-                  <div className="absolute inset-0 rounded-full border-4 border-green-500 animate-ping opacity-20" />
-                  <div className="absolute inset-0 rounded-full border-4 border-green-400 animate-ping opacity-10 delay-300" />
+                  <div className={`absolute inset-0 rounded-full border-4 border-green-500 animate-ping opacity-25`} />
+                  <div className={`absolute inset-0 rounded-full border-4 border-emerald-400 animate-ping opacity-15 delay-300`} />
                 </>
               )}
-              <PhoneCall className={`w-12 h-12 ${isCalling ? "text-green-500 animate-pulse" : "text-muted-foreground"}`} />
+              {isAiSpeaking ? (
+                <Volume2 className="w-12 h-12 text-emerald-500 animate-pulse" />
+              ) : isListening ? (
+                <Mic className="w-12 h-12 text-indigo-500 animate-bounce" />
+              ) : (
+                <PhoneCall className={`w-12 h-12 ${isCalling ? "text-green-500 animate-pulse" : "text-muted-foreground"}`} />
+              )}
             </div>
+
             <div>
               <CardTitle className="text-3xl font-black">AI Voice Interviewer</CardTitle>
-              <CardDescription className="text-md mt-2 font-bold uppercase tracking-widest text-muted-foreground">
-                {isCalling ? `CONNECTED • ${formatDuration(callDuration)}` : "Ready to connect"}
+              <CardDescription className="text-md mt-1 font-bold uppercase tracking-widest text-muted-foreground">
+                {isCalling ? `CONNECTED • ${formatDuration(callDuration)}` : "High-Probability Mock Interview"}
               </CardDescription>
-              {isCalling && (
-                <div className="flex justify-center gap-2 mt-2">
-                  <Badge className="bg-green-500 text-white text-[10px]">LIVE • Google Gemini</Badge>
-                  <Badge className="bg-blue-500 text-white text-[10px]">{selectedCategory} • {selectedDifficulty}</Badge>
-                </div>
-              )}
+
+              <div className="flex flex-wrap justify-center gap-2 mt-2">
+                <Badge className="bg-emerald-600 text-white text-[11px] font-semibold">
+                  {isCalling ? "LIVE SCREENING" : "Google Gemini Voice"}
+                </Badge>
+                <Badge variant="outline" className="text-[11px] font-bold">
+                  {selectedCategory} • {selectedDifficulty}
+                </Badge>
+                {isCalling && (
+                  <Badge className={`text-[11px] font-bold ${isAiSpeaking ? "bg-amber-500 text-black" : isListening ? "bg-indigo-500 text-white animate-pulse" : isAiThinking ? "bg-purple-600 text-white" : "bg-muted text-foreground"}`}>
+                    {isAiSpeaking ? "AI Interviewer Speaking" : isListening ? "Listening to You..." : isAiThinking ? "Evaluating Answer..." : "Ready for Response"}
+                  </Badge>
+                )}
+              </div>
             </div>
           </CardHeader>
-          <CardContent className="pb-10 space-y-6">
-            {/* AI Response Box */}
-            <div className="min-h-24 bg-muted/30 rounded-xl p-4 flex items-center justify-center border-2 border-dashed relative">
+
+          <CardContent className="pb-8 space-y-6">
+            {/* Setup Controls (When not in call) */}
+            {!isCalling && (
+              <div className="bg-muted/30 border rounded-2xl p-5 space-y-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="space-y-1.5 text-left">
+                    <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Interview Domain</label>
+                    <Select value={selectedCategory} onValueChange={setSelectedCategory}>
+                      <SelectTrigger className="h-11 font-medium bg-background">
+                        <SelectValue placeholder="Select topic" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {categories.map(c => (
+                          <SelectItem key={c} value={c}>{c}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  <div className="space-y-1.5 text-left">
+                    <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Target Seniority / Level</label>
+                    <Select value={selectedDifficulty} onValueChange={setSelectedDifficulty}>
+                      <SelectTrigger className="h-11 font-medium bg-background">
+                        <SelectValue placeholder="Select level" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {difficulties.map(d => (
+                          <SelectItem key={d} value={d}>{d}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+
+                {/* High Probability Topic Quick Picks */}
+                <div className="space-y-1.5 text-left pt-2 border-t">
+                  <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground">FAANG High-Probability Quick Topics</span>
+                  <div className="flex flex-wrap gap-2 pt-1">
+                    {HIGH_PROB_TOPICS.map((topic, i) => (
+                      <button
+                        key={i}
+                        type="button"
+                        onClick={() => {
+                          setSelectedCategory(topic.category)
+                          setSelectedDifficulty(topic.difficulty)
+                        }}
+                        className={`text-xs px-2.5 py-1.5 rounded-lg border font-medium transition-all ${
+                          selectedCategory === topic.category && selectedDifficulty === topic.difficulty
+                            ? "bg-primary text-primary-foreground border-primary shadow-sm"
+                            : "bg-background hover:bg-muted text-muted-foreground hover:text-foreground"
+                        }`}
+                      >
+                        {topic.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Auto-listen toggle */}
+                <div className="flex items-center justify-between pt-2 border-t text-xs">
+                  <span className="text-muted-foreground font-medium">Auto-listen when interviewer finishes question</span>
+                  <button
+                    type="button"
+                    onClick={() => setAutoListen(!autoListen)}
+                    className={`px-3 py-1 rounded-full font-bold transition-all ${autoListen ? "bg-emerald-600 text-white" : "bg-muted text-muted-foreground"}`}
+                  >
+                    {autoListen ? "Enabled" : "Manual Click"}
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* AI Question & Response Display */}
+            <div className="min-h-28 bg-muted/20 rounded-2xl p-5 flex flex-col items-center justify-center border-2 border-dashed relative">
               {isAiThinking && (
-                <div className="flex gap-1 items-center">
-                  <div className="w-2 h-2 rounded-full bg-green-500 animate-bounce" />
-                  <div className="w-2 h-2 rounded-full bg-green-500 animate-bounce delay-75" />
-                  <div className="w-2 h-2 rounded-full bg-green-500 animate-bounce delay-150" />
-                  <span className="ml-2 text-sm text-muted-foreground font-medium">AI is thinking...</span>
+                <div className="flex gap-2 items-center py-4">
+                  <div className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-bounce" />
+                  <div className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-bounce delay-100" />
+                  <div className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-bounce delay-200" />
+                  <span className="ml-2 text-sm text-muted-foreground font-semibold">AI Interviewer evaluating response...</span>
                 </div>
               )}
+
               {!isAiThinking && isCalling && aiVoiceResponse && (
-                <p className="text-center font-medium text-green-600 text-lg animate-in fade-in zoom-in">{aiVoiceResponse}</p>
+                <div className="text-center space-y-2 animate-in fade-in zoom-in w-full">
+                  <span className="text-[11px] font-bold uppercase tracking-wider text-emerald-600 dark:text-emerald-400 block">
+                    {isAiSpeaking ? "🔊 Interviewer is speaking..." : "Current Question / Feedback"}
+                  </span>
+                  <p className="font-semibold text-foreground text-lg leading-relaxed">{aiVoiceResponse}</p>
+                </div>
               )}
+
               {!isCalling && (
-                <p className="text-center text-muted-foreground text-sm font-medium">Press the green button to start your interview session</p>
+                <div className="text-center py-2 space-y-1">
+                  <p className="font-semibold text-base text-foreground">Select your topic above & press the green button to call</p>
+                  <p className="text-xs text-muted-foreground">Simulates a high-stakes FAANG technical interview with real-time audio evaluation.</p>
+                </div>
               )}
             </div>
 
             {/* Error Message */}
             {voiceError && (
-              <div className="flex items-center gap-2 text-red-500 bg-red-500/10 border border-red-500/20 rounded-lg p-3">
+              <div className="flex items-center gap-2 text-red-500 bg-red-500/10 border border-red-500/20 rounded-xl p-3">
                 <AlertCircle className="w-4 h-4 flex-shrink-0" />
-                <span className="text-sm font-medium">{voiceError}</span>
+                <span className="text-xs font-semibold">{voiceError}</span>
               </div>
             )}
 
-            {/* Controls */}
-            <div className="flex justify-center gap-6">
+            {/* Active Voice Controls */}
+            <div className="flex justify-center items-center gap-6">
               {isCalling && (
                 <Button
                   onClick={toggleMic}
                   variant={isListening ? "default" : "outline"}
                   size="lg"
-                  className={`w-20 h-20 rounded-full shadow-lg ${isListening ? "bg-indigo-500 hover:bg-indigo-600 text-white animate-pulse" : "border-2"}`}
+                  className={`w-20 h-20 rounded-full shadow-xl transition-all ${
+                    isListening
+                      ? "bg-indigo-600 hover:bg-indigo-700 text-white animate-pulse ring-4 ring-indigo-300"
+                      : "border-2 border-indigo-400/50 hover:bg-indigo-50 dark:hover:bg-indigo-950"
+                  }`}
                   disabled={isAiThinking}
+                  title={isListening ? "Mute Microphone" : "Unmute / Speak"}
                 >
-                  {isListening ? <Mic className="w-8 h-8" /> : <MicOff className="w-8 h-8" />}
+                  {isListening ? <Mic className="w-8 h-8" /> : <MicOff className="w-8 h-8 text-indigo-500" />}
                 </Button>
               )}
+
               <Button
                 onClick={isCalling ? endVoiceCall : startVoiceCall}
                 size="lg"
-                className={`w-20 h-20 rounded-full shadow-lg ${isCalling ? "bg-red-500 hover:bg-red-600 text-white" : "bg-green-500 hover:bg-green-600 text-white"}`}
+                className={`w-20 h-20 rounded-full shadow-xl transition-all ${
+                  isCalling
+                    ? "bg-red-600 hover:bg-red-700 text-white ring-4 ring-red-300"
+                    : "bg-emerald-600 hover:bg-emerald-700 text-white ring-4 ring-emerald-300 hover:scale-105"
+                }`}
+                title={isCalling ? "End Mock Interview Call" : "Start Mock Interview Call"}
               >
                 {isCalling ? <PhoneOff className="w-8 h-8" /> : <PhoneCall className="w-8 h-8" />}
               </Button>
             </div>
 
             {isListening && (
-              <p className="text-center text-sm font-bold text-indigo-500 animate-pulse mt-2">🎤 Listening... Speak now</p>
+              <p className="text-center text-sm font-bold text-indigo-500 animate-pulse">
+                🎤 Listening... Speak your technical explanation now
+              </p>
             )}
 
-            {/* User transcript */}
+            {/* In-Call Text Input Fallback (for noisy environments or mobile browsers) */}
+            {isCalling && (
+              <div className="space-y-2 pt-2">
+                <div className="flex gap-2">
+                  <Input
+                    value={voiceInputText}
+                    onChange={(e) => setVoiceInputText(e.target.value)}
+                    onKeyDown={(e) => e.key === "Enter" && !e.shiftKey && handleSendVoiceTextInput()}
+                    placeholder="Type your response here if in a noisy room..."
+                    disabled={isAiThinking}
+                    className="h-11 font-medium bg-background border-2"
+                  />
+                  <Button
+                    onClick={handleSendVoiceTextInput}
+                    disabled={isAiThinking || !voiceInputText.trim()}
+                    className="h-11 px-5 bg-emerald-600 hover:bg-emerald-700 text-white"
+                  >
+                    <Send className="w-4 h-4 mr-1" /> Send
+                  </Button>
+                </div>
+
+                {/* Quick Assistance Chips during interview */}
+                <div className="flex flex-wrap gap-2 justify-center pt-1">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setVoiceInputText("Could you please repeat or clarify the question?")
+                    }}
+                    className="text-[11px] px-2.5 py-1 rounded-full border bg-muted/40 hover:bg-muted text-muted-foreground"
+                  >
+                    Repeat Question
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setVoiceInputText("Could you provide a small hint or clarify the constraints?")
+                    }}
+                    className="text-[11px] px-2.5 py-1 rounded-full border bg-muted/40 hover:bg-muted text-muted-foreground"
+                  >
+                    Request Hint
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setVoiceInputText("Let's analyze the time and space complexity first.")
+                    }}
+                    className="text-[11px] px-2.5 py-1 rounded-full border bg-muted/40 hover:bg-muted text-muted-foreground"
+                  >
+                    Discuss Big-O
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* User transcript badge */}
             {voiceTranscript && !isListening && (
-              <div className="bg-indigo-500/10 p-4 rounded-xl border border-indigo-500/20 text-center text-indigo-600 font-medium">
-                <span className="text-xs text-muted-foreground block mb-1 uppercase tracking-wider">You said:</span>
+              <div className="bg-indigo-500/10 p-3.5 rounded-xl border border-indigo-500/20 text-center text-indigo-700 dark:text-indigo-300 font-medium text-sm">
+                <span className="text-[10px] text-muted-foreground block mb-0.5 uppercase tracking-wider font-bold">Your Last Answer:</span>
                 "{voiceTranscript}"
               </div>
             )}
 
-            {/* Conversation History */}
-            {isCalling && voiceConvHistory.length > 2 && (
-              <div className="border rounded-xl overflow-hidden">
-                <div className="bg-muted/30 px-4 py-2 border-b">
-                  <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Conversation Log</span>
+            {/* Conversation Log */}
+            {isCalling && voiceConvHistory.length > 1 && (
+              <div className="border rounded-xl overflow-hidden text-left">
+                <div className="bg-muted/40 px-4 py-2 border-b flex items-center justify-between">
+                  <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Interview Transcript Log</span>
+                  <span className="text-[11px] text-muted-foreground">{voiceConvHistory.length} turns</span>
                 </div>
-                <div className="max-h-40 overflow-y-auto p-3 space-y-2">
-                  {voiceConvHistory.slice(-6).map((msg, i) => (
-                    <div key={i} className={`text-xs font-medium p-2 rounded-lg ${msg.role === "user" ? "bg-indigo-50 text-indigo-700 text-right" : "bg-green-50 text-green-700"}`}>
-                      <span className="font-bold block mb-0.5">{msg.role === "user" ? "You" : "AI Interviewer"}</span>
+                <div className="max-h-48 overflow-y-auto p-3 space-y-2.5">
+                  {voiceConvHistory.map((msg, i) => (
+                    <div
+                      key={i}
+                      className={`text-xs p-2.5 rounded-xl ${
+                        msg.role === "user"
+                          ? "bg-indigo-50 dark:bg-indigo-950/40 text-indigo-900 dark:text-indigo-200 ml-6"
+                          : "bg-emerald-50 dark:bg-emerald-950/40 text-emerald-900 dark:text-emerald-200 mr-6"
+                      }`}
+                    >
+                      <span className="font-bold block mb-1">
+                        {msg.role === "user" ? "Candidate (You)" : "AI Interviewer"}
+                      </span>
                       {msg.content}
                     </div>
                   ))}
@@ -828,8 +1087,8 @@ export function InterviewPrepWorkspace() {
             )}
 
             {!isCalling && (
-              <p className="text-center text-xs text-muted-foreground font-medium mt-2">
-                Uses browser Speech Recognition (Chrome recommended) + Google Gemini + Text-to-Speech
+              <p className="text-center text-xs text-muted-foreground font-medium pt-2">
+                Supported on Chrome, Edge, Safari & Mobile • Speech Recognition + Google Gemini + Live Audio & Text
               </p>
             )}
           </CardContent>

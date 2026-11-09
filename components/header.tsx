@@ -42,6 +42,7 @@ import {
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { NotificationsCenter } from "@/components/notifications-center";
 
 import {
   Dialog,
@@ -523,6 +524,16 @@ const currentIndex = useMemo(
               </MenubarContent>
             </MenubarMenu>
           </Menubar>
+
+          {/* Real-time Notifications Bell */}
+          <NotificationsCenter
+            currentUserId={sessionUser?.id || (sessionUser as any)?._id}
+            currentUserEmail={sessionUser?.email || session?.user?.email}
+            currentUserName={sessionUser?.name || session?.user?.name}
+            currentUserPhotoUrl={sessionUser?.photoUrl}
+            isAdmin={isAdmin || session?.user?.role === "admin" || (sessionUser as any)?.role === "admin"}
+            onNavigate={(st) => setStep(st as any)}
+          />
 
           {/* Mobile & Tablet Drawer Trigger */}
           <div className="flex items-center gap-2 xl:hidden">

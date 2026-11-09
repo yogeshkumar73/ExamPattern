@@ -45,22 +45,14 @@ export async function GET(
         return NextResponse.json({ message: "Paper not found." }, { status: 404 });
       }
 
-      // Access control: user's stream must match paper's stream (admin bypasses)
-      const isAdmin = sessionUser.role === "admin";
-      if (!isAdmin && sessionUser.stream && paper.stream !== sessionUser.stream) {
-        return NextResponse.json(
-          { message: "Access denied. This paper is for a different stream." },
-          { status: 403 }
-        );
-      }
-
+      // Community Repository: allow all users to download approved papers freely
       // Increment download count
       await Paper.findByIdAndUpdate(id, { $inc: { downloads: 1 } });
 
       // Return file data for download
       return NextResponse.json({
         title: paper.title,
-        fileName: paper.fileName || "paper.pdf",
+        fileName: paper.fileName || `${paper.title.replace(/\s+/g, '_')}.pdf`,
         fileType: paper.fileType || "application/pdf",
         fileData: paper.fileData || "",
       });
@@ -72,19 +64,11 @@ export async function GET(
         return NextResponse.json({ message: "Paper not found." }, { status: 404 });
       }
 
-      const isAdmin = sessionUser.role === "admin";
-      if (!isAdmin && sessionUser.stream && paper.stream !== sessionUser.stream) {
-        return NextResponse.json(
-          { message: "Access denied. This paper is for a different stream." },
-          { status: 403 }
-        );
-      }
-
       paper.downloads += 1;
 
       return NextResponse.json({
         title: paper.title,
-        fileName: paper.fileName || "paper.pdf",
+        fileName: paper.fileName || `${paper.title.replace(/\s+/g, '_')}.pdf`,
         fileType: paper.fileType || "application/pdf",
         fileData: paper.fileData || "",
       });

@@ -94,7 +94,7 @@ export async function GET(req: NextRequest) {
   if (category === 'xp')         sortField = { xp: -1 };
 
   try {
-    const users = await User.find({ status: 'Active' }, {
+    const users = await User.find({ status: { $ne: 'Blocked' } }, {
       name: 1, photoUrl: 1, arenaPoints: 1, arenaRank: 1, xp: 1, level: 1,
       wins: 1, losses: 1, winRate: 1, badges: 1, gameStats: 1, totalBattles: 1,
       currentStreak: 1, accuracy: 1,
