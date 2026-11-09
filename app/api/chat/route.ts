@@ -6,10 +6,15 @@ export async function GET(req: NextRequest) {
   await dbConnect();
   const { searchParams } = new URL(req.url);
   const roomId = searchParams.get('roomId') || 'arena-lobby';
-  const limit = parseInt(searchParams.get('limit') || '50');
+  const limit = Math.min(parseInt(searchParams.get('limit') || '50'), 100);
 
   try {
-    const messages = await ChatMessage.find({ roomId })
+    // Only fetch messages stored within the last 12 hours
+    const twelveHoursAgo = new Date(Date.now() - 12 * 60 * 60 * 1000);
+    const messages = await ChatMessage.find({
+      roomId,
+      timestamp: { $gte: twelveHoursAgo },
+    })
       .sort({ timestamp: -1 })
       .limit(limit)
       .lean();
@@ -24,13 +29,28 @@ export async function POST(req: NextRequest) {
   const body = await req.json();
   const { roomId, senderId, senderName, senderAvatar, message, type } = body;
 
-  if (!roomId || !senderId || !message) {
-    return NextResponse.json({ error: 'roomId, senderId, message required' }, { status: 400 });
+  const trimmedMessage = typeof message === 'string' ? message.trim() : '';
+
+  if (!roomId || !senderId || !trimmedMessage) {
+    return NextResponse.json({ error: 'roomId, senderId, and message are required' }, { status: 400 });
   }
 
+  // Security: limit message length to 1000 characters
+  const cleanMessage = trimmedMessage.slice(0, 1000);
+
   try {
+    // Auto-prune messages older than 12 hours
+    const twelveHoursAgo = new Date(Date.now() - 12 * 60 * 60 * 1000);
+    ChatMessage.deleteMany({ timestamp: { $lt: twelveHoursAgo } }).catch(() => {});
+
     const msg = await ChatMessage.create({
-      roomId, senderId, senderName, senderAvatar, message, type: type || 'arena',
+      roomId: String(roomId).slice(0, 50),
+      senderId: String(senderId).slice(0, 100),
+      senderName: String(senderName || 'Student').slice(0, 60),
+      senderAvatar: String(senderAvatar || ''),
+      message: cleanMessage,
+      type: type || 'arena',
+      timestamp: new Date(),
     });
     return NextResponse.json({ message: msg });
   } catch (err: any) {

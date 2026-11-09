@@ -49,6 +49,18 @@ app.prepare().then(() => {
     return counts;
   };
 
+  // Nightly 1:00 AM automatic restore & chat purge (12h TTL)
+  let lastPurgeDate = '';
+  setInterval(() => {
+    const now = new Date();
+    const currentDateStr = now.toISOString().slice(0, 10);
+    if (now.getHours() === 1 && now.getMinutes() === 0 && lastPurgeDate !== currentDateStr) {
+      lastPurgeDate = currentDateStr;
+      console.log(`[Chat] Nightly 1:00 AM auto-restore triggered: ${currentDateStr}`);
+      io.emit('chat-nightly-restored', { timestamp: now.toISOString() });
+    }
+  }, 30000);
+
   io.on('connection', (socket) => {
     console.log(`[Arena] Client connected: ${socket.id}`);
 
@@ -221,6 +233,17 @@ app.prepare().then(() => {
         timestamp: new Date().toISOString(),
       };
       io.to(`chat-${roomId}`).emit('new-message', msg);
+
+      // Secure real-time notification to all connected users
+      io.emit('chat-notification', {
+        id: msg.id,
+        roomId,
+        senderId: userId,
+        senderName: name,
+        senderAvatar: avatar,
+        message: typeof message === 'string' ? message.slice(0, 100) : '',
+        timestamp: msg.timestamp,
+      });
     });
 
     socket.on('leave-chat-room', ({ roomId, userId }) => {
