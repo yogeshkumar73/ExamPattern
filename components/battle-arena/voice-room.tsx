@@ -188,7 +188,18 @@ export function VoiceRoom({ user }: VoiceRoomProps) {
 
   // ── Socket Connection ───────────────────────────────────────────────────────
   useEffect(() => {
-    const s = io(process.env.NEXT_PUBLIC_SOCKET_URL || "http://localhost:3000", {
+    const socketUrl =
+      process.env.NEXT_PUBLIC_SOCKET_URL ||
+      (typeof window !== "undefined" &&
+      (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1")
+        ? "http://localhost:3000"
+        : "")
+
+    if (!socketUrl) {
+      return
+    }
+
+    const s = io(socketUrl, {
       path: "/socket.io",
       transports: ["websocket", "polling"],
       reconnectionAttempts: 8,

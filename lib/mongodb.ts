@@ -26,6 +26,22 @@ global.mongooseCache = cached;
  */
 let clientPromise: Promise<MongoClient> | null = null;
 
+const mongoUri = process.env.MONGODB_URI;
+if (mongoUri) {
+  if (process.env.NODE_ENV === "development") {
+    if (!global.mongoClient) {
+      const client = new MongoClient(mongoUri);
+      global.mongoClient = client;
+      clientPromise = client.connect();
+    } else {
+      clientPromise = Promise.resolve(global.mongoClient);
+    }
+  } else {
+    const client = new MongoClient(mongoUri);
+    clientPromise = client.connect();
+  }
+}
+
 export async function getMongoClient(): Promise<MongoClient> {
   if (global.mongoClient) {
     return global.mongoClient;

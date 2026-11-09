@@ -8,7 +8,8 @@ const ADMIN_EMAIL = process.env.ADMIN_EMAIL;
 const ADMIN_PASSWORD_HASH = process.env.ADMIN_PASSWORD_HASH;
 
 export const authOptions: any = {
-  adapter: MongoDBAdapter(clientPromise),
+  adapter: clientPromise ? MongoDBAdapter(clientPromise) : undefined,
+  session: { strategy: "jwt" },
   providers: [
     GoogleProvider({
       clientId: process.env.GOOGLE_CLIENT_ID || "",

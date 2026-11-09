@@ -5,9 +5,16 @@ import { Send, Hash, MessageSquare, Users, Swords, Bot } from "lucide-react"
 import type { LucideIcon } from "lucide-react"
 import { io, Socket } from "socket.io-client"
 
-let socket: Socket;
+let socket: Socket | null = null;
 if (typeof window !== "undefined") {
-  socket = io(process.env.NEXT_PUBLIC_SOCKET_URL || "http://localhost:3000", { path: "/socket.io" });
+  const socketUrl =
+    process.env.NEXT_PUBLIC_SOCKET_URL ||
+    (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1"
+      ? "http://localhost:3000"
+      : "");
+  if (socketUrl) {
+    socket = io(socketUrl, { path: "/socket.io" });
+  }
 }
 
 interface Message {
@@ -191,7 +198,7 @@ setMessages(data.messages);
     setSending(false)
 
     // Live update others via WebSocket
-    socket.emit('send-message', {
+    socket?.emit('send-message', {
       roomId: activeRoom,
       userId: user.id,
       name: user.name,

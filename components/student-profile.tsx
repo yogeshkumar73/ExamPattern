@@ -30,6 +30,7 @@ import {
   Trophy,
   Target,
   Flame,
+  ShieldCheck,
 } from "lucide-react"
 import { useNav, type SessionUser } from "@/hooks/use-nav"
 

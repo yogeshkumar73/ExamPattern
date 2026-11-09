@@ -118,7 +118,7 @@ export default function RootLayout({
           </div>
         </Providers>
 
-        <Analytics />
+        {Boolean(process.env.VERCEL) && <Analytics />}
       </body>
     </html>
   );
