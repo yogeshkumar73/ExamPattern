@@ -141,7 +141,7 @@ function applySecurityHeaders(res: NextResponse): NextResponse {
   );
   res.headers.set(
     "Permissions-Policy",
-    "camera=(), microphone=(), geolocation=()"
+    "camera=(self), microphone=(self), geolocation=()"
   );
   return res;
 }

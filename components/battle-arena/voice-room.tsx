@@ -582,14 +582,23 @@ export function VoiceRoom({ user }: VoiceRoomProps) {
       if (testStreamRef.current) {
         testStreamRef.current.getTracks().forEach(t => t.stop())
       }
-      const stream = await navigator.mediaDevices.getUserMedia({
-        audio: {
-          deviceId: selectedMic ? { exact: selectedMic } : undefined,
-          echoCancellation,
-          noiseSuppression,
-          autoGainControl,
+      let stream: MediaStream
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({
+          audio: {
+            deviceId: selectedMic && selectedMic !== "default" ? { ideal: selectedMic } : undefined,
+            echoCancellation,
+            noiseSuppression,
+            autoGainControl,
+          }
+        })
+      } catch (err: any) {
+        if (err?.name === "OverconstrainedError") {
+          stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+        } else {
+          throw err
         }
-      })
+      }
       testStreamRef.current = stream
       const ctx = audioCtxRef.current || new (window.AudioContext || (window as any).webkitAudioContext)()
       audioCtxRef.current = ctx
@@ -656,15 +665,23 @@ export function VoiceRoom({ user }: VoiceRoomProps) {
       }
 
       // Propagate user metadata directly to socket
-      socketRef.current?.emit("join-lobby", { userId: user.id, name: user.name, avatar: user.avatar })
-      socketRef.current?.emit("join-voice-room", {
-        roomId: channel.id,
-        userId: user.id,
-        name: user.name,
-        avatar: user.avatar,
-        rank: user.arenaRank || "Unranked",
-      })
-      socketRef.current?.emit("mute-status", { isMuted: false })
+      if (socketRef.current?.connected) {
+        socketRef.current.emit("join-lobby", { userId: user.id, name: user.name, avatar: user.avatar })
+        socketRef.current.emit("join-voice-room", {
+          roomId: channel.id,
+          userId: user.id,
+          name: user.name,
+          avatar: user.avatar,
+          rank: user.arenaRank || "Unranked",
+        })
+        socketRef.current.emit("mute-status", { isMuted: false })
+      } else {
+        // Standalone voice mode when signaling socket is not connected
+        setStatus("connected")
+        setJoined(true)
+        setErrorMsg(null)
+        playSoundEffect("join", audioCtxRef.current)
+      }
     } catch (err: any) {
       const msg =
         err?.name === "NotAllowedError" ? "Microphone permission denied. Allow mic access in your browser." :
