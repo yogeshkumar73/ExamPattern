@@ -433,10 +433,10 @@ export function BattleArena({ userId, userEmail, isAdmin = false }: BattleArenaP
       {/* ---- MAIN CONTENT ---- */}
       <div className="p-3 sm:p-4 md:p-6">
         <Tabs value={activeTab} onValueChange={setActiveTab}>
-          <TabsList className="grid grid-cols-3 sm:grid-cols-5 md:grid-cols-9 h-auto gap-1 p-1 bg-black/40 border border-white/10 rounded-2xl mb-6">
+          <TabsList className={`grid grid-cols-4 sm:grid-cols-4 ${isEffectiveAdmin ? 'md:grid-cols-9' : 'md:grid-cols-8'} h-auto gap-1 p-1 bg-black/40 border border-white/10 rounded-2xl mb-6`}>
             {[
               { value: 'lobby',       icon: Swords,       label: 'Battle' },
-              { value: 'telemetry',   icon: Activity,     label: 'Engine' },
+              ...(isEffectiveAdmin ? [{ value: 'telemetry',   icon: Activity,     label: 'Engine' }] : []),
               { value: 'leaderboard', icon: Trophy,       label: 'Ranks' },
               { value: 'profile',     icon: Crown,        label: 'Profile' },
               { value: 'friends',     icon: Users,        label: 'Friends' },

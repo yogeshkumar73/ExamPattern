@@ -74,7 +74,7 @@ type Session = {
 } | null
 
 export function Header() {
-  const { currentStep, setStep, isRegistered, isAdmin, setAdmin, setRegistered } = useNav()
+  const { currentStep, setStep, isRegistered, isAdmin, setAdmin, setRegistered, sessionUser } = useNav()
 
   const [session, setSession] = useState<Session>(null)
   const [isAdminDialogOpen, setAdminDialogOpen] = useState(false)
@@ -496,13 +496,21 @@ const currentIndex = useMemo(
                 className="cursor-pointer font-bold hover:text-primary transition-colors flex items-center gap-1.5 px-3 py-1.5 rounded-lg border bg-muted/20"
                 aria-label="User Profile"
               >
-                <User className="h-4 w-4 text-primary" />
-                <span className="max-w-[120px] truncate">{session?.user?.name ?? "Student Profile"}</span>
-                <ChevronDown className="h-3 w-3 opacity-60" />
+                {sessionUser?.photoUrl ? (
+                  <img
+                    src={sessionUser.photoUrl}
+                    alt="Avatar"
+                    className="w-5 h-5 rounded-full object-cover border border-primary/40 flex-shrink-0"
+                  />
+                ) : (
+                  <User className="h-4 w-4 text-primary flex-shrink-0" />
+                )}
+                <span className="max-w-[120px] truncate">{sessionUser?.name || session?.user?.name || "Student Profile"}</span>
+                <ChevronDown className="h-3 w-3 opacity-60 flex-shrink-0" />
               </MenubarTrigger>
               <MenubarContent className="w-56">
                 <MenubarItem onClick={() => setStep("profile")} className="cursor-pointer font-bold text-xs">
-                  {session?.user?.email || "Student Account"}
+                  {sessionUser?.email || session?.user?.email || "Student Account"}
                 </MenubarItem>
                 <MenubarSeparator />
                 <MenubarItem onClick={() => setStep("profile")} className="cursor-pointer gap-2 font-medium">
@@ -541,12 +549,16 @@ const currentIndex = useMemo(
                     onClick={() => { setStep("profile"); setIsMobileMenuOpen(false); }}
                     className="flex items-center gap-3 p-3 rounded-2xl bg-muted/30 border cursor-pointer hover:bg-muted/50 transition-colors"
                   >
-                    <div className="w-10 h-10 rounded-xl bg-primary/20 flex items-center justify-center font-bold text-primary">
-                      <User className="w-5 h-5" />
+                    <div className="w-10 h-10 rounded-xl bg-primary/20 flex items-center justify-center font-bold text-primary overflow-hidden flex-shrink-0">
+                      {sessionUser?.photoUrl ? (
+                        <img src={sessionUser.photoUrl} alt="Avatar" className="w-full h-full object-cover" />
+                      ) : (
+                        <User className="w-5 h-5" />
+                      )}
                     </div>
                     <div className="flex-1 min-w-0">
-                      <div className="text-sm font-bold truncate">{session?.user?.name || "Student Profile"}</div>
-                      <div className="text-xs text-muted-foreground truncate">{session?.user?.email || "Click to view profile"}</div>
+                      <div className="text-sm font-bold truncate">{sessionUser?.name || session?.user?.name || "Student Profile"}</div>
+                      <div className="text-xs text-muted-foreground truncate">{sessionUser?.email || session?.user?.email || "Click to view profile"}</div>
                     </div>
                     <ChevronRight className="w-4 h-4 text-muted-foreground" />
                   </div>

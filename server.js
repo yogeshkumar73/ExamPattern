@@ -35,8 +35,15 @@ app.prepare().then(() => {
   // Expose io globally for API routes
   global.io = io;
 
+  // Dynamic custom voice rooms registry
+  const customVoiceRooms = {};
+
   io.on('connection', (socket) => {
     console.log(`[Arena] Client connected: ${socket.id}`);
+
+    // Immediately push channel counts and custom channels to newly connected client
+    socket.emit("voice-room-counts", getVoiceRoomCounts());
+    socket.emit("custom-voice-rooms-updated", Object.values(customVoiceRooms));
 
     // ---- JOIN ARENA LOBBY ----
     socket.on('join-lobby', ({ userId, name, avatar }) => {
@@ -228,7 +235,7 @@ const getVoiceRoomCounts = () => {
   return counts;
 };
 
-socket.on("join-voice-room", ({ roomId, userId }) => {
+socket.on("join-voice-room", ({ roomId, userId, name, avatar, rank }) => {
   if (!roomId || !userId) {
     return socket.emit("voice-error", {
       message: "roomId and userId are required.",
@@ -251,12 +258,19 @@ socket.on("join-voice-room", ({ roomId, userId }) => {
     }
   });
 
+  const userName = name || socket.data?.name || "Student";
+  const userAvatar = avatar || socket.data?.avatar || "";
+  const userRank = rank || socket.data?.rank || "Unranked";
+
   // Save user info
   voiceRooms[roomId][socket.id] = {
     socketId: socket.id,
     userId,
-    name: socket.data.name || "Unknown",
-    avatar: socket.data.avatar || "",
+    name: userName,
+    avatar: userAvatar,
+    rank: userRank,
+    isMuted: false,
+    joinedAt: Date.now(),
   };
 
   // Send acknowledgement to joined client
@@ -273,6 +287,8 @@ socket.on("join-voice-room", ({ roomId, userId }) => {
       userId: u.userId,
       name: u.name,
       avatar: u.avatar,
+      rank: u.rank,
+      isMuted: Boolean(u.isMuted),
     }));
 
   socket.emit("existing-users", existingUsers);
@@ -281,11 +297,13 @@ socket.on("join-voice-room", ({ roomId, userId }) => {
   socket.to(`voice-${roomId}`).emit("user-joined", {
     socketId: socket.id,
     userId,
-    name: socket.data.name,
-    avatar: socket.data.avatar,
+    name: userName,
+    avatar: userAvatar,
+    rank: userRank,
+    isMuted: false,
   });
 
-  // Ask existing users to create offers
+  // Ask existing users to create offers to the newly joined peer
   existingUsers.forEach((user) => {
     io.to(user.socketId).emit("create-offer", socket.id);
   });
@@ -294,10 +312,49 @@ socket.on("join-voice-room", ({ roomId, userId }) => {
   io.emit("voice-room-counts", getVoiceRoomCounts());
 
   console.log(
-    `[Voice] ${userId} (${socket.id}) joined ${roomId} | Users: ${Object.keys(
+    `[Voice] ${userName} (${userId} - ${socket.id}) joined ${roomId} | Active in room: ${Object.keys(
       voiceRooms[roomId]
     ).length}`
   );
+});
+
+// -----------------------
+// Custom voice rooms
+// -----------------------
+socket.on("create-custom-voice-room", (roomData) => {
+  if (!roomData?.id || !roomData?.name) return;
+  customVoiceRooms[roomData.id] = {
+    id: roomData.id,
+    name: roomData.name,
+    desc: roomData.desc || "Custom study voice room",
+    emoji: roomData.emoji || "🎙️",
+    createdBy: socket.data?.name || "Student",
+    createdAt: Date.now(),
+  };
+  io.emit("custom-voice-rooms-updated", Object.values(customVoiceRooms));
+  console.log(`[Voice] Custom room created: ${roomData.name} (${roomData.id})`);
+});
+
+socket.on("get-custom-voice-rooms", () => {
+  socket.emit("custom-voice-rooms-updated", Object.values(customVoiceRooms));
+});
+
+socket.on("get-voice-room-counts", () => {
+  socket.emit("voice-room-counts", getVoiceRoomCounts());
+});
+
+// -----------------------
+// Speaking status relay
+// -----------------------
+socket.on("speaking-status", ({ roomId, isSpeaking, level }) => {
+  const targetRoom = roomId || Object.keys(voiceRooms).find((r) => voiceRooms[r]?.[socket.id]);
+  if (targetRoom) {
+    socket.to(`voice-${targetRoom}`).emit("peer-speaking", {
+      socketId: socket.id,
+      isSpeaking,
+      level,
+    });
+  }
 });
 
 // -----------------------

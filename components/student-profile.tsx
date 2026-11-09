@@ -53,6 +53,15 @@ const RANK_CONFIG = {
   Platinum: { min: 3000, max: 3000, color: "from-cyan-400 to-blue-300",     next: null },
 }
 
+const PRESET_AVATARS = [
+  { id: "scholar", label: "Scholar", url: "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><defs><linearGradient id='g1' x1='0%25' y1='0%25' x2='100%25' y2='100%25'><stop offset='0%25' stop-color='%236366f1'/><stop offset='100%25' stop-color='%23a855f7'/></linearGradient></defs><rect width='100' height='100' rx='24' fill='url(%23g1)'/><circle cx='50' cy='40' r='18' fill='%23ffffff'/><path d='M25 82c0-14 11-25 25-25s25 11 25 25' fill='%23ffffff'/><polygon points='50,15 68,24 50,33 32,24' fill='%23fef08a'/></svg>" },
+  { id: "cyber", label: "Cyber", url: "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><defs><linearGradient id='g2' x1='0%25' y1='0%25' x2='100%25' y2='100%25'><stop offset='0%25' stop-color='%2306b6d4'/><stop offset='100%25' stop-color='%233b82f6'/></linearGradient></defs><rect width='100' height='100' rx='24' fill='url(%23g2)'/><circle cx='50' cy='42' r='18' fill='%23ffffff'/><path d='M25 84c0-14 11-25 25-25s25 11 25 25' fill='%23ffffff'/><rect x='40' y='36' width='20' height='8' rx='4' fill='%2306b6d4'/></svg>" },
+  { id: "astro", label: "Astro", url: "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><defs><linearGradient id='g3' x1='0%25' y1='0%25' x2='100%25' y2='100%25'><stop offset='0%25' stop-color='%23ec4899'/><stop offset='100%25' stop-color='%238b5cf6'/></linearGradient></defs><rect width='100' height='100' rx='24' fill='url(%23g3)'/><circle cx='50' cy='42' r='20' fill='%23ffffff'/><circle cx='50' cy='42' r='15' fill='%231e1b4b'/><circle cx='46' cy='38' r='3' fill='%2338bdf8'/><path d='M22 86c0-16 12-28 28-28s28 12 28 28' fill='%23ffffff'/></svg>" },
+  { id: "champion", label: "Champion", url: "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><defs><linearGradient id='g4' x1='0%25' y1='0%25' x2='100%25' y2='100%25'><stop offset='0%25' stop-color='%23f59e0b'/><stop offset='100%25' stop-color='%23ef4444'/></linearGradient></defs><rect width='100' height='100' rx='24' fill='url(%23g4)'/><circle cx='50' cy='42' r='18' fill='%23ffffff'/><path d='M25 84c0-14 11-25 25-25s25 11 25 25' fill='%23ffffff'/><polygon points='42,22 50,15 58,22 55,27 45,27' fill='%23fbbf24'/></svg>" },
+  { id: "emerald", label: "Emerald", url: "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><defs><linearGradient id='g5' x1='0%25' y1='0%25' x2='100%25' y2='100%25'><stop offset='0%25' stop-color='%2310b981'/><stop offset='100%25' stop-color='%23059669'/></linearGradient></defs><rect width='100' height='100' rx='24' fill='url(%23g5)'/><circle cx='50' cy='42' r='18' fill='%23ffffff'/><path d='M25 84c0-14 11-25 25-25s25 11 25 25' fill='%23ffffff'/><circle cx='50' cy='42' r='8' fill='%2310b981'/></svg>" },
+  { id: "matrix", label: "Matrix", url: "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><defs><linearGradient id='g6' x1='0%25' y1='0%25' x2='100%25' y2='100%25'><stop offset='0%25' stop-color='%230f172a'/><stop offset='100%25' stop-color='%23334155'/></linearGradient></defs><rect width='100' height='100' rx='24' fill='url(%23g6)'/><circle cx='50' cy='42' r='18' fill='%2322c55e'/><path d='M25 84c0-14 11-25 25-25s25 11 25 25' fill='%2322c55e'/></svg>" },
+]
+
 type ProfileTab = "overview" | "academic" | "activity" | "achievements" | "settings"
 
 interface Achievement {
@@ -84,7 +93,7 @@ interface FullProfile extends SessionUser {
 }
 
 export function StudentProfile() {
-  const { setStep, setRegistered, setAdmin, setSessionUser, setProfileComplete, navigate } = useNav()
+  const { setStep, setRegistered, isAdmin, setAdmin, setSessionUser, setProfileComplete, navigate } = useNav()
 
   const [profile, setProfile] = useState<FullProfile>({
     id: "", name: "", email: "", phone: "", branch: "", bio: "",
@@ -165,6 +174,29 @@ export function StudentProfile() {
       }
     }
     reader.readAsDataURL(file)
+  }
+
+  const handleSelectPresetAvatar = async (url: string) => {
+    const updated = { ...profile, photoUrl: url }
+    setProfile(updated)
+    persistToSession({ photoUrl: url })
+    showToast("📸 Profile avatar selected!")
+
+    try {
+      await fetch("/api/profile", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          userId: profile.id,
+          email: profile.email,
+          name: profile.name,
+          photoUrl: url,
+        }),
+      })
+      showToast("✅ Profile avatar saved!")
+    } catch {
+      showToast("💾 Profile avatar saved locally!")
+    }
   }
 
   // ── Fetch fresh profile from DB ───────────────────────────────────────────────
@@ -400,6 +432,15 @@ export function StudentProfile() {
           <ChevronLeft className="w-4 h-4" /> Back to Dashboard
         </Button>
         <div className="flex flex-wrap items-center gap-2">
+          {(profile.role === "admin" || isAdmin) && (
+            <Button
+              size="sm"
+              className="gap-2 font-bold text-xs sm:text-sm bg-red-600 hover:bg-red-700 text-white shadow-lg"
+              onClick={() => setStep("admin")}
+            >
+              <ShieldCheck className="w-4 h-4" /> Admin Console
+            </Button>
+          )}
           <Button variant="outline" size="sm" className="gap-2 font-bold text-xs sm:text-sm" onClick={handleRefresh} disabled={isLoadingProfile}>
             <RefreshCw className={`w-4 h-4 ${isLoadingProfile ? "animate-spin" : ""}`} /> Refresh
           </Button>
@@ -470,11 +511,34 @@ export function StudentProfile() {
               </div>
             </div>
             {/* Role Badge - fixed legible background & styling */}
-            <div className={`absolute -bottom-2 -right-2 px-2.5 py-0.5 rounded-full text-[10px] font-black tracking-wider shadow-lg border border-white/30 uppercase ${
-              profile.role === "admin" ? "bg-red-600 text-white" : "bg-indigo-600 text-white"
-            }`}>
+            <div
+              className="absolute -bottom-2 -right-2 px-2.5 py-0.5 rounded-full text-[10px] font-black tracking-wider shadow-lg uppercase z-10"
+              style={{
+                backgroundColor: profile.role === "admin" ? "#dc2626" : "#4f46e5",
+                color: "#ffffff",
+                border: "1.5px solid rgba(255, 255, 255, 0.7)",
+              }}
+            >
               {profile.role === "admin" ? "ADMIN" : "STUDENT"}
             </div>
+          </div>
+
+          {/* Quick Preset Avatar Chooser */}
+          <div className="flex md:hidden flex-wrap items-center justify-center gap-1.5 pt-1">
+            <span className="text-[10px] text-muted-foreground font-semibold">Avatar:</span>
+            {PRESET_AVATARS.map((av) => (
+              <button
+                key={av.id}
+                type="button"
+                onClick={() => handleSelectPresetAvatar(av.url)}
+                className={`w-6 h-6 rounded-md border overflow-hidden hover:scale-115 transition-transform ${
+                  profile.photoUrl === av.url ? "ring-2 ring-primary border-primary scale-110" : "border-white/20 opacity-80"
+                }`}
+                title={`Pick ${av.label}`}
+              >
+                <img src={av.url} alt={av.label} className="w-full h-full object-cover" />
+              </button>
+            ))}
           </div>
 
           {/* Info */}
@@ -957,6 +1021,28 @@ export function StudentProfile() {
                         </Button>
                       )}
                     </div>
+
+                    {/* Preset Avatars in Settings */}
+                    <div className="pt-2">
+                      <p className="text-[11px] font-bold text-muted-foreground mb-1.5">Or choose an avatar style:</p>
+                      <div className="flex flex-wrap gap-2">
+                        {PRESET_AVATARS.map((av) => (
+                          <button
+                            key={av.id}
+                            type="button"
+                            onClick={() => handleSelectPresetAvatar(av.url)}
+                            className={`flex items-center gap-1.5 px-2.5 py-1 rounded-xl border text-xs font-bold transition-all ${
+                              profile.photoUrl === av.url
+                                ? "bg-primary/20 border-primary text-primary"
+                                : "bg-muted/40 border-border hover:bg-muted"
+                            }`}
+                          >
+                            <img src={av.url} alt={av.label} className="w-5 h-5 rounded-md object-cover" />
+                            <span>{av.label}</span>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
                   </div>
                 </div>
 
@@ -1020,6 +1106,28 @@ export function StudentProfile() {
               </Button>
             </CardContent>
           </Card>
+
+          {/* Admin Command Center Quick Access */}
+          {(profile.role === "admin" || isAdmin) && (
+            <Card className="border-2 border-red-500/30 bg-red-500/5 shadow-xl">
+              <CardHeader className="border-b border-red-500/20 bg-red-500/10">
+                <CardTitle className="flex items-center gap-2 text-base text-red-500">
+                  <ShieldCheck className="w-5 h-5" /> Administrator Controls
+                </CardTitle>
+                <CardDescription>
+                  Your profile has administrator privileges. Switch into the Admin Command Center to manage arena approvals, execute game engine benchmarks, and monitor students.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="pt-4">
+                <Button
+                  onClick={() => setStep("admin")}
+                  className="bg-red-600 hover:bg-red-700 text-white font-black rounded-xl gap-2 h-11 px-6 shadow-lg shadow-red-500/20"
+                >
+                  <ShieldCheck className="w-4 h-4" /> Open Admin Command Center
+                </Button>
+              </CardContent>
+            </Card>
+          )}
 
           <Card className="border-2 border-amber-500/20 bg-amber-500/5 shadow-xl">
             <CardHeader>

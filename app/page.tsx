@@ -1,9 +1,26 @@
+"use client"
+
 import ExamAnalyzer from "@/components/exam-analyzer"
+import { useNav } from "@/hooks/use-nav"
 import { Brain, ShieldCheck, Zap, Code2, Sparkles, ChevronDown } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 
 export default function Home() {
+  const { isRegistered, currentStep } = useNav()
+
+  // When registered student is working within the platform, directly mount the application workspace
+  // without forcing them to scroll past the landing marketing hero each time
+  if (isRegistered && currentStep !== "onboarding") {
+    return (
+      <main className="flex-1 w-full min-h-[calc(100vh-4rem)]">
+        <div id="analyzer" className="w-full">
+          <ExamAnalyzer />
+        </div>
+      </main>
+    )
+  }
+
   return (
     <main className="flex-1">
       {/* Hero / Welcome Section */}

@@ -321,15 +321,15 @@ export default function ExamAnalyzer() {
   }
 
   return (
-    <div className="container mx-auto px-4 py-8 sm:py-12 max-w-7xl animate-in fade-in slide-in-from-bottom-4 duration-700">
+    <div className="container mx-auto px-4 pt-10 pb-8 sm:pt-14 sm:pb-12 max-w-7xl animate-in fade-in slide-in-from-bottom-4 duration-700">
       {/* Top Banner */}
-      <div className="flex flex-col items-center text-center mb-8 sm:mb-12 relative">
+      <div className="flex flex-col items-center text-center mb-8 sm:mb-12 relative pt-2">
         <div className="w-full flex justify-end sm:absolute sm:right-0 sm:top-0 mb-3 sm:mb-0">
           <Button variant="ghost" size="sm" onClick={clearSession} className="text-muted-foreground hover:text-destructive text-xs sm:text-sm">
             <X className="w-4 h-4 mr-1 sm:mr-2" /> Reset Session
           </Button>
         </div>
-        <Badge variant="outline" className="mb-4 px-3 sm:px-4 py-1.5 text-xs sm:text-sm border-primary/30 bg-primary/10 text-primary flex items-center gap-2">
+        <Badge variant="outline" className="mb-4 px-3 sm:px-4 py-1.5 text-xs sm:text-sm border-primary/30 bg-primary/10 text-primary flex items-center gap-2 shadow-sm">
           <GraduationCap className="w-4 h-4" /> Exam Pattern Analyzer • Blueprint Engine
         </Badge>
         <h1 className="text-3xl sm:text-5xl lg:text-7xl font-extrabold tracking-tight mb-4 bg-clip-text text-transparent bg-gradient-to-r from-foreground via-primary to-blue-600">
