@@ -171,8 +171,22 @@ export function VoiceRoom({ user }: VoiceRoomProps) {
   const [noiseSuppression, setNoiseSuppression]   = useState(true)
   const [autoGainControl, setAutoGainControl]     = useState(true)
 
+  // Signaling state
+  const [signalingStatus, setSignalingStatus]     = useState<string>("Connecting...")
+  const [signalingOk, setSignalingOk]             = useState<boolean>(false)
+
+  // Unique peer identifier per session/tab
+  const myPeerIdRef = useRef<string>("")
+  if (!myPeerIdRef.current) {
+    myPeerIdRef.current = `peer_${user.id}_${Math.random().toString(36).substring(2, 8)}`
+  }
+  const myPeerId = myPeerIdRef.current
+
   // Refs
   const socketRef         = useRef<Socket | null>(null)
+  const signalingModeRef  = useRef<"socket" | "http">("http")
+  const httpPollTimerRef  = useRef<NodeJS.Timeout | null>(null)
+  const dataChannelsRef   = useRef<Record<string, RTCDataChannel>>({})
   const localStreamRef    = useRef<MediaStream | null>(null)
   const testStreamRef     = useRef<MediaStream | null>(null)
   const testAnalyserRef   = useRef<AnalyserNode | null>(null)
@@ -186,148 +200,35 @@ export function VoiceRoom({ user }: VoiceRoomProps) {
   const pingIntervalRef   = useRef<NodeJS.Timeout | null>(null)
   const pendingCandidates = useRef<Record<string, RTCIceCandidateInit[]>>({})
 
-  // ── Socket Connection ───────────────────────────────────────────────────────
-  useEffect(() => {
-    const socketUrl =
-      process.env.NEXT_PUBLIC_SOCKET_URL ||
-      (typeof window !== "undefined" &&
-      (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1")
-        ? "http://localhost:3000"
-        : "")
-
-    if (!socketUrl) {
-      return
-    }
-
-    const s = io(socketUrl, {
-      path: "/socket.io",
-      transports: ["websocket", "polling"],
-      reconnectionAttempts: 8,
-      reconnectionDelay: 1000,
-    })
-    socketRef.current = s
-
-    s.on("connect", () => {
-      s.emit("get-voice-room-counts")
-      s.emit("get-custom-voice-rooms")
-    })
-
-    s.on("disconnect", () => {
-      setJoined(false)
-      setStatus("idle")
-      setPeers([])
-    })
-
-    s.on("voice-room-counts", (counts: Record<string, number>) => {
-      setChannelCounts(counts || {})
-    })
-
-    s.on("custom-voice-rooms-updated", (customList: Channel[]) => {
-      if (Array.isArray(customList) && customList.length > 0) {
-        setChannels(prev => {
-          const merged = [...DEFAULT_CHANNELS]
-          customList.forEach(c => {
-            if (!merged.some(m => m.id === c.id)) {
-              merged.push({ ...c, isCustom: true })
-            }
-          })
-          return merged
+  // ── Unified Signaling Transmitter ──────────────────────────────────────────
+  const sendSignal = useCallback(async (type: "offer" | "answer" | "candidate", data: { targetId: string; offer?: RTCSessionDescriptionInit; answer?: RTCSessionDescriptionInit; candidate?: RTCIceCandidateInit }) => {
+    if (signalingModeRef.current === "socket" && socketRef.current?.connected) {
+      if (type === "candidate") {
+        socketRef.current.emit("candidate", { targetId: data.targetId, candidate: data.candidate })
+      } else if (type === "offer") {
+        socketRef.current.emit("offer", { targetId: data.targetId, offer: data.offer })
+      } else if (type === "answer") {
+        socketRef.current.emit("answer", { targetId: data.targetId, answer: data.answer })
+      }
+    } else {
+      try {
+        await fetch("/api/arena/voice-signaling", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            action: "signal",
+            roomId: activeChannel.id,
+            fromId: myPeerId,
+            targetId: data.targetId,
+            type,
+            payload: type === "candidate" ? data.candidate : type === "offer" ? data.offer : data.answer,
+          }),
         })
-      }
-    })
-
-    s.on("voice-pong", (sent: number) => {
-      setLatency(Date.now() - sent)
-    })
-
-    s.on("peer-mute-status", ({ socketId, isMuted: m }: { socketId: string; isMuted: boolean }) => {
-      setPeers(prev => prev.map(p => p.id === socketId ? { ...p, isMuted: m } : p))
-    })
-
-    s.on("peer-speaking", ({ socketId, isSpeaking, level }: { socketId: string; isSpeaking: boolean; level: number }) => {
-      setSpeakingLevels(prev => ({ ...prev, [socketId]: isSpeaking ? level : 0 }))
-      setPeers(prev => prev.map(p => p.id === socketId ? { ...p, isSpeaking } : p))
-    })
-
-    return () => {
-      s.disconnect()
-    }
-  }, [])
-
-  // ── Create RTCPeerConnection ────────────────────────────────────────────────
-  const createPC = useCallback((peerId: string): RTCPeerConnection => {
-    if (peerConns.current[peerId]) return peerConns.current[peerId]
-
-    const pc = new RTCPeerConnection(ICE_SERVERS)
-    peerConns.current[peerId] = pc
-    pendingCandidates.current[peerId] = []
-
-    // Add local tracks if stream exists
-    if (localStreamRef.current) {
-      localStreamRef.current.getTracks().forEach(t => {
-        pc.addTrack(t, localStreamRef.current!)
-      })
-    }
-
-    pc.onicecandidate = e => {
-      if (e.candidate) {
-        socketRef.current?.emit("candidate", { targetId: peerId, candidate: e.candidate })
+      } catch (err) {
+        console.warn("[Voice] Signal POST error:", err)
       }
     }
-
-    pc.oniceconnectionstatechange = () => {
-      setPeers(prev => prev.map(p => p.id === peerId ? { ...p, iceState: pc.iceConnectionState } : p))
-      if (pc.iceConnectionState === "failed") {
-        pc.restartIce?.()
-      }
-    }
-
-    // Handle incoming remote audio track
-    pc.ontrack = e => {
-      const stream = e.streams[0] || new MediaStream([e.track])
-
-      // Single Web Audio API pipeline: Route through GainNode -> Analyser -> Destination
-      const ctx = audioCtxRef.current
-      if (ctx) {
-        if (ctx.state === "suspended") ctx.resume().catch(() => {})
-
-        if (!gainNodes.current[peerId]) {
-          try {
-            const src = ctx.createMediaStreamSource(stream)
-            const gain = ctx.createGain()
-            const an = ctx.createAnalyser()
-            an.fftSize = 256
-            an.smoothingTimeConstant = 0.65
-            src.connect(gain)
-            gain.connect(an)
-            gain.connect(ctx.destination)
-
-            const savedVol = peerVolumes[peerId] ?? 100
-            gain.gain.value = (savedVol / 100) * (isDeafened ? 0 : 1)
-
-            gainNodes.current[peerId] = gain
-            remoteAnalysers.current[peerId] = an
-          } catch (err) {
-            console.warn("Web Audio graph connection error:", err)
-          }
-        }
-      }
-
-      // Keep hidden audio element MUTED so it pulls stream without echoing/double sound
-      if (!remoteAudios.current[peerId]) {
-        const audio = new Audio()
-        audio.muted = true // MUST remain muted to prevent echo; Web Audio plays the output
-        audio.autoplay = true
-        audio.srcObject = stream
-        audio.play().catch(() => {})
-        remoteAudios.current[peerId] = audio
-      } else {
-        ;(remoteAudios.current[peerId].srcObject as MediaStream)?.addTrack(e.track)
-      }
-    }
-
-    return pc
-  }, [isDeafened, peerVolumes])
+  }, [activeChannel.id, myPeerId])
 
   // ── Flush Queued ICE Candidates ─────────────────────────────────────────────
   const flushCandidates = useCallback(async (peerId: string, pc: RTCPeerConnection) => {
@@ -340,143 +241,426 @@ export function VoiceRoom({ user }: VoiceRoomProps) {
     pendingCandidates.current[peerId] = []
   }, [])
 
-  // ── WebRTC Signaling Events ─────────────────────────────────────────────────
+  // ── Setup Peer Data Channel ─────────────────────────────────────────────────
+  const setupDataChannel = useCallback((dc: RTCDataChannel, peerId: string) => {
+    dataChannelsRef.current[peerId] = dc
+    dc.onmessage = e => {
+      try {
+        const msg = JSON.parse(e.data)
+        if (msg.type === "speaking") {
+          setSpeakingLevels(prev => ({ ...prev, [peerId]: msg.isSpeaking ? (msg.level || 30) : 0 }))
+          setPeers(prev => prev.map(p => p.id === peerId ? { ...p, isSpeaking: msg.isSpeaking } : p))
+        } else if (msg.type === "mute") {
+          setPeers(prev => prev.map(p => p.id === peerId ? { ...p, isMuted: msg.isMuted } : p))
+        }
+      } catch {}
+    }
+    dc.onclose = () => {
+      delete dataChannelsRef.current[peerId]
+    }
+  }, [])
+
+  // ── Create RTCPeerConnection ────────────────────────────────────────────────
+  const createPC = useCallback((peerId: string, isInitiator = false): RTCPeerConnection => {
+    if (peerConns.current[peerId]) return peerConns.current[peerId]
+
+    const pc = new RTCPeerConnection(ICE_SERVERS)
+    peerConns.current[peerId] = pc
+    pendingCandidates.current[peerId] = []
+
+    // Add local mic audio tracks if stream exists
+    if (localStreamRef.current) {
+      localStreamRef.current.getTracks().forEach(t => {
+        pc.addTrack(t, localStreamRef.current!)
+      })
+    }
+
+    if (isInitiator) {
+      try {
+        const dc = pc.createDataChannel("voice-meta")
+        setupDataChannel(dc, peerId)
+      } catch {}
+    } else {
+      pc.ondatachannel = e => {
+        setupDataChannel(e.channel, peerId)
+      }
+    }
+
+    pc.onicecandidate = e => {
+      if (e.candidate) {
+        sendSignal("candidate", { targetId: peerId, candidate: e.candidate.toJSON() })
+      }
+    }
+
+    pc.oniceconnectionstatechange = () => {
+      setPeers(prev => prev.map(p => p.id === peerId ? { ...p, iceState: pc.iceConnectionState } : p))
+      if (pc.iceConnectionState === "failed") {
+        pc.restartIce?.()
+      }
+    }
+
+    // Direct, crystal-clear audio playback without Web Audio destination echo/blocking
+    pc.ontrack = e => {
+      const stream = e.streams[0] || new MediaStream([e.track])
+
+      // Native HTMLAudioElement handles playback (supports echo cancellation & hardware mixer)
+      let audio = remoteAudios.current[peerId]
+      if (!audio) {
+        audio = new Audio()
+        audio.autoplay = true
+        audio.muted = isDeafened
+        const vol = peerVolumes[peerId] ?? 100
+        audio.volume = isDeafened ? 0 : Math.min(1, Math.max(0, vol / 100))
+        audio.srcObject = stream
+        audio.play().catch(err => console.warn("[Voice] Playback waiting for interaction:", err))
+        remoteAudios.current[peerId] = audio
+      } else if (audio.srcObject !== stream) {
+        audio.srcObject = stream
+        audio.play().catch(() => {})
+      }
+
+      // Analyser for VU meter only (does not route to speakers to avoid echo)
+      const ctx = audioCtxRef.current
+      if (ctx && !remoteAnalysers.current[peerId]) {
+        try {
+          const src = ctx.createMediaStreamSource(stream)
+          const an = ctx.createAnalyser()
+          an.fftSize = 256
+          an.smoothingTimeConstant = 0.65
+          src.connect(an)
+          remoteAnalysers.current[peerId] = an
+        } catch (err) {
+          console.warn("[Voice] Web Audio analyser connection error:", err)
+        }
+      }
+    }
+
+    return pc
+  }, [isDeafened, peerVolumes, sendSignal, setupDataChannel])
+
+  // ── WebRTC Signal Handlers ──────────────────────────────────────────────────
+  const handleReceiveOffer = useCallback(async (fromId: string, offer: RTCSessionDescriptionInit) => {
+    try {
+      const pc = createPC(fromId, false)
+      await pc.setRemoteDescription(new RTCSessionDescription(offer))
+      await flushCandidates(fromId, pc)
+      const answer = await pc.createAnswer()
+      await pc.setLocalDescription(answer)
+      await sendSignal("answer", { targetId: fromId, answer })
+    } catch (err) {
+      console.error("[Voice] Receive offer error:", err)
+    }
+  }, [createPC, flushCandidates, sendSignal])
+
+  const handleReceiveAnswer = useCallback(async (fromId: string, answer: RTCSessionDescriptionInit) => {
+    try {
+      const pc = peerConns.current[fromId]
+      if (pc && pc.signalingState === "have-local-offer") {
+        await pc.setRemoteDescription(new RTCSessionDescription(answer))
+        await flushCandidates(fromId, pc)
+      }
+    } catch (err) {
+      console.error("[Voice] Receive answer error:", err)
+    }
+  }, [flushCandidates])
+
+  const handleReceiveCandidate = useCallback(async (fromId: string, candidate: RTCIceCandidateInit) => {
+    const pc = peerConns.current[fromId]
+    if (!pc || !pc.remoteDescription) {
+      if (!pendingCandidates.current[fromId]) pendingCandidates.current[fromId] = []
+      pendingCandidates.current[fromId].push(candidate)
+      return
+    }
+    try {
+      await pc.addIceCandidate(new RTCIceCandidate(candidate))
+    } catch {}
+  }, [])
+
+  // ── Unified Signaling Initialization ────────────────────────────────────────
   useEffect(() => {
-    const s = socketRef.current
-    if (!s) return
-
-    const onVoiceJoined = () => {
-      setStatus("connected")
-      setJoined(true)
-      setErrorMsg(null)
-      playSoundEffect("join", audioCtxRef.current)
+    // 1. Fetch channel counts & custom rooms from serverless API immediately
+    const fetchRoomMeta = async () => {
+      try {
+        const res = await fetch("/api/arena/voice-signaling?action=counts")
+        const data = await res.json()
+        if (data?.counts) setChannelCounts(data.counts)
+        if (Array.isArray(data?.customRooms) && data.customRooms.length > 0) {
+          setChannels(prev => {
+            const merged = [...DEFAULT_CHANNELS]
+            data.customRooms.forEach((c: any) => {
+              if (!merged.some(m => m.id === c.id)) {
+                merged.push({ ...c, isCustom: true })
+              }
+            })
+            return merged
+          })
+        }
+      } catch (err) {
+        console.warn("[Voice] Counts fetch error:", err)
+      }
     }
+    fetchRoomMeta()
 
-    const onVoiceError = ({ message }: { message: string }) => {
-      setErrorMsg(message)
-      setStatus("failed")
-    }
+    // 2. Check Socket.io availability
+    const socketUrl =
+      process.env.NEXT_PUBLIC_SOCKET_URL ||
+      (typeof window !== "undefined" &&
+      (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1")
+        ? "http://localhost:3000"
+        : "")
 
-    const onExistingUsers = (usersList: any[]) => {
-      setPeers(prev => {
-        const merged = [...prev]
-        usersList.forEach(u => {
-          if (!merged.some(p => p.id === u.socketId)) {
-            merged.push({
+    let isSocketMounted = true
+
+    if (socketUrl) {
+      try {
+        const s = io(socketUrl, {
+          path: "/socket.io",
+          transports: ["websocket", "polling"],
+          reconnectionAttempts: 4,
+          timeout: 3000,
+        })
+        socketRef.current = s
+
+        s.on("connect", () => {
+          if (!isSocketMounted) return
+          signalingModeRef.current = "socket"
+          setSignalingStatus("Online (Socket.io)")
+          setSignalingOk(true)
+          s.emit("get-voice-room-counts")
+          s.emit("get-custom-voice-rooms")
+        })
+
+        s.on("connect_error", () => {
+          if (!isSocketMounted) return
+          signalingModeRef.current = "http"
+          setSignalingStatus("Online (Netlify Mesh)")
+          setSignalingOk(true)
+        })
+
+        s.on("disconnect", () => {
+          if (signalingModeRef.current === "socket") {
+            setJoined(false)
+            setStatus("idle")
+            setPeers([])
+          }
+        })
+
+        s.on("voice-room-counts", (counts: Record<string, number>) => {
+          setChannelCounts(counts || {})
+        })
+
+        s.on("custom-voice-rooms-updated", (customList: Channel[]) => {
+          if (Array.isArray(customList) && customList.length > 0) {
+            setChannels(prev => {
+              const merged = [...DEFAULT_CHANNELS]
+              customList.forEach(c => {
+                if (!merged.some(m => m.id === c.id)) {
+                  merged.push({ ...c, isCustom: true })
+                }
+              })
+              return merged
+            })
+          }
+        })
+
+        s.on("voice-pong", (sent: number) => {
+          setLatency(Date.now() - sent)
+        })
+
+        s.on("peer-mute-status", ({ socketId, isMuted: m }: { socketId: string; isMuted: boolean }) => {
+          setPeers(prev => prev.map(p => p.id === socketId ? { ...p, isMuted: m } : p))
+        })
+
+        s.on("peer-speaking", ({ socketId, isSpeaking, level }: { socketId: string; isSpeaking: boolean; level: number }) => {
+          setSpeakingLevels(prev => ({ ...prev, [socketId]: isSpeaking ? level : 0 }))
+          setPeers(prev => prev.map(p => p.id === socketId ? { ...p, isSpeaking } : p))
+        })
+
+        s.on("voice-joined", () => {
+          setStatus("connected")
+          setJoined(true)
+          setErrorMsg(null)
+          playSoundEffect("join", audioCtxRef.current)
+        })
+
+        s.on("voice-error", ({ message }: { message: string }) => {
+          setErrorMsg(message)
+          setStatus("failed")
+        })
+
+        s.on("existing-users", (usersList: any[]) => {
+          setPeers(prev => {
+            const merged = [...prev]
+            usersList.forEach(u => {
+              if (!merged.some(p => p.id === u.socketId)) {
+                merged.push({
+                  id: u.socketId,
+                  userId: u.userId,
+                  name: u.name || "Student",
+                  avatar: u.avatar || `https://api.dicebear.com/8.x/initials/svg?seed=${u.name || "S"}`,
+                  rank: u.rank || "Unranked",
+                  isMuted: Boolean(u.isMuted)
+                })
+              }
+            })
+            return merged
+          })
+        })
+
+        s.on("user-joined", (u: any) => {
+          setPeers(prev => {
+            if (prev.some(p => p.id === u.socketId)) return prev
+            return [...prev, {
               id: u.socketId,
               userId: u.userId,
               name: u.name || "Student",
               avatar: u.avatar || `https://api.dicebear.com/8.x/initials/svg?seed=${u.name || "S"}`,
               rank: u.rank || "Unranked",
               isMuted: Boolean(u.isMuted)
-            })
+            }]
+          })
+          createPC(u.socketId, false)
+          playSoundEffect("join", audioCtxRef.current)
+        })
+
+        s.on("create-offer", async (targetId: string) => {
+          if (!localStreamRef.current) return
+          try {
+            const pc = createPC(targetId, true)
+            const offer = await pc.createOffer({ offerToReceiveAudio: true })
+            await pc.setLocalDescription(offer)
+            s.emit("offer", { targetId, offer })
+          } catch (err) {
+            console.error("Offer creation failed:", err)
           }
         })
-        return merged
-      })
-    }
 
-    const onUserJoined = (u: any) => {
-      setPeers(prev => {
-        if (prev.some(p => p.id === u.socketId)) return prev
-        return [...prev, {
-          id: u.socketId,
-          userId: u.userId,
-          name: u.name || "Student",
-          avatar: u.avatar || `https://api.dicebear.com/8.x/initials/svg?seed=${u.name || "S"}`,
-          rank: u.rank || "Unranked",
-          isMuted: Boolean(u.isMuted)
-        }]
-      })
-      createPC(u.socketId)
-      playSoundEffect("join", audioCtxRef.current)
-    }
-
-    const onCreateOffer = async (targetId: string) => {
-      if (!localStreamRef.current) return
-      try {
-        const pc = createPC(targetId)
-        const offer = await pc.createOffer({
-          offerToReceiveAudio: true,
-          voiceActivityDetection: true
+        s.on("offer", (fromId: string, offer: RTCSessionDescriptionInit) => {
+          handleReceiveOffer(fromId, offer)
         })
-        await pc.setLocalDescription(offer)
-        s.emit("offer", { targetId, offer })
+
+        s.on("answer", (fromId: string, answer: RTCSessionDescriptionInit) => {
+          handleReceiveAnswer(fromId, answer)
+        })
+
+        s.on("candidate", (fromId: string, candidate: RTCIceCandidateInit) => {
+          handleReceiveCandidate(fromId, candidate)
+        })
+
+        s.on("user-left", (socketId: string) => {
+          setPeers(prev => prev.filter(p => p.id !== socketId))
+          peerConns.current[socketId]?.close()
+          delete peerConns.current[socketId]
+          if (remoteAudios.current[socketId]) {
+            remoteAudios.current[socketId].srcObject = null
+            delete remoteAudios.current[socketId]
+          }
+          delete gainNodes.current[socketId]
+          delete remoteAnalysers.current[socketId]
+          delete pendingCandidates.current[socketId]
+          delete dataChannelsRef.current[socketId]
+          playSoundEffect("leave", audioCtxRef.current)
+        })
       } catch (err) {
-        console.error("Offer creation failed:", err)
+        signalingModeRef.current = "http"
+        setSignalingStatus("Online (Netlify Mesh)")
+        setSignalingOk(true)
       }
+    } else {
+      // Direct Serverless mode for Netlify and cloud deployments
+      signalingModeRef.current = "http"
+      setSignalingStatus("Online (Netlify Mesh)")
+      setSignalingOk(true)
     }
-
-    const onOffer = async (fromId: string, offer: RTCSessionDescriptionInit) => {
-      try {
-        const pc = createPC(fromId)
-        await pc.setRemoteDescription(new RTCSessionDescription(offer))
-        await flushCandidates(fromId, pc)
-        const answer = await pc.createAnswer()
-        await pc.setLocalDescription(answer)
-        s.emit("answer", { targetId: fromId, answer: pc.localDescription })
-      } catch (err) {
-        console.error("Answer negotiation failed:", err)
-      }
-    }
-
-    const onAnswer = async (fromId: string, answer: RTCSessionDescriptionInit) => {
-      try {
-        const pc = peerConns.current[fromId]
-        if (pc && !pc.currentRemoteDescription) {
-          await pc.setRemoteDescription(new RTCSessionDescription(answer))
-          await flushCandidates(fromId, pc)
-        }
-      } catch (err) {
-        console.error("Remote description set failed:", err)
-      }
-    }
-
-    const onCandidate = async (fromId: string, candidate: RTCIceCandidateInit) => {
-      const pc = peerConns.current[fromId]
-      if (!pc || !pc.remoteDescription) {
-        if (!pendingCandidates.current[fromId]) pendingCandidates.current[fromId] = []
-        pendingCandidates.current[fromId].push(candidate)
-        return
-      }
-      try {
-        await pc.addIceCandidate(new RTCIceCandidate(candidate))
-      } catch {}
-    }
-
-    const onUserLeft = (socketId: string) => {
-      setPeers(prev => prev.filter(p => p.id !== socketId))
-      peerConns.current[socketId]?.close()
-      delete peerConns.current[socketId]
-      delete remoteAudios.current[socketId]
-      delete gainNodes.current[socketId]
-      delete remoteAnalysers.current[socketId]
-      delete pendingCandidates.current[socketId]
-      playSoundEffect("leave", audioCtxRef.current)
-    }
-
-    s.on("voice-joined",   onVoiceJoined)
-    s.on("voice-error",    onVoiceError)
-    s.on("existing-users", onExistingUsers)
-    s.on("user-joined",    onUserJoined)
-    s.on("create-offer",   onCreateOffer)
-    s.on("offer",          onOffer)
-    s.on("answer",         onAnswer)
-    s.on("candidate",      onCandidate)
-    s.on("user-left",      onUserLeft)
 
     return () => {
-      s.off("voice-joined",   onVoiceJoined)
-      s.off("voice-error",    onVoiceError)
-      s.off("existing-users", onExistingUsers)
-      s.off("user-joined",    onUserJoined)
-      s.off("create-offer",   onCreateOffer)
-      s.off("offer",          onOffer)
-      s.off("answer",         onAnswer)
-      s.off("candidate",      onCandidate)
-      s.off("user-left",      onUserLeft)
+      isSocketMounted = false
+      socketRef.current?.disconnect()
     }
-  }, [createPC, flushCandidates])
+  }, [createPC, handleReceiveAnswer, handleReceiveCandidate, handleReceiveOffer])
+
+  // ── HTTP Polling Signaling Loop for Serverless/Netlify ──────────────────────
+  useEffect(() => {
+    if (!joined || signalingModeRef.current !== "http") return
+
+    let cancelled = false
+
+    const poll = async () => {
+      try {
+        const start = Date.now()
+        const res = await fetch(`/api/arena/voice-signaling?action=poll&peerId=${myPeerId}&roomId=${activeChannel.id}`)
+        if (cancelled) return
+        const roundTrip = Date.now() - start
+        setLatency(roundTrip)
+
+        if (res.ok) {
+          const data = await res.json()
+          if (data.success) {
+            // Update peers list
+            if (Array.isArray(data.peers)) {
+              const activePeerIds = new Set(data.peers.map((p: any) => p.id))
+
+              // Remove departed peers
+              Object.keys(peerConns.current).forEach(pId => {
+                if (!activePeerIds.has(pId)) {
+                  peerConns.current[pId]?.close()
+                  delete peerConns.current[pId]
+                  if (remoteAudios.current[pId]) {
+                    remoteAudios.current[pId].srcObject = null
+                    delete remoteAudios.current[pId]
+                  }
+                  delete remoteAnalysers.current[pId]
+                  delete pendingCandidates.current[pId]
+                  delete dataChannelsRef.current[pId]
+                }
+              })
+
+              setPeers(prev => {
+                const map = new Map(prev.map(p => [p.id, p]))
+                data.peers.forEach((p: any) => {
+                  const existing = map.get(p.id)
+                  map.set(p.id, {
+                    id: p.id,
+                    userId: p.userId,
+                    name: p.name || "Student",
+                    avatar: p.avatar || `https://api.dicebear.com/8.x/initials/svg?seed=${encodeURIComponent(p.name || "S")}`,
+                    rank: p.rank || "Unranked",
+                    isMuted: p.isMuted ?? existing?.isMuted ?? false,
+                    isSpeaking: p.isSpeaking ?? existing?.isSpeaking ?? false,
+                    iceState: peerConns.current[p.id]?.iceConnectionState || existing?.iceState,
+                  })
+                })
+                return Array.from(map.values())
+              })
+            }
+
+            // Process incoming WebRTC signaling messages
+            if (Array.isArray(data.signals)) {
+              for (const sig of data.signals) {
+                if (sig.type === "offer") {
+                  await handleReceiveOffer(sig.fromId, sig.payload)
+                } else if (sig.type === "answer") {
+                  await handleReceiveAnswer(sig.fromId, sig.payload)
+                } else if (sig.type === "candidate") {
+                  await handleReceiveCandidate(sig.fromId, sig.payload)
+                }
+              }
+            }
+          }
+        }
+      } catch (err) {
+        console.warn("[Voice] HTTP poll error:", err)
+      }
+    }
+
+    const interval = setInterval(poll, 1400)
+    poll()
+
+    return () => {
+      cancelled = true
+      clearInterval(interval)
+    }
+  }, [joined, activeChannel.id, myPeerId, handleReceiveOffer, handleReceiveAnswer, handleReceiveCandidate])
 
   // ── Audio Level Animation Loop ──────────────────────────────────────────────
   useEffect(() => {
@@ -497,11 +681,19 @@ export function VoiceRoom({ user }: VoiceRoomProps) {
       const isSpeaking = myLevel > 18
       if (isSpeaking !== lastSpeakingSent) {
         lastSpeakingSent = isSpeaking
-        socketRef.current?.emit("speaking-status", {
-          roomId: activeChannel.id,
-          isSpeaking,
-          level: myLevel
+        // Send via direct DataChannels to all connected peers with 0 latency
+        Object.values(dataChannelsRef.current).forEach(dc => {
+          if (dc.readyState === "open") {
+            try { dc.send(JSON.stringify({ type: "speaking", isSpeaking, level: myLevel })) } catch {}
+          }
         })
+        if (signalingModeRef.current === "socket") {
+          socketRef.current?.emit("speaking-status", {
+            roomId: activeChannel.id,
+            isSpeaking,
+            level: myLevel
+          })
+        }
       }
 
       animFrameRef.current = requestAnimationFrame(tick)
@@ -559,8 +751,15 @@ export function VoiceRoom({ user }: VoiceRoomProps) {
     }
   }, [joined, isPTT, isMuted])
 
-  // ── Deafen: Adjust Gain Nodes for all peers ─────────────────────────────────
+  // ── Deafen & Volume: Adjust HTMLAudioElement volume & mute for all peers ──
   useEffect(() => {
+    Object.entries(remoteAudios.current).forEach(([pId, audio]) => {
+      if (audio) {
+        audio.muted = isDeafened
+        const vol = peerVolumes[pId] ?? 100
+        audio.volume = isDeafened ? 0 : Math.min(1, Math.max(0, vol / 100))
+      }
+    })
     Object.entries(gainNodes.current).forEach(([pId, gNode]) => {
       const vol = peerVolumes[pId] ?? 100
       gNode.gain.value = isDeafened ? 0 : vol / 100
@@ -664,8 +863,18 @@ export function VoiceRoom({ user }: VoiceRoomProps) {
         stream.getAudioTracks().forEach(t => { t.enabled = false })
       }
 
-      // Propagate user metadata directly to socket
-      if (socketRef.current?.connected) {
+      // Ensure local tracks are attached to all existing peer connections
+      Object.values(peerConns.current).forEach(pc => {
+        stream.getTracks().forEach(track => {
+          const senders = pc.getSenders()
+          if (!senders.some(s => s.track?.id === track.id)) {
+            pc.addTrack(track, stream)
+          }
+        })
+      })
+
+      // Join Voice Room via Socket or Serverless HTTP
+      if (signalingModeRef.current === "socket" && socketRef.current?.connected) {
         socketRef.current.emit("join-lobby", { userId: user.id, name: user.name, avatar: user.avatar })
         socketRef.current.emit("join-voice-room", {
           roomId: channel.id,
@@ -676,7 +885,47 @@ export function VoiceRoom({ user }: VoiceRoomProps) {
         })
         socketRef.current.emit("mute-status", { isMuted: false })
       } else {
-        // Standalone voice mode when signaling socket is not connected
+        // Serverless HTTP signaling join (Netlify / Vercel cloud mesh)
+        try {
+          const res = await fetch("/api/arena/voice-signaling", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              action: "join",
+              roomId: channel.id,
+              peerId: myPeerId,
+              userId: user.id,
+              name: user.name,
+              avatar: user.avatar,
+              rank: user.arenaRank || "Unranked",
+            }),
+          })
+          const data = await res.json()
+          if (data.success && Array.isArray(data.peers)) {
+            setPeers(data.peers.map((u: any) => ({
+              id: u.id,
+              userId: u.userId,
+              name: u.name,
+              avatar: u.avatar || `https://api.dicebear.com/8.x/initials/svg?seed=${encodeURIComponent(u.name || "S")}`,
+              rank: u.rank || "Unranked",
+              isMuted: Boolean(u.isMuted),
+            })))
+
+            // Initiate WebRTC offer to each existing peer in room
+            for (const p of data.peers) {
+              try {
+                const pc = createPC(p.id, true)
+                const offer = await pc.createOffer({ offerToReceiveAudio: true })
+                await pc.setLocalDescription(offer)
+                await sendSignal("offer", { targetId: p.id, offer })
+              } catch (err) {
+                console.error("[Voice] Initial offer error to peer:", p.id, err)
+              }
+            }
+          }
+        } catch (err) {
+          console.warn("[Voice] Serverless join error:", err)
+        }
         setStatus("connected")
         setJoined(true)
         setErrorMsg(null)
@@ -693,9 +942,10 @@ export function VoiceRoom({ user }: VoiceRoomProps) {
   }
 
   // ── Leave Voice Room ────────────────────────────────────────────────────────
-  const handleLeave = useCallback(() => {
+  const handleLeave = useCallback(async () => {
     cancelAnimationFrame(animFrameRef.current)
     if (pingIntervalRef.current) clearInterval(pingIntervalRef.current)
+    if (httpPollTimerRef.current) clearInterval(httpPollTimerRef.current)
 
     playSoundEffect("leave", audioCtxRef.current)
 
@@ -710,8 +960,23 @@ export function VoiceRoom({ user }: VoiceRoomProps) {
     gainNodes.current = {}
     remoteAnalysers.current = {}
     pendingCandidates.current = {}
+    dataChannelsRef.current = {}
 
-    socketRef.current?.emit("leave-voice-room", { roomId: activeChannel.id, userId: user.id })
+    if (signalingModeRef.current === "socket") {
+      socketRef.current?.emit("leave-voice-room", { roomId: activeChannel.id, userId: user.id })
+    } else {
+      try {
+        await fetch("/api/arena/voice-signaling", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            action: "leave",
+            peerId: myPeerId,
+            roomId: activeChannel.id,
+          }),
+        })
+      } catch {}
+    }
 
     setPeers([])
     setJoined(false)
@@ -721,7 +986,7 @@ export function VoiceRoom({ user }: VoiceRoomProps) {
     setPttActive(false)
     setSpeakingLevels({})
     setLatency(null)
-  }, [activeChannel.id, user.id])
+  }, [activeChannel.id, myPeerId, user.id])
 
   // ── Toggle Mute ─────────────────────────────────────────────────────────────
   const toggleMute = () => {
@@ -729,7 +994,16 @@ export function VoiceRoom({ user }: VoiceRoomProps) {
     const next = !isMuted
     setIsMuted(next)
     localStreamRef.current.getAudioTracks().forEach(t => { t.enabled = !next })
-    socketRef.current?.emit("mute-status", { isMuted: next })
+
+    Object.values(dataChannelsRef.current).forEach(dc => {
+      if (dc.readyState === "open") {
+        try { dc.send(JSON.stringify({ type: "mute", isMuted: next })) } catch {}
+      }
+    })
+
+    if (signalingModeRef.current === "socket") {
+      socketRef.current?.emit("mute-status", { isMuted: next })
+    }
     playSoundEffect(next ? "mute" : "unmute", audioCtxRef.current)
   }
 
@@ -737,7 +1011,7 @@ export function VoiceRoom({ user }: VoiceRoomProps) {
   const switchChannel = async (ch: Channel) => {
     if (ch.id === activeChannel.id) return
     if (joined) {
-      handleLeave()
+      await handleLeave()
     }
     setActiveChannel(ch)
     await handleJoin(ch)
@@ -755,7 +1029,15 @@ export function VoiceRoom({ user }: VoiceRoomProps) {
       isCustom: true,
       createdBy: user.name,
     }
-    socketRef.current?.emit("create-custom-voice-room", roomObj)
+    if (signalingModeRef.current === "socket") {
+      socketRef.current?.emit("create-custom-voice-room", roomObj)
+    } else {
+      fetch("/api/arena/voice-signaling", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "create-room", room: roomObj }),
+      }).catch(() => {})
+    }
     setChannels(prev => [...prev, roomObj])
     setShowCreateModal(false)
     setNewRoomName("")
@@ -766,6 +1048,9 @@ export function VoiceRoom({ user }: VoiceRoomProps) {
   // ── Per-peer Volume Slider ──────────────────────────────────────────────────
   const setPeerVolume = (peerId: string, vol: number) => {
     setPeerVolumes(prev => ({ ...prev, [peerId]: vol }))
+    if (remoteAudios.current[peerId]) {
+      remoteAudios.current[peerId].volume = isDeafened ? 0 : Math.min(1, Math.max(0, vol / 100))
+    }
     if (gainNodes.current[peerId]) {
       gainNodes.current[peerId].gain.value = isDeafened ? 0 : vol / 100
     }
@@ -1182,9 +1467,9 @@ export function VoiceRoom({ user }: VoiceRoomProps) {
               <InfoRow label="Protocol" value="UDP / WebRTC Mesh" icon={<Wifi className="w-3.5 h-3.5" />} ok />
               <InfoRow
                 label="Signaling Gateway"
-                value={socketRef.current?.connected ? "Online (Socket.io)" : "Disconnected"}
+                value={signalingStatus}
                 icon={<Radio className="w-3.5 h-3.5" />}
-                ok={socketRef.current?.connected}
+                ok={signalingOk}
               />
               <InfoRow
                 label="Audio Latency"
@@ -1192,7 +1477,12 @@ export function VoiceRoom({ user }: VoiceRoomProps) {
                 icon={<Signal className="w-3.5 h-3.5" />}
                 ok={latency !== null && latency < 180}
               />
-              <InfoRow label="Active Peers" value={String(peers.length)} icon={<Users className="w-3.5 h-3.5" />} ok={peers.length > 0} />
+              <InfoRow
+                label="Active Peers"
+                value={peers.length > 0 ? `${peers.length} student${peers.length > 1 ? "s" : ""}` : "0"}
+                icon={<Users className="w-3.5 h-3.5" />}
+                ok={peers.length > 0}
+              />
               <InfoRow label="STUN / TURN" value="5 Global STUN + Metered TURN" icon={<WifiOff className="w-3.5 h-3.5" />} ok />
             </div>
           </div>
