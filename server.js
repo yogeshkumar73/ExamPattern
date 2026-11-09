@@ -38,6 +38,17 @@ app.prepare().then(() => {
   // Dynamic custom voice rooms registry
   const customVoiceRooms = {};
 
+  // Helper to calculate voice room active user counts
+  const getVoiceRoomCounts = () => {
+    const counts = {};
+    Object.keys(voiceRooms).forEach((rId) => {
+      if (voiceRooms[rId]) {
+        counts[rId] = Object.keys(voiceRooms[rId]).length;
+      }
+    });
+    return counts;
+  };
+
   io.on('connection', (socket) => {
     console.log(`[Arena] Client connected: ${socket.id}`);
 
@@ -223,17 +234,6 @@ app.prepare().then(() => {
     // =======================
 // VOICE ROOM (WebRTC Signaling)
 // =======================
-
-// Helper to calculate voice room active user counts
-const getVoiceRoomCounts = () => {
-  const counts = {};
-  Object.keys(voiceRooms).forEach((rId) => {
-    if (voiceRooms[rId]) {
-      counts[rId] = Object.keys(voiceRooms[rId]).length;
-    }
-  });
-  return counts;
-};
 
 socket.on("join-voice-room", ({ roomId, userId, name, avatar, rank }) => {
   if (!roomId || !userId) {

@@ -631,16 +631,23 @@ export function VoiceRoom({ user }: VoiceRoomProps) {
         await ctx.resume()
       }
 
-      const stream = await navigator.mediaDevices.getUserMedia({
-        audio: {
-          deviceId: selectedMic ? { exact: selectedMic } : undefined,
-          echoCancellation,
-          noiseSuppression,
-          autoGainControl,
-          sampleRate: 48000,
-          channelCount: 1,
-        },
-      })
+      let stream: MediaStream
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({
+          audio: {
+            deviceId: selectedMic && selectedMic !== "default" ? { ideal: selectedMic } : undefined,
+            echoCancellation,
+            noiseSuppression,
+            autoGainControl,
+          },
+        })
+      } catch (err: any) {
+        if (err?.name === "OverconstrainedError") {
+          stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+        } else {
+          throw err
+        }
+      }
       localStreamRef.current = stream
       localAnalyser.current = createAnalyser(stream, ctx)
 
