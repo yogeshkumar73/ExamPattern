@@ -38,6 +38,7 @@ import {
   Menu,
   ChevronDown,
   BookOpen,
+  GraduationCap,
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -124,6 +125,23 @@ useEffect(() => {
 
       setSession(session);
       setAdmin(session?.user?.role === "admin");
+      if (session?.user?.email) {
+        setRegistered(true);
+        const currentSaved = localStorage.getItem("aura_session");
+        if (!currentSaved) {
+          const userObj = {
+            id: session.user.id || `USR-${session.user.email}`,
+            name: session.user.name || "Student",
+            email: session.user.email,
+            photoUrl: session.user.image || session.user.photoUrl || "",
+            role: session.user.role || "student",
+            isAdmin: Boolean(session.user.role === "admin"),
+            profileComplete: false,
+          };
+          localStorage.setItem("aura_session", JSON.stringify({ user: userObj, role: userObj.role, isAdmin: userObj.isAdmin }));
+          setSessionUser(userObj as any);
+        }
+      }
     } catch (error) {
       console.error("Failed to load session:", error);
 
@@ -350,7 +368,7 @@ const currentIndex = useMemo(
         <div className="flex items-center gap-6">
           <Link
             href="/"
-            onClick={() => setStep("onboarding")}
+            onClick={() => setStep("upload")}
             className="group flex items-center gap-2 font-bold text-xl tracking-tight text-primary transition-transform hover:opacity-80 hover:scale-105"
           >
             <div className="rounded-lg bg-primary/10 p-1.5 transition-colors group-hover:bg-primary/20">
@@ -409,7 +427,19 @@ const currentIndex = useMemo(
                 <Brain className="h-4 w-4 text-indigo-400" /> AI Services
                 <ChevronDown className="h-3 w-3 opacity-60" />
               </MenubarTrigger>
-              <MenubarContent className="w-56">
+              <MenubarContent className="w-60">
+                <MenubarItem 
+                  onClick={() => {
+                    setStep("upload");
+                    if (typeof window !== "undefined") {
+                      const el = document.getElementById("analyzer");
+                      if (el) el.scrollIntoView({ behavior: "smooth" });
+                    }
+                  }} 
+                  className="cursor-pointer gap-2 font-bold text-amber-500 hover:text-amber-600"
+                >
+                  <GraduationCap className="h-4 w-4" /> Exam Pattern Analyzer
+                </MenubarItem>
                 <MenubarItem onClick={() => setStep("arena")} className="cursor-pointer gap-2 font-bold text-rose-500 hover:text-rose-600">
                   <Swords className="h-4 w-4" /> Battle Arena
                 </MenubarItem>
@@ -491,38 +521,48 @@ const currentIndex = useMemo(
               </MenubarMenu>
             )}
 
-            {/* Profile Menu */}
-            <MenubarMenu>
-              <MenubarTrigger
-                className="cursor-pointer font-bold hover:text-primary transition-colors flex items-center gap-1.5 px-3 py-1.5 rounded-lg border bg-muted/20"
-                aria-label="User Profile"
+            {/* Profile Menu or Sign In */}
+            {(isRegistered || sessionUser?.email || session?.user?.email) ? (
+              <MenubarMenu>
+                <MenubarTrigger
+                  className="cursor-pointer font-bold hover:text-primary transition-colors flex items-center gap-1.5 px-3 py-1.5 rounded-lg border bg-muted/20"
+                  aria-label="User Profile"
+                >
+                  {sessionUser?.photoUrl ? (
+                    <img
+                      src={sessionUser.photoUrl}
+                      alt="Avatar"
+                      className="w-5 h-5 rounded-full object-cover border border-primary/40 flex-shrink-0"
+                    />
+                  ) : (
+                    <User className="h-4 w-4 text-primary flex-shrink-0" />
+                  )}
+                  <span className="max-w-[120px] truncate">{sessionUser?.name || session?.user?.name || "Student"}</span>
+                  <ChevronDown className="h-3 w-3 opacity-60 flex-shrink-0" />
+                </MenubarTrigger>
+                <MenubarContent className="w-56">
+                  <MenubarItem onClick={() => setStep("profile")} className="cursor-pointer font-bold text-xs">
+                    {sessionUser?.email || session?.user?.email || "Personal Account"}
+                  </MenubarItem>
+                  <MenubarSeparator />
+                  <MenubarItem onClick={() => setStep("profile")} className="cursor-pointer gap-2 font-medium">
+                    <User className="text-primary h-4 w-4" /> View Student Profile
+                  </MenubarItem>
+                  <MenubarSeparator />
+                  <MenubarItem onClick={handleSignOut} className="cursor-pointer gap-2 text-destructive font-medium">
+                    <LogOut className="h-4 w-4" /> Sign Out
+                  </MenubarItem>
+                </MenubarContent>
+              </MenubarMenu>
+            ) : (
+              <Button
+                size="sm"
+                onClick={() => setStep("onboarding")}
+                className="font-bold text-xs rounded-xl px-3.5 h-8 bg-primary text-primary-foreground hover:bg-primary/90"
               >
-                {sessionUser?.photoUrl ? (
-                  <img
-                    src={sessionUser.photoUrl}
-                    alt="Avatar"
-                    className="w-5 h-5 rounded-full object-cover border border-primary/40 flex-shrink-0"
-                  />
-                ) : (
-                  <User className="h-4 w-4 text-primary flex-shrink-0" />
-                )}
-                <span className="max-w-[120px] truncate">{sessionUser?.name || session?.user?.name || "Student Profile"}</span>
-                <ChevronDown className="h-3 w-3 opacity-60 flex-shrink-0" />
-              </MenubarTrigger>
-              <MenubarContent className="w-56">
-                <MenubarItem onClick={() => setStep("profile")} className="cursor-pointer font-bold text-xs">
-                  {sessionUser?.email || session?.user?.email || "Student Account"}
-                </MenubarItem>
-                <MenubarSeparator />
-                <MenubarItem onClick={() => setStep("profile")} className="cursor-pointer gap-2 font-medium">
-                  <User className="text-primary h-4 w-4" /> View Student Profile
-                </MenubarItem>
-                <MenubarSeparator />
-                <MenubarItem onClick={handleSignOut} className="cursor-pointer gap-2 text-destructive font-medium">
-                  <LogOut className="h-4 w-4" /> Sign Out
-                </MenubarItem>
-              </MenubarContent>
-            </MenubarMenu>
+                <User className="w-3.5 h-3.5 mr-1" /> Sign In
+              </Button>
+            )}
           </Menubar>
 
           {/* Real-time Notifications Bell */}
@@ -556,29 +596,52 @@ const currentIndex = useMemo(
                   </SheetHeader>
 
                   {/* User Profile Bar in Mobile Menu */}
-                  <div
-                    onClick={() => { setStep("profile"); setIsMobileMenuOpen(false); }}
-                    className="flex items-center gap-3 p-3 rounded-2xl bg-muted/30 border cursor-pointer hover:bg-muted/50 transition-colors"
-                  >
-                    <div className="w-10 h-10 rounded-xl bg-primary/20 flex items-center justify-center font-bold text-primary overflow-hidden flex-shrink-0">
-                      {sessionUser?.photoUrl ? (
-                        <img src={sessionUser.photoUrl} alt="Avatar" className="w-full h-full object-cover" />
-                      ) : (
+                  {(isRegistered || sessionUser?.email || session?.user?.email) ? (
+                    <div
+                      onClick={() => { setStep("profile"); setIsMobileMenuOpen(false); }}
+                      className="flex items-center gap-3 p-3 rounded-2xl bg-muted/30 border cursor-pointer hover:bg-muted/50 transition-colors"
+                    >
+                      <div className="w-10 h-10 rounded-xl bg-primary/20 flex items-center justify-center font-bold text-primary overflow-hidden flex-shrink-0">
+                        {sessionUser?.photoUrl ? (
+                          <img src={sessionUser.photoUrl} alt="Avatar" className="w-full h-full object-cover" />
+                        ) : (
+                          <User className="w-5 h-5" />
+                        )}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="text-sm font-bold truncate">{sessionUser?.name || session?.user?.name || "Student"}</div>
+                        <div className="text-xs text-muted-foreground truncate">{sessionUser?.email || session?.user?.email || "Personal Account"}</div>
+                      </div>
+                      <ChevronRight className="w-4 h-4 text-muted-foreground" />
+                    </div>
+                  ) : (
+                    <div
+                      onClick={() => { setStep("onboarding"); setIsMobileMenuOpen(false); }}
+                      className="flex items-center gap-3 p-3 rounded-2xl bg-primary/10 border border-primary/20 cursor-pointer hover:bg-primary/20 transition-colors"
+                    >
+                      <div className="w-10 h-10 rounded-xl bg-primary flex items-center justify-center font-bold text-white flex-shrink-0">
                         <User className="w-5 h-5" />
-                      )}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="text-sm font-bold text-primary">Sign In / Register</div>
+                        <div className="text-xs text-muted-foreground truncate">Access your personal account</div>
+                      </div>
+                      <ChevronRight className="w-4 h-4 text-primary" />
                     </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="text-sm font-bold truncate">{sessionUser?.name || session?.user?.name || "Student Profile"}</div>
-                      <div className="text-xs text-muted-foreground truncate">{sessionUser?.email || session?.user?.email || "Click to view profile"}</div>
-                    </div>
-                    <ChevronRight className="w-4 h-4 text-muted-foreground" />
-                  </div>
+                  )}
 
                   {/* AI Services */}
                   <div className="space-y-1">
                     <div className="text-[10px] font-black uppercase tracking-wider text-muted-foreground px-2 mb-2">
                       Academic & AI Systems
                     </div>
+                    <Button
+                      variant={currentStep === "upload" || currentStep === "analyze" || currentStep === "predict" ? "default" : "ghost"}
+                      className="w-full justify-start gap-3 h-11 text-sm font-bold text-amber-500 hover:text-amber-600 rounded-xl"
+                      onClick={() => { setStep("upload"); setIsMobileMenuOpen(false); }}
+                    >
+                      <GraduationCap className="h-4 w-4" /> Exam Pattern Analyzer
+                    </Button>
                     <Button
                       variant={currentStep === "arena" ? "default" : "ghost"}
                       className="w-full justify-start gap-3 h-11 text-sm font-bold text-rose-500 hover:text-rose-600 rounded-xl"
@@ -599,13 +662,6 @@ const currentIndex = useMemo(
                       onClick={() => { setStep("guider"); setIsMobileMenuOpen(false); }}
                     >
                       <Sparkles className="h-4 w-4" /> AI Guider Agent
-                    </Button>
-                    <Button
-                      variant={currentStep === "upload" || currentStep === "analyze" || currentStep === "predict" ? "default" : "ghost"}
-                      className="w-full justify-start gap-3 h-11 text-sm font-bold rounded-xl"
-                      onClick={() => { setStep("upload"); setIsMobileMenuOpen(false); }}
-                    >
-                      <BookOpen className="h-4 w-4 text-primary" /> Exam Pattern Analyzer
                     </Button>
                   </div>
 

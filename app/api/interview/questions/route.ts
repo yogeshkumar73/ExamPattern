@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import dbConnect from '@/lib/mongodb';
 import { listInterviewQuestions } from '@/lib/services/interviewService';
 
-const FALLBACK_INTERVIEW_QUESTIONS = [
+export const FALLBACK_INTERVIEW_QUESTIONS = [
   // --- React ---
   {
     _id: "iq-react-1",
@@ -277,6 +277,254 @@ const FALLBACK_INTERVIEW_QUESTIONS = [
     difficulty: "Hard",
     tags: ["SQL", "Sharding", "Replication", "Databases"],
   },
+
+  // --- Basics & CS Fundamentals ---
+  {
+    _id: "iq-basic-1",
+    prompt: "Explain the difference between a Process and a Thread. How does CPU context switching overhead differ between them, and how is memory shared?",
+    category: "Basics",
+    difficulty: "Easy",
+    tags: ["OS", "Processes", "Threads", "Concurrency"],
+  },
+  {
+    _id: "iq-basic-2",
+    prompt: "What are the four Coffman conditions required for a Deadlock to occur in an operating system? How can you break or prevent at least one condition?",
+    category: "Basics",
+    difficulty: "Medium",
+    tags: ["OS", "Deadlock", "Concurrency"],
+  },
+  {
+    _id: "iq-basic-3",
+    prompt: "Explain Virtual Memory and Paging. What is a Page Fault, how does the OS handle it, and what causes thrashing?",
+    category: "Basics",
+    difficulty: "Medium",
+    tags: ["OS", "Memory", "Paging", "Virtual Memory"],
+  },
+  {
+    _id: "iq-basic-4",
+    prompt: "Describe the TCP 3-Way Handshake (SYN, SYN-ACK, ACK) and 4-Way Teardown. Why is UDP preferred for live video streaming and gaming?",
+    category: "Basics",
+    difficulty: "Easy",
+    tags: ["Networking", "TCP", "UDP", "Handshake"],
+  },
+  {
+    _id: "iq-basic-5",
+    prompt: "What happens step-by-step from the moment a user types 'https://www.example.com' in the browser address bar until the web page is fully rendered?",
+    category: "Basics",
+    difficulty: "Medium",
+    tags: ["Networking", "Browser", "DNS", "HTTP", "Rendering"],
+  },
+  {
+    _id: "iq-basic-6",
+    prompt: "Compare HTTP, HTTPS, and WebSockets. When would you choose Long Polling, Server-Sent Events (SSE), or WebSockets for real-time applications?",
+    category: "Basics",
+    difficulty: "Easy",
+    tags: ["Networking", "WebSockets", "HTTP", "SSE"],
+  },
+  {
+    _id: "iq-basic-7",
+    prompt: "Explain the SOLID principles of Object-Oriented Software Design. Provide practical real-world examples of the Single Responsibility Principle and Open-Closed Principle.",
+    category: "Basics",
+    difficulty: "Easy",
+    tags: ["Architecture", "SOLID", "Clean Code", "OOP"],
+  },
+  {
+    _id: "iq-basic-8",
+    prompt: "What is the difference between Git Merge and Git Rebase? Under what circumstances should you avoid rebasing a shared public branch?",
+    category: "Basics",
+    difficulty: "Easy",
+    tags: ["Git", "Version Control", "Collaboration"],
+  },
+  {
+    _id: "iq-basic-9",
+    prompt: "Explain the CSS Box Model (Content, Padding, Border, Margin) and the difference between 'box-sizing: content-box' and 'box-sizing: border-box'.",
+    category: "Basics",
+    difficulty: "Easy",
+    tags: ["CSS", "Web Dev", "Box Model"],
+  },
+  {
+    _id: "iq-basic-10",
+    prompt: "Compare CSS Flexbox and CSS Grid. When is Flexbox preferred over Grid, and how does 'justify-content' differ from 'align-items'?",
+    category: "Basics",
+    difficulty: "Easy",
+    tags: ["CSS", "Flexbox", "Grid", "Layout"],
+  },
+  {
+    _id: "iq-basic-11",
+    prompt: "Explain the browser critical rendering path: DOM construction, CSSOM, Render Tree, Layout (Reflow), and Paint (Repaint). How do you minimize layout thrashing?",
+    category: "Basics",
+    difficulty: "Medium",
+    tags: ["Browser", "Performance", "DOM", "Reflow"],
+  },
+  {
+    _id: "iq-basic-12",
+    prompt: "Compare Cookies, LocalStorage, SessionStorage, and IndexedDB in terms of storage capacity, persistence, security flags (HttpOnly, Secure, SameSite), and transmission overhead.",
+    category: "Basics",
+    difficulty: "Easy",
+    tags: ["Web Dev", "Security", "Storage", "Cookies"],
+  },
+  {
+    _id: "iq-basic-13",
+    prompt: "What is CORS (Cross-Origin Resource Sharing)? Why does the browser enforce the Same-Origin Policy, and how does the preflight OPTIONS request work?",
+    category: "Basics",
+    difficulty: "Medium",
+    tags: ["Security", "CORS", "Web Dev", "HTTP"],
+  },
+
+  // --- JavaScript Fundamentals ---
+  {
+    _id: "iq-js-1",
+    prompt: "Explain Hoisting and the Temporal Dead Zone (TDZ) in JavaScript. How do 'var', 'let', and 'const' differ in scope, initialization, and re-declaration?",
+    category: "JavaScript",
+    difficulty: "Easy",
+    tags: ["JavaScript", "ES6", "Scope", "Hoisting"],
+  },
+  {
+    _id: "iq-js-2",
+    prompt: "What is a Closure in JavaScript? Provide a real-world coding scenario where closures are useful (such as data privacy or function factory) and explain how they can lead to memory leaks.",
+    category: "JavaScript",
+    difficulty: "Easy",
+    tags: ["JavaScript", "Closures", "Functions", "Scope"],
+  },
+  {
+    _id: "iq-js-3",
+    prompt: "Explain Prototypal Inheritance in JavaScript. How does the prototype chain lookup work, and what is the difference between '__proto__' and 'prototype'?",
+    category: "JavaScript",
+    difficulty: "Medium",
+    tags: ["JavaScript", "Prototypes", "Inheritance", "OOP"],
+  },
+  {
+    _id: "iq-js-4",
+    prompt: "Walk through the JavaScript Event Loop. Explain the Call Stack, Web APIs, Microtask Queue (Promises, queueMicrotask), and Macrotask Queue (setTimeout, setInterval).",
+    category: "JavaScript",
+    difficulty: "Medium",
+    tags: ["JavaScript", "Event Loop", "Async", "Microtasks"],
+  },
+  {
+    _id: "iq-js-5",
+    prompt: "How does the 'this' keyword work in JavaScript across standard function invocations, method calls, constructor calls, 'call'/'apply'/'bind', and ES6 arrow functions?",
+    category: "JavaScript",
+    difficulty: "Medium",
+    tags: ["JavaScript", "this", "Functions", "Binding"],
+  },
+  {
+    _id: "iq-js-6",
+    prompt: "Compare Callbacks, Promises, and Async/Await. How do you handle multiple parallel asynchronous requests using Promise.all vs Promise.allSettled vs Promise.race?",
+    category: "JavaScript",
+    difficulty: "Easy",
+    tags: ["JavaScript", "Async", "Promises", "Error Handling"],
+  },
+  {
+    _id: "iq-js-7",
+    prompt: "What is the difference between Debouncing and Throttling? Implement a basic debounce function in JavaScript and state when each should be used in production.",
+    category: "JavaScript",
+    difficulty: "Medium",
+    tags: ["JavaScript", "Performance", "Optimization", "Debounce"],
+  },
+  {
+    _id: "iq-js-8",
+    prompt: "What is the difference between Shallow Copy and Deep Copy in JavaScript? How do Object.assign, the spread operator (...), structuredClone(), and JSON serialization differ?",
+    category: "JavaScript",
+    difficulty: "Easy",
+    tags: ["JavaScript", "Objects", "Memory", "Cloning"],
+  },
+
+  // --- React Core Basics ---
+  {
+    _id: "iq-react-basic-1",
+    prompt: "What is the difference between State and Props in React? Why is state immutable and how does setState trigger the reconciliation and render cycle?",
+    category: "React",
+    difficulty: "Easy",
+    tags: ["React", "State", "Props", "Basics"],
+  },
+  {
+    _id: "iq-react-basic-2",
+    prompt: "Why must keys be provided when rendering lists in React? What bugs occur when using array index as a key during item deletion or re-ordering?",
+    category: "React",
+    difficulty: "Easy",
+    tags: ["React", "Keys", "Rendering", "Reconciliation"],
+  },
+  {
+    _id: "iq-react-basic-3",
+    prompt: "What are Controlled vs Uncontrolled Components in React forms, and when would you use useRef over useState?",
+    category: "React",
+    difficulty: "Easy",
+    tags: ["React", "Forms", "useRef", "Controlled"],
+  },
+  {
+    _id: "iq-react-basic-4",
+    prompt: "Explain the concept of 'Lifting State Up' and 'Prop Drilling' in React. What built-in mechanism does React provide to avoid prop drilling across deep component trees?",
+    category: "React",
+    difficulty: "Easy",
+    tags: ["React", "Architecture", "Context", "State"],
+  },
+
+  // --- DSA Basics ---
+  {
+    _id: "iq-dsa-basic-1",
+    prompt: "Compare Arrays and Singly Linked Lists in terms of memory layout, cache locality, access time, and insertion/deletion complexity.",
+    category: "DSA",
+    difficulty: "Easy",
+    tags: ["DSA", "Arrays", "Linked List", "Basics"],
+  },
+  {
+    _id: "iq-dsa-basic-2",
+    prompt: "What are Stacks and Queues? Explain the LIFO vs FIFO principles and give two real-world application examples for each.",
+    category: "DSA",
+    difficulty: "Easy",
+    tags: ["DSA", "Stack", "Queue", "LIFO", "FIFO"],
+  },
+  {
+    _id: "iq-dsa-basic-3",
+    prompt: "Explain Big-O notation, Big-Omega, and Big-Theta. What is the difference between Time Complexity and Space Complexity?",
+    category: "DSA",
+    difficulty: "Easy",
+    tags: ["DSA", "Big-O", "Complexity", "Algorithms"],
+  },
+  {
+    _id: "iq-dsa-basic-4",
+    prompt: "Explain how a Hash Table handles collisions using Separate Chaining vs Open Addressing (Linear Probing, Quadratic Probing).",
+    category: "DSA",
+    difficulty: "Medium",
+    tags: ["DSA", "Hash Table", "Collisions"],
+  },
+
+  // --- SQL Basics ---
+  {
+    _id: "iq-sql-basic-1",
+    prompt: "What is the difference between a Primary Key, Unique Key, and Foreign Key in relational databases? How do CASCADE DELETE rules work?",
+    category: "SQL",
+    difficulty: "Easy",
+    tags: ["SQL", "Keys", "Relational", "Basics"],
+  },
+  {
+    _id: "iq-sql-basic-2",
+    prompt: "Explain Database Normalization: 1NF (atomic values), 2NF (remove partial dependencies), and 3NF (remove transitive dependencies).",
+    category: "SQL",
+    difficulty: "Easy",
+    tags: ["SQL", "Normalization", "Database Design"],
+  },
+  {
+    _id: "iq-sql-basic-3",
+    prompt: "Explain the difference between INNER JOIN, LEFT OUTER JOIN, RIGHT OUTER JOIN, and FULL OUTER JOIN with visual venn diagram logic.",
+    category: "SQL",
+    difficulty: "Easy",
+    tags: ["SQL", "Joins", "Queries", "Basics"],
+  },
+  {
+    _id: "iq-sql-basic-4",
+    prompt: "What is the difference between WHERE and HAVING in SQL queries? When must HAVING be used instead of WHERE?",
+    category: "SQL",
+    difficulty: "Easy",
+    tags: ["SQL", "Aggregation", "GROUP BY", "HAVING"],
+  },
+  {
+    _id: "iq-sql-basic-5",
+    prompt: "What is SQL Injection? Provide an example of how an unescaped input string can bypass authentication, and how parameterized queries prevent it.",
+    category: "SQL",
+    difficulty: "Easy",
+    tags: ["SQL", "Security", "Injection", "Best Practices"],
+  },
 ];
 
 export async function GET(req: Request) {
@@ -287,22 +535,33 @@ export async function GET(req: Request) {
     const difficulty = url.searchParams.get('difficulty') || undefined;
     const questions = await listInterviewQuestions({ category, difficulty });
     
-    let result: any[] = questions.length > 0 ? questions : FALLBACK_INTERVIEW_QUESTIONS;
+    // Combine questions from DB with fallback catalog so all categories and basics are fully populated
+    const seenPrompts = new Set(questions.map((q: any) => q.prompt?.trim().toLowerCase()));
+    const allCombined = [...questions];
 
-    // If using fallback questions, apply category and difficulty filters accurately
-    if (questions.length === 0) {
-      if (category && category !== 'All') {
-        const catNorm = category.toLowerCase().replace(/[^a-z0-9]/g, '');
-        const matched = result.filter(q => {
-          const qCatNorm = q.category.toLowerCase().replace(/[^a-z0-9]/g, '');
-          return qCatNorm.includes(catNorm) || catNorm.includes(qCatNorm);
-        });
-        if (matched.length > 0) result = matched;
+    for (const fb of FALLBACK_INTERVIEW_QUESTIONS) {
+      if (!seenPrompts.has(fb.prompt.trim().toLowerCase())) {
+        allCombined.push(fb);
+        seenPrompts.add(fb.prompt.trim().toLowerCase());
       }
-      if (difficulty && difficulty !== 'All') {
-        const diffMatched = result.filter(q => q.difficulty.toLowerCase() === difficulty.toLowerCase());
-        if (diffMatched.length > 0) result = diffMatched;
-      }
+    }
+
+    let result: any[] = allCombined;
+
+    if (category && category !== 'All') {
+      const catNorm = category.toLowerCase().replace(/[^a-z0-9]/g, '');
+      result = result.filter(q => {
+        const qCatNorm = (q.category || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+        if (qCatNorm === catNorm) return true;
+        if ((catNorm === 'java' && qCatNorm.startsWith('javascript')) || (catNorm.startsWith('javascript') && qCatNorm === 'java')) return false;
+        if ((catNorm === 'js' && qCatNorm === 'javascript') || (catNorm === 'javascript' && qCatNorm === 'js')) return true;
+        if ((catNorm === 'next' || catNorm === 'nextjs') && (qCatNorm === 'next' || qCatNorm === 'nextjs')) return true;
+        return qCatNorm.includes(catNorm) || catNorm.includes(qCatNorm);
+      });
+    }
+
+    if (difficulty && difficulty !== 'All') {
+      result = result.filter(q => (q.difficulty || '').toLowerCase() === difficulty.toLowerCase());
     }
 
     return NextResponse.json({ success: true, questions: result }, { status: 200 });

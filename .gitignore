@@ -15,9 +15,10 @@
 .coverage
 htmlcov/
 
-# next.js
+# next.js & turbo
 /.next/
 /out/
+/.turbo/
 
 # production & builds
 /build
@@ -54,3 +55,4 @@ Thumbs.db
 # local scratch / temporary files
 *.tmp
 tmp/
+scratch/

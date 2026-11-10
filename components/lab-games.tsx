@@ -29,7 +29,12 @@ interface GeneratedQuestion {
 const mockBattleQuestions: GeneratedQuestion[] = [
   { id: "b1", title: "Two Sum", difficulty: "Easy", description: "Given an array of integers nums and an integer target, return indices of the two numbers such that they add up to target.", boilerplate: "function twoSum(nums, target) {\n  \n}", category: "Array", tags: ["Array", "Hash Table"] },
   { id: "b2", title: "Reverse String", difficulty: "Easy", description: "Write a function that reverses a string. The input string is given as an array of characters s.", boilerplate: "function reverseString(s) {\n  \n}", category: "String", tags: ["String", "Two Pointers"] },
-  { id: "b3", title: "Max Subarray", difficulty: "Medium", description: "Given an integer array nums, find the contiguous subarray (containing at least one number) which has the largest sum and return its sum.", boilerplate: "function maxSubArray(nums) {\n  \n}", category: "Array", tags: ["Array", "Dynamic Programming"] }
+  { id: "b3", title: "Valid Palindrome", difficulty: "Easy", description: "Given a string s, return true if it is a palindrome, or false otherwise.", boilerplate: "function isPalindrome(s) {\n  \n}", category: "String", tags: ["String", "Two Pointers"] },
+  { id: "b4", title: "Max Subarray", difficulty: "Medium", description: "Given an integer array nums, find the contiguous subarray (containing at least one number) which has the largest sum and return its sum.", boilerplate: "function maxSubArray(nums) {\n  \n}", category: "Array", tags: ["Array", "Dynamic Programming"] },
+  { id: "b5", title: "Longest Substring Without Repeating", difficulty: "Medium", description: "Given a string s, find the length of the longest substring without duplicate characters.", boilerplate: "function lengthOfLongestSubstring(s) {\n  \n}", category: "String", tags: ["Sliding Window", "Hash Table"] },
+  { id: "b6", title: "Coin Change", difficulty: "Medium", description: "Return the fewest number of coins needed to make up a given target amount.", boilerplate: "function coinChange(coins, amount) {\n  \n}", category: "Dynamic Programming", tags: ["DP", "BFS"] },
+  { id: "b7", title: "Trapping Rain Water", difficulty: "Hard", description: "Given n non-negative integers representing an elevation map, compute how much water it can trap after raining.", boilerplate: "function trap(height) {\n  \n}", category: "Algorithm", tags: ["Two Pointers", "Stack"] },
+  { id: "b8", title: "Median of Two Sorted Arrays", difficulty: "Hard", description: "Given two sorted arrays, return their median with O(log(m+n)) runtime complexity.", boilerplate: "function findMedianSortedArrays(nums1, nums2) {\n  \n}", category: "Algorithm", tags: ["Binary Search", "Divide & Conquer"] }
 ]
 
 export function LabGames({ points, onUpdatePoints, userId, userEmail }: LabGamesProps) {
@@ -41,6 +46,14 @@ export function LabGames({ points, onUpdatePoints, userId, userEmail }: LabGames
   
   const [playerProgress, setPlayerProgress] = useState(0)
   const [opponentProgress, setOpponentProgress] = useState(0)
+  const [opponent, setOpponent] = useState<{
+    _id?: string;
+    name: string;
+    photoUrl?: string;
+    arenaRank?: string;
+    level?: number;
+    currentStreak?: number;
+  } | null>(null)
   const [gameResult, setGameResult] = useState<"win" | "loss" | "draw" | null>(null)
   const [isExecuting, setIsExecuting] = useState(false)
   const [leaderboard, setLeaderboard] = useState<any[]>([])
@@ -149,25 +162,72 @@ export function LabGames({ points, onUpdatePoints, userId, userEmail }: LabGames
   const startMatchmaking = useCallback(async (selectedMode: "pvp" | "pve") => {
     setMode(selectedMode)
     setGameState("matching")
+    setOpponent(null)
     
-    // Determine difficulty based on player's current rank
+    // Determine difficulty and tier based on player's current points
     let difficulty: "Easy" | "Medium" | "Hard" = "Easy"
-    if (points >= 500) difficulty = "Hard"
-    else if (points >= 200) difficulty = "Medium"
+    let currentTier = "Bronze"
+    if (points >= 1000) { difficulty = "Hard"; currentTier = "Platinum"; }
+    else if (points >= 500) { difficulty = "Hard"; currentTier = "Gold"; }
+    else if (points >= 200) { difficulty = "Medium"; currentTier = "Silver"; }
 
-    // Fetch questions while matchmaking
-    await fetchDynamicQuestions(difficulty)
+    // Start question fetch
+    const qPromise = fetchDynamicQuestions(difficulty)
 
-    // Simulate matchmaking delay
+    if (selectedMode === "pvp") {
+      try {
+        const matchRes = await fetch("/api/arena/battle", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            action: "matchmake",
+            userId: userId || "guest",
+            rank: currentTier,
+          }),
+        })
+        const matchData = await matchRes.json()
+        if (matchData.success && matchData.opponent) {
+          setOpponent(matchData.opponent)
+        } else {
+          setOpponent({
+            name: "Cyber Contender",
+            arenaRank: currentTier,
+            level: 3,
+            currentStreak: 1,
+            photoUrl: "https://ui-avatars.com/api/?name=Cyber+Contender&background=6366f1&color=fff",
+          })
+        }
+      } catch (e) {
+        setOpponent({
+          name: "Apex Striker",
+          arenaRank: currentTier,
+          level: 4,
+          currentStreak: 2,
+          photoUrl: "https://ui-avatars.com/api/?name=Apex+Striker&background=6366f1&color=fff",
+        })
+      }
+    } else {
+      setOpponent({
+        name: "Aura Neural AI (Boss)",
+        arenaRank: "Grandmaster",
+        level: 10,
+        currentStreak: 8,
+        photoUrl: "",
+      })
+    }
+
+    await qPromise
+
+    // Brief delay to showcase opponent pairing
     setTimeout(() => {
       setPlayerProgress(0)
       setOpponentProgress(0)
       setTimeLeft(300)
       setGameState("playing")
-    }, 2500)
-  }, [points, fetchDynamicQuestions])
+    }, 2000)
+  }, [points, userId, fetchDynamicQuestions])
 
-  const endBattle = (result: "win" | "loss" | "draw") => {
+  const endBattle = async (result: "win" | "loss" | "draw") => {
     setGameState("finished")
     setGameResult(result)
     if (timerRef.current) clearTimeout(timerRef.current)
@@ -179,7 +239,35 @@ export function LabGames({ points, onUpdatePoints, userId, userEmail }: LabGames
     
     if (pointDelta !== 0 && userId) {
       onUpdatePoints(pointDelta)
-      // Sync with server if needed
+    }
+
+    // Persist battle result and XP to backend database
+    try {
+      await fetch("/api/arena/battle", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          userId: userId || "guest",
+          result,
+          mode: "coding",
+          difficulty: question.difficulty.toLowerCase(),
+          score: result === "win" ? 100 : 30,
+          accuracy: result === "win" ? 95 : 40,
+          xpGained: result === "win" ? 150 : 25,
+          pointsGained: pointDelta,
+          opponentName: opponent?.name || (mode === "pve" ? "Aura AI Boss" : "Rival"),
+        }),
+      })
+
+      // Refresh leaderboard live
+      const uRes = await fetch("/api/users")
+      const uData = await uRes.json()
+      if (uData.users) {
+        const sorted = [...uData.users].sort((a: any, b: any) => (b.points || 0) - (a.points || 0)).slice(0, 5)
+        setLeaderboard(sorted)
+      }
+    } catch (err) {
+      console.warn("Failed to record battle to server:", err)
     }
   }
 
@@ -277,15 +365,44 @@ export function LabGames({ points, onUpdatePoints, userId, userEmail }: LabGames
       )}
 
       {gameState === "matching" && (
-        <Card className="border-2 border-indigo-500/20 shadow-2xl glass-morphism max-w-xl mx-auto py-20 text-center animate-pulse">
+        <Card className="border-2 border-indigo-500/20 shadow-2xl glass-morphism max-w-xl mx-auto py-16 text-center animate-in fade-in zoom-in duration-500">
           <CardContent className="space-y-6 flex flex-col items-center">
-            <div className="w-24 h-24 rounded-full border-4 border-indigo-500 border-t-transparent animate-spin" />
-            <h2 className="text-3xl font-black text-indigo-500 tracking-widest">MATCHMAKING...</h2>
-            <p className="text-muted-foreground font-medium uppercase">Finding a worthy opponent in the {mode === "pve" ? "AI Matrix" : "Global Queue"}...</p>
+            <div className="w-20 h-20 rounded-full border-4 border-indigo-500 border-t-transparent animate-spin" />
+            <h2 className="text-3xl font-black text-indigo-500 tracking-widest">
+              {opponent ? "MATCH LOCKED!" : "SEARCHING ARENA..."}
+            </h2>
+            
+            {opponent ? (
+              <div className="flex items-center gap-4 bg-indigo-500/10 border border-indigo-500/30 p-4 rounded-2xl w-full justify-center animate-in fade-in duration-300">
+                <div className="w-12 h-12 rounded-full bg-gradient-to-tr from-indigo-500 to-rose-500 flex items-center justify-center font-black text-white text-lg overflow-hidden">
+                  {opponent.photoUrl ? (
+                    <img src={opponent.photoUrl} alt={opponent.name} className="w-full h-full object-cover" />
+                  ) : (
+                    opponent.name.charAt(0)
+                  )}
+                </div>
+                <div className="text-left">
+                  <p className="font-black text-base text-foreground flex items-center gap-2">
+                    {opponent.name}
+                    <Badge variant="outline" className="text-[10px] border-indigo-400 text-indigo-400">
+                      {opponent.arenaRank || "Bronze"}
+                    </Badge>
+                  </p>
+                  <p className="text-xs text-muted-foreground font-bold">
+                    Level {opponent.level || 1} • {opponent.currentStreak || 0} Win Streak
+                  </p>
+                </div>
+              </div>
+            ) : (
+              <p className="text-muted-foreground font-medium uppercase text-sm">
+                Finding a worthy opponent in the {mode === "pve" ? "AI Neural Matrix" : "Global Queue"}...
+              </p>
+            )}
+
             {isLoadingQuestions && (
               <div className="pt-4 border-t border-indigo-500/20 w-full">
                 <p className="text-sm text-indigo-500 flex items-center justify-center gap-2">
-                  <Loader2 className="w-4 h-4 animate-spin" /> Generating AI questions...
+                  <Loader2 className="w-4 h-4 animate-spin" /> Preparing algorithmic challenge...
                 </p>
               </div>
             )}
@@ -336,7 +453,9 @@ export function LabGames({ points, onUpdatePoints, userId, userEmail }: LabGames
                 
                 <div className="space-y-2">
                   <div className="flex justify-between items-center text-sm font-black uppercase text-rose-500">
-                    <span>{mode === "pve" ? "AI Overlord" : "Opponent"}</span>
+                    <span>
+                      {opponent ? `${opponent.name} (${opponent.arenaRank || (mode === 'pve' ? 'Boss' : 'Rival')})` : (mode === "pve" ? "Aura AI Boss" : "Opponent")}
+                    </span>
                     <span>{opponentProgress}%</span>
                   </div>
                   <Progress value={opponentProgress} className="h-4 bg-rose-500/20" />

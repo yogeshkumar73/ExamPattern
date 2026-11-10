@@ -7,7 +7,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Badge } from "@/components/ui/badge"
 import { Textarea } from "@/components/ui/textarea"
-import { ShieldCheck, User, Users, Lock, Unlock, Phone, CheckCircle2, Download, Upload, FileText, Globe, Scale, ArrowRight, ShieldAlert, Brain, MessageSquare, Send, Sparkles, Activity, Zap, Trophy, Target, CheckSquare, XSquare, Star, MessageCircle, ExternalLink, Heart, RefreshCw, Gauge, Play, Terminal, Database, Code, Check, Loader2, Clock, Cpu, Sliders, X, Eye, Trash2, AlertCircle, FileCheck, Search } from "lucide-react"
+import { ShieldCheck, User, Users, Lock, Unlock, Phone, CheckCircle2, Download, Upload, FileText, Globe, Scale, ArrowRight, ShieldAlert, Brain, MessageSquare, Send, Mail, Sparkles, Activity, Zap, Trophy, Target, CheckSquare, XSquare, Star, MessageCircle, ExternalLink, Heart, RefreshCw, Gauge, Play, Terminal, Database, Code, Check, Loader2, Clock, Cpu, Sliders, X, Eye, Trash2, AlertCircle, FileCheck, Search } from "lucide-react"
 import { useNav } from "@/hooks/use-nav"
 import { Switch } from "@/components/ui/switch"
 
@@ -62,9 +62,47 @@ export function UserOnboarding() {
       if (res.status === 409) {
         alert("Account already exists! Redirecting to Login to enter your credentials...")
         setMode("login")
-      } else if (res.ok) {
-        alert("Registration Successful! Your account and Battle Arena services are approved. Please login.")
-        setMode("login")
+      } else if (res.ok && (data.user || data.userId)) {
+        const userObj = data.user || {
+          id: data.userId,
+          name: formData.name,
+          email: formData.email,
+          phone: formData.phone,
+          role: "student",
+          status: "Active",
+          isLabApproved: true,
+          arenaApprovalStatus: "approved",
+          profileComplete: false,
+          points: 0,
+          rank: "Bronze",
+        }
+        const sessionUser = {
+          id: userObj.id || userObj._id || data.userId,
+          name: userObj.name || formData.name,
+          email: userObj.email || formData.email,
+          phone: userObj.phone || formData.phone,
+          photoUrl: userObj.photoUrl || "",
+          branch: userObj.branch || "",
+          bio: userObj.bio || "",
+          stream: userObj.stream || "",
+          course: userObj.course || "",
+          department: userObj.department || "",
+          grade: userObj.grade || "",
+          isLabApproved: userObj.isLabApproved ?? true,
+          status: userObj.status || "Active",
+          role: userObj.role || "student",
+          profileComplete: false,
+          arenaApprovalStatus: userObj.arenaApprovalStatus || "approved",
+          points: 0,
+          rank: "Bronze",
+        }
+        localStorage.setItem("aura_session", JSON.stringify({ user: sessionUser, role: sessionUser.role, isAdmin: false }))
+        setSessionUser(sessionUser)
+        setProfileComplete(false)
+        setAdmin(false)
+        setRegistered(true)
+        // Redirect user directly into their personal account
+        setStep("profile")
       } else {
         alert(data.message || "Registration failed. Please try again.")
       }
@@ -441,6 +479,16 @@ export function UserOnboarding() {
           )}
         </CardContent>
       </Card>
+
+      <div className="text-center mt-4">
+        <button
+          type="button"
+          onClick={() => setStep("upload")}
+          className="text-xs font-semibold text-muted-foreground hover:text-foreground transition-colors hover:underline"
+        >
+          ← Return to Home Page
+        </button>
+      </div>
     </div>
   )
 }
@@ -489,6 +537,8 @@ export function AdminPanel() {
         const formatted = data.feedbacks.map((f: any) => ({
           id: f._id || f.id,
           user: `${f.userName || "Student"} (${f.userEmail || ""})`,
+          userName: f.userName || "Student",
+          userEmail: f.userEmail || "",
           message: f.message,
           category: f.category || "general",
           rating: f.rating,
@@ -645,6 +695,22 @@ export function AdminPanel() {
       }
       return f
     }))
+  }
+
+  const handleReplyViaGmail = (f: any) => {
+    const email = f.userEmail || (f.user && f.user.match(/\((.*?)\)/) ? f.user.match(/\((.*?)\)/)[1] : "") || "helpsupport9452@gmail.com"
+    const subject = encodeURIComponent(`Aura Support Team - Reply to Feedback from ${f.userName || 'Student'}`)
+    const bodyContent = f.replyInput && f.replyInput.trim() 
+      ? f.replyInput.trim() 
+      : `Dear ${f.userName || 'Student'},\n\nThank you for sharing your feedback with the Aura Study AI team:\n"${f.message}"\n\nWe have reviewed your request and appreciate your contribution to improving the platform.\n\nWarm regards,\nAura Support Team\nhelpsupport9452@gmail.com`
+    
+    const body = encodeURIComponent(bodyContent)
+    const gmailUrl = `https://mail.google.com/mail/?view=cm&fs=1&to=${encodeURIComponent(email)}&su=${subject}&body=${body}`
+    
+    const opened = window.open(gmailUrl, "_blank")
+    if (!opened) {
+      window.location.href = `mailto:${email}?subject=${subject}&body=${body}`
+    }
   }
 
   const handleAiSuggestReply = async (feedbackId: string, userMessage: string) => {
@@ -1344,28 +1410,39 @@ export function AdminPanel() {
                       </div>
                     )}
 
-                    <div className="flex gap-2">
+                    <div className="flex gap-2 flex-wrap sm:flex-nowrap items-center">
                       <Input 
                         placeholder={f.aiLoading ? "AI is generating a draft..." : "Write a professional feedback reply..."} 
                         value={f.replyInput}
                         onChange={(e) => setFeedbacks(feedbacks.map(item => item.id === f.id ? { ...item, replyInput: e.target.value } : item))}
                         disabled={f.aiLoading}
-                        className="flex-1 h-10 border-2"
+                        className="flex-1 min-w-[200px] h-10 border-2"
                       />
                       <Button 
+                        type="button"
                         onClick={() => handleAiSuggestReply(f.id, f.message)} 
                         disabled={f.aiLoading}
                         variant="secondary" 
-                        className="h-10 text-xs font-black gap-1"
+                        className="h-10 text-xs font-black gap-1 shrink-0"
                       >
                         <Sparkles className="w-3.5 h-3.5 text-indigo-500 animate-spin" /> AI Assist
                       </Button>
                       <Button 
+                        type="button"
                         onClick={() => handleSendReply(f.id)} 
                         disabled={!f.replyInput.trim()} 
-                        className="h-10 text-xs font-black bg-primary text-white"
+                        className="h-10 text-xs font-black px-4 bg-emerald-600 hover:bg-emerald-700 text-white disabled:opacity-40 disabled:bg-muted disabled:text-muted-foreground transition-all shadow-sm shrink-0 flex items-center gap-1.5"
                       >
-                        Send Reply
+                        <Send className="w-3.5 h-3.5" /> Send Reply
+                      </Button>
+                      <Button
+                        type="button"
+                        onClick={() => handleReplyViaGmail(f)}
+                        variant="outline"
+                        className="h-10 text-xs font-black px-3 border-rose-500/30 text-rose-400 hover:bg-rose-500/10 hover:text-rose-300 transition-all shrink-0 flex items-center gap-1.5"
+                        title="Reply via platform Gmail (helpsupport9452@gmail.com)"
+                      >
+                        <Mail className="w-3.5 h-3.5 text-rose-400" /> Platform Gmail
                       </Button>
                     </div>
                   </Card>
@@ -2823,33 +2900,148 @@ VERIFIED BY AURA STUDY AI • REPOSITORY ARCHIVE # ${paper._id || '2026-REF'}
 
 // --- POLICY SECTION COMPONENT ---
 export function PolicySection() {
+  const { setStep } = useNav()
+
   return (
-    <div className="container mx-auto py-12 max-w-4xl space-y-12 animate-in zoom-in duration-500">
-      <div className="flex items-center gap-4 border-b-4 border-primary pb-6">
-        <Scale className="w-16 h-16 text-primary" />
-        <div>
-          <h1 className="text-5xl font-black tracking-tighter">USER POLICY & LAWS</h1>
-          <p className="font-bold text-muted-foreground uppercase tracking-widest">Master Terms of Service v2026.04</p>
+    <div className="container mx-auto py-12 max-w-4xl space-y-10 animate-in zoom-in duration-500">
+      {/* Header */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b-4 border-primary pb-6">
+        <div className="flex items-center gap-4">
+          <div className="w-16 h-16 rounded-2xl bg-primary/10 border border-primary/20 flex items-center justify-center flex-shrink-0">
+            <Scale className="w-10 h-10 text-primary" />
+          </div>
+          <div>
+            <h1 className="text-3xl sm:text-5xl font-black tracking-tighter">USER POLICY & LAWS</h1>
+            <p className="font-bold text-muted-foreground uppercase tracking-widest text-xs sm:text-sm">
+              Master Terms of Service & Compliance v2026.05
+            </p>
+          </div>
+        </div>
+        <Badge variant="outline" className="self-start sm:self-center bg-primary/10 border-primary/30 text-primary text-xs font-bold py-1 px-3">
+          Platform Governance
+        </Badge>
+      </div>
+
+      {/* Critical Security Warning Banner: Suspicious Activity & Account Deletion */}
+      <div className="p-6 sm:p-8 rounded-3xl border-2 border-red-500/40 bg-gradient-to-r from-red-950/40 via-slate-950 to-red-950/20 shadow-2xl relative overflow-hidden">
+        <div className="absolute top-0 right-0 p-6 opacity-10 pointer-events-none">
+          <ShieldAlert className="w-32 h-32 text-red-500" />
+        </div>
+        <div className="flex flex-col sm:flex-row gap-5 items-start relative z-10">
+          <div className="w-14 h-14 rounded-2xl bg-red-500/20 border border-red-500/30 flex items-center justify-center text-red-400 flex-shrink-0">
+            <ShieldAlert className="w-7 h-7" />
+          </div>
+          <div className="space-y-2 flex-1">
+            <div className="flex items-center gap-2 flex-wrap">
+              <Badge className="bg-red-500 text-white font-black text-[10px] tracking-wider uppercase">
+                Strict Security Enforcement
+              </Badge>
+              <h2 className="text-xl sm:text-2xl font-black text-red-400 uppercase tracking-tight">
+                Suspicious Activity Warning: Immediate Suspension & Deletion
+              </h2>
+            </div>
+            <p className="text-sm text-red-100/90 leading-relaxed font-medium">
+              Aura Study AI maintains active behavioral monitoring and telemetry to preserve academic fairness. 
+              <strong> Any suspicious activity</strong>—including but not limited to automated bot attacks, unauthorized API scraping, 
+              reverse engineering, cheating in the Battle Arena, credential stuffing, offensive community conduct, or deliberate 
+              system exploitation—will result in <strong>immediate account suspension, forfeiture of all ranking/XP, and permanent account deletion </strong> 
+              without prior notice. Severe violations may be referred for academic institution and legal disciplinary review.
+            </p>
+          </div>
         </div>
       </div>
 
-      <div className="grid grid-cols-1 gap-8">
+      {/* Core Policy Terms Cards Grid */}
+      <div className="grid grid-cols-1 gap-6">
         {[
-          { title: "Intellectual Integrity", icon: <ShieldCheck />, text: "Users are strictly prohibited from using Aura AI for plagiarism. Predictions generated are for study reference only. We uphold the highest standards of academic honesty." },
-          { title: "Data Privacy", icon: <Unlock />, text: "Your uploaded papers are processed in a zero-cache environment. We do not store sensitive user data permanently on our servers beyond the active session unless uploaded to the Community Repository." },
-          { title: "Community Conduct", icon: <Users />, text: "When contributing to the Paper Repository, ensure all content is authentic. Misleading or offensive uploads will result in immediate account deactivation by the Admin." },
-          { title: "Legal Liability", icon: <ShieldAlert />, text: "Aura Study AI is not liable for exam results. Our analytics are predictive and intended to supplement individual effort, not replace it." }
+          { 
+            title: "Intellectual Integrity", 
+            icon: <ShieldCheck className="w-7 h-7" />, 
+            text: "Users are strictly prohibited from using Aura AI for academic plagiarism or dishonest submission. Predictions, analytical summaries, and practice questions generated are intended strictly for study reference and exam preparation. We uphold the highest standards of academic honesty.",
+            color: "text-blue-400",
+            bg: "bg-blue-500/10 border-blue-500/30 group-hover:bg-blue-500/20 group-hover:border-blue-400/50"
+          },
+          { 
+            title: "Data Privacy & Zero-Cache Processing", 
+            icon: <Unlock className="w-7 h-7" />, 
+            text: "Your uploaded syllabus documents and papers are processed in a zero-cache environment. We do not permanently store sensitive user documents or papers on our servers beyond your active analysis session, unless voluntarily contributed to the Community Repository.",
+            color: "text-emerald-400",
+            bg: "bg-emerald-500/10 border-emerald-500/30 group-hover:bg-emerald-500/20 group-hover:border-emerald-400/50"
+          },
+          { 
+            title: "Community Repository Conduct", 
+            icon: <Users className="w-7 h-7" />, 
+            text: "When contributing to the Paper Repository, ensure all content is authentic, correctly dated, and properly tagged. Uploading misleading, counterfeit, abusive, or copyright-infringing materials will result in immediate content removal and student account deactivation.",
+            color: "text-purple-400",
+            bg: "bg-purple-500/10 border-purple-500/30 group-hover:bg-purple-500/20 group-hover:border-purple-400/50"
+          },
+          { 
+            title: "Legal Liability & Predictive Scope", 
+            icon: <Scale className="w-7 h-7" />, 
+            text: "Aura Study AI provides statistical topic likelihoods and simulated problem sets. We are not liable for examination outcomes or grading variations. Our machine learning analytics are intended to supplement curriculum study and teacher guidance, not replace them.",
+            color: "text-amber-400",
+            bg: "bg-amber-500/10 border-amber-500/30 group-hover:bg-amber-500/20 group-hover:border-amber-400/50"
+          }
         ].map((item, i) => (
-          <div key={i} className="flex gap-6 p-8 rounded-3xl border-2 bg-card hover:shadow-2xl transition-all group">
-            <div className="w-16 h-16 rounded-2xl bg-primary/10 flex items-center justify-center text-primary flex-shrink-0 group-hover:bg-primary group-hover:text-white transition-colors">
+          <div 
+            key={i} 
+            className="flex flex-col sm:flex-row gap-5 p-6 sm:p-7 rounded-3xl border border-white/10 hover:border-white/20 bg-slate-900/60 hover:bg-slate-900/90 backdrop-blur-xl transition-all duration-300 group shadow-lg"
+          >
+            <div className={`w-14 h-14 rounded-2xl ${item.bg} ${item.color} border flex items-center justify-center flex-shrink-0 group-hover:scale-105 transition-all shadow-inner`}>
               {item.icon}
             </div>
-            <div className="space-y-2">
-              <h3 className="text-2xl font-black uppercase tracking-tight">{item.title}</h3>
-              <p className="text-muted-foreground leading-relaxed font-medium">{item.text}</p>
+            <div className="space-y-1.5 flex-1">
+              <h3 className="text-xl font-black uppercase tracking-tight text-white group-hover:text-primary transition-colors">{item.title}</h3>
+              <p className="text-white/70 leading-relaxed text-sm font-medium">{item.text}</p>
             </div>
           </div>
         ))}
+      </div>
+
+      {/* AI Accuracy, Misinformation & Continuous Feedback Mechanism */}
+      <div className="p-6 sm:p-8 rounded-3xl border-2 border-indigo-500/40 bg-gradient-to-r from-indigo-950/40 via-slate-950 to-purple-950/30 shadow-2xl space-y-5">
+        <div className="flex flex-col sm:flex-row gap-5 items-start">
+          <div className="w-14 h-14 rounded-2xl bg-indigo-500/20 border border-indigo-500/30 flex items-center justify-center text-indigo-400 flex-shrink-0">
+            <Brain className="w-7 h-7" />
+          </div>
+          <div className="space-y-2 flex-1">
+            <div className="flex items-center gap-2 flex-wrap">
+              <Badge className="bg-indigo-600 text-white font-black text-[10px] tracking-wider uppercase">
+                AI Service Transparency
+              </Badge>
+              <h2 className="text-xl sm:text-2xl font-black text-indigo-300 uppercase tracking-tight">
+                AI Accuracy, Misinformation Disclaimer & Feedback
+              </h2>
+            </div>
+            <p className="text-sm text-indigo-100/90 leading-relaxed font-medium">
+              Aura Study AI leverages deep learning, natural language processing, and probabilistic inference. While our predictive models 
+              maintain high empirical accuracy (94%+), artificial intelligence is inherently experimental and can occasionally produce 
+              <strong> hallucinations, inaccurate solutions, outdated question formats, or misinterpretations</strong>. 
+              Students and educators should verify all critical answers against approved textbooks and course syllabi.
+            </p>
+            <p className="text-xs text-indigo-200/80 leading-relaxed font-medium pt-1">
+              <strong>Spotted a mistake, incorrect question, or misinformation?</strong> Help us continuously train and optimize our models. 
+              Your feedback is directly reviewed by our team to refine question quality and service reliability.
+            </p>
+          </div>
+        </div>
+
+        {/* Action Buttons */}
+        <div className="flex flex-col sm:flex-row items-center gap-3 pt-2">
+          <Button
+            onClick={() => setStep("feedback")}
+            className="w-full sm:w-auto h-11 px-6 font-bold bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl shadow-lg flex items-center justify-center gap-2"
+          >
+            <MessageSquare className="w-4 h-4" /> Give Feedback & Report Wrong AI Result
+          </Button>
+          <Button
+            variant="outline"
+            onClick={() => setStep("upload")}
+            className="w-full sm:w-auto h-11 px-6 font-bold rounded-xl border-white/10 hover:bg-white/5 text-muted-foreground hover:text-white"
+          >
+            Back to Dashboard
+          </Button>
+        </div>
       </div>
     </div>
   )

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import mongoose from 'mongoose';
 import dbConnect from '@/lib/mongodb';
 import User from '@/models/User';
+import Battle from '@/models/Battle';
 
 const RANK_THRESHOLDS = [
   { rank: "Grandmaster", min: 5000 },
@@ -25,7 +26,6 @@ function computeLevel(xp: number): number {
   return Math.max(1, Math.floor(Math.sqrt(xp / 100)) + 1);
 }
 
-
 // POST /api/arena/battle — record battle result and update user stats
 export async function findUserById(userId: string, projection: Record<string, unknown> = {}) {
   if (mongoose.isValidObjectId(userId)) {
@@ -37,7 +37,125 @@ export async function findUserById(userId: string, projection: Record<string, un
 export async function POST(req: NextRequest) {
   await dbConnect();
   const body = await req.json();
-  const { userId, result, mode, difficulty, score, accuracy, xpGained, pointsGained, opponentName, battleId } = body;
+  const { action, userId, result, mode, difficulty, score, accuracy, xpGained, pointsGained, opponentName, battleId } = body;
+
+  // Handle Matchmaking for 1v1 Ranked
+  if (action === 'matchmake') {
+    try {
+      const { rank } = body;
+      const query = mongoose.isValidObjectId(userId) ? { _id: { $ne: userId } } : {};
+      let candidates = await User.find(query)
+        .select('name photoUrl arenaRank level wins losses arenaPoints currentStreak')
+        .limit(30);
+
+      let opponent: any = null;
+      if (candidates && candidates.length > 0) {
+        const sameRank = rank ? candidates.filter((c: any) => c.arenaRank === rank) : [];
+        opponent = sameRank.length > 0
+          ? sameRank[Math.floor(Math.random() * sameRank.length)]
+          : candidates[Math.floor(Math.random() * candidates.length)];
+      }
+
+      if (!opponent) {
+        opponent = {
+          _id: 'rival-' + Math.random().toString(36).substring(2, 7),
+          name: 'Apex Striker',
+          photoUrl: 'https://ui-avatars.com/api/?name=Apex+Striker&background=6366f1&color=fff',
+          arenaRank: rank || 'Silver',
+          level: 4,
+          wins: 14,
+          currentStreak: 2,
+        };
+      }
+
+      return NextResponse.json({ success: true, opponent });
+    } catch (e: any) {
+      return NextResponse.json({ error: e.message }, { status: 500 });
+    }
+  }
+
+  // Handle Private Room Creation
+  if (action === 'create_private_room') {
+    try {
+      const { userName, avatar, password } = body;
+      const roomCode = 'PRIV-' + Math.random().toString(36).substring(2, 7).toUpperCase();
+      const battle = await Battle.create({
+        roomId: roomCode,
+        roomCode,
+        password: password ? password.trim() : '',
+        isPrivate: true,
+        type: 'private',
+        mode: mode || 'coding',
+        difficulty: difficulty || 'intermediate',
+        status: 'waiting',
+        participants: [{
+          userId: userId || 'host',
+          name: userName || 'Host',
+          avatar: avatar || '',
+        }],
+      });
+      return NextResponse.json({ success: true, room: battle, roomCode: battle.roomCode || roomCode });
+    } catch (e: any) {
+      return NextResponse.json({ error: e.message }, { status: 500 });
+    }
+  }
+
+  // Handle Private Room Joining
+  if (action === 'join_private_room') {
+    try {
+      const { roomCode, password, userName, avatar } = body;
+      const cleanCode = (roomCode || '').trim().toUpperCase();
+      const battle = await Battle.findOne({
+        $or: [{ roomCode: cleanCode }, { roomId: cleanCode }]
+      });
+
+      if (!battle) {
+        return NextResponse.json({ error: 'Private room not found. Please verify the code.' }, { status: 404 });
+      }
+
+      if (battle.password && battle.password.trim() && battle.password.trim() !== (password || '').trim()) {
+        return NextResponse.json({ error: 'Incorrect private room password' }, { status: 403 });
+      }
+
+      if (userId && !battle.participants.some((p: any) => p.userId === userId)) {
+        battle.participants.push({
+          userId,
+          name: userName || 'Challenger',
+          avatar: avatar || '',
+        });
+        battle.status = 'active';
+        await battle.save();
+      }
+
+      return NextResponse.json({ success: true, room: battle, roomCode: battle.roomCode || roomCode });
+    } catch (e: any) {
+      return NextResponse.json({ error: e.message }, { status: 500 });
+    }
+  }
+
+  // Handle Private Room Friend Invite
+  if (action === 'invite_private') {
+    try {
+      const { friendId, friendName, friendEmail, roomCode, userName, userAvatar } = body;
+      const { createNotification } = await import('@/lib/services/notificationService');
+      await createNotification({
+        userId: friendId,
+        recipientEmail: friendEmail || '',
+        recipientName: friendName || '',
+        senderId: userId || 'user',
+        senderName: userName || 'Aura Player',
+        senderPhotoUrl: userAvatar || '',
+        title: `🔒 Private Room: ${roomCode}`,
+        message: `Invited by ${userName || 'Friend'}. Tap to join.`,
+        category: 'battle_challenge',
+        priority: 'high',
+        actionUrl: `/?step=arena&roomCode=${roomCode}`,
+      });
+      return NextResponse.json({ success: true, message: `Invite sent to ${friendName}!` });
+    } catch (e: any) {
+      return NextResponse.json({ error: e.message }, { status: 500 });
+    }
+  }
 
   if (!userId) return NextResponse.json({ error: 'userId required' }, { status: 400 });
 

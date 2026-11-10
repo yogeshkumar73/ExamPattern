@@ -7,15 +7,19 @@ import { Users, UserPlus, UserMinus, Search, Check, X, ShieldAlert, Swords, Load
 
 interface FriendsPanelProps {
   currentUser: any
+  onStartDuel?: (friend: any) => void
 }
 
-export function FriendsPanel({ currentUser }: FriendsPanelProps) {
+export function FriendsPanel({ currentUser, onStartDuel }: FriendsPanelProps) {
   const [friends, setFriends] = useState<any[]>([])
   const [requests, setRequests] = useState<any[]>([])
+  const [duelChallenges, setDuelChallenges] = useState<any[]>([])
   const [searchQuery, setSearchQuery] = useState("")
   const [searchResults, setSearchResults] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [actionLoading, setActionLoading] = useState<string | null>(null)
+  const [challengingFriendId, setChallengingFriendId] = useState<string | null>(null)
+  const [challengeSentFriend, setChallengeSentFriend] = useState<string | null>(null)
 
   const fetchFriendsAndRequests = async () => {
     if (!currentUser?.id) return
@@ -24,12 +28,17 @@ export function FriendsPanel({ currentUser }: FriendsPanelProps) {
       const data = await res.json()
       if (data.friends) setFriends(data.friends)
       if (data.requests) setRequests(data.requests)
+      if (data.duelChallenges) setDuelChallenges(data.duelChallenges)
     } catch (_) {}
     setLoading(false)
   }
 
   useEffect(() => {
     fetchFriendsAndRequests()
+    const timer = setInterval(() => {
+      fetchFriendsAndRequests()
+    }, 12000)
+    return () => clearInterval(timer)
   }, [currentUser])
 
   const handleSearch = async () => {
@@ -73,15 +82,127 @@ export function FriendsPanel({ currentUser }: FriendsPanelProps) {
     setActionLoading(null)
   }
 
-  const handleChallenge = (friend: any) => {
-    alert(`Challenge request sent to ${friend.name}! (Simulated 1v1 Battle room opening)`)
-    // Normally, this triggers a socket message to challenge friend.
+  const handleChallenge = async (friend: any) => {
+    if (!currentUser?.id || !friend?._id) return
+    setChallengingFriendId(friend._id)
+    try {
+      const res = await fetch("/api/arena/friends", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "challenge",
+          userId: currentUser.id,
+          friendId: friend._id,
+        }),
+      })
+      const data = await res.json()
+      if (data.success) {
+        setChallengeSentFriend(friend.name)
+        setTimeout(() => setChallengeSentFriend(null), 6000)
+        if (onStartDuel) {
+          onStartDuel(friend)
+        }
+      } else {
+        alert(data.error || "Failed to send challenge request")
+      }
+    } catch (err) {
+      // Direct notification fallback
+      try {
+        const notifRes = await fetch("/api/notifications", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            recipientId: friend._id,
+            recipientEmail: friend.email || "",
+            recipientName: friend.name || "",
+            senderId: currentUser.id,
+            senderName: currentUser.name || "Aura Player",
+            senderPhotoUrl: currentUser.avatar || currentUser.photoUrl || "",
+            senderEmail: currentUser.email || "",
+            title: "⚔️ 1v1 Battle Arena Duel Challenge!",
+            message: `${currentUser.name || "A friend"} has challenged you to a 1v1 Battle Arena Duel! Accept the challenge to enter the arena.`,
+            category: "battle_challenge",
+            priority: "high",
+            actionUrl: "/battle-arena",
+          }),
+        })
+        const notifData = await notifRes.json()
+        if (notifData.success) {
+          setChallengeSentFriend(friend.name)
+          setTimeout(() => setChallengeSentFriend(null), 6000)
+          if (onStartDuel) {
+            onStartDuel(friend)
+          }
+        } else {
+          alert("Failed to send duel challenge request.")
+        }
+      } catch (_) {
+        alert("Failed to send challenge request. Please check connection.")
+      }
+    } finally {
+      setChallengingFriendId(null)
+    }
+  }
+
+  const handleAcceptDuel = async (challenge: any) => {
+    try {
+      await fetch("/api/arena/friends", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "accept_duel",
+          userId: currentUser.id,
+          friendId: challenge.senderId,
+          notificationId: challenge._id,
+        }),
+      })
+      setDuelChallenges(prev => prev.filter(c => c._id !== challenge._id))
+      if (onStartDuel) {
+        onStartDuel({
+          _id: challenge.senderId,
+          name: challenge.senderName || "Challenger",
+          photoUrl: challenge.senderPhotoUrl,
+        })
+      }
+    } catch (err) {
+      console.error("Error accepting duel:", err)
+    }
+  }
+
+  const handleDeclineDuel = async (challengeId: string) => {
+    try {
+      await fetch("/api/arena/friends", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "decline_duel",
+          userId: currentUser.id,
+          friendId: currentUser.id,
+          notificationId: challengeId,
+        }),
+      })
+      setDuelChallenges(prev => prev.filter(c => c._id !== challengeId))
+    } catch (err) {
+      console.error("Error declining duel:", err)
+    }
   }
 
   return (
     <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
       {/* Left: Friends List */}
       <div className="lg:col-span-2 space-y-4">
+        {challengeSentFriend && (
+          <div className="p-3 bg-indigo-500/10 border border-indigo-500/30 rounded-xl text-indigo-300 text-xs font-bold flex items-center justify-between animate-in fade-in">
+            <span className="flex items-center gap-2">
+              <Swords className="w-4 h-4 text-indigo-400" />
+              1v1 Duel challenge successfully sent to {challengeSentFriend}!
+            </span>
+            <button onClick={() => setChallengeSentFriend(null)} className="text-white/40 hover:text-white">
+              <X className="w-3.5 h-3.5" />
+            </button>
+          </div>
+        )}
+
         <div className="flex items-center justify-between">
           <h2 className="text-xl font-black text-white flex items-center gap-2">
             <Users className="w-6 h-6 text-indigo-400" /> FRIEND LIST
@@ -122,10 +243,16 @@ export function FriendsPanel({ currentUser }: FriendsPanelProps) {
                 <div className="flex gap-1.5">
                   <Button
                     size="sm"
-                    className="h-8 bg-indigo-600 hover:bg-indigo-700 text-white"
+                    className="h-8 bg-indigo-600 hover:bg-indigo-700 text-white min-w-[76px]"
+                    disabled={challengingFriendId === friend._id}
                     onClick={() => handleChallenge(friend)}
                   >
-                    <Swords className="w-3.5 h-3.5 mr-1" /> Duel
+                    {challengingFriendId === friend._id ? (
+                      <Loader2 className="w-3.5 h-3.5 mr-1 animate-spin" />
+                    ) : (
+                      <Swords className="w-3.5 h-3.5 mr-1" />
+                    )}
+                    {challengingFriendId === friend._id ? 'Sending...' : 'Duel'}
                   </Button>
                   <Button
                     size="sm"
@@ -139,6 +266,53 @@ export function FriendsPanel({ currentUser }: FriendsPanelProps) {
                 </div>
               </div>
             ))}
+          </div>
+        )}
+
+        {/* Duel Challenges Section */}
+        {duelChallenges.length > 0 && (
+          <div className="space-y-3 pt-3">
+            <h3 className="text-sm font-black text-rose-400 tracking-widest uppercase flex items-center gap-2">
+              <Swords className="w-4 h-4 text-rose-400 animate-pulse" /> INCOMING DUEL CHALLENGES ({duelChallenges.length})
+            </h3>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              {duelChallenges.map(chal => (
+                <div key={chal._id} className="arena-card p-4 flex items-center justify-between border border-rose-500/30 bg-rose-500/10">
+                  <div className="flex items-center gap-3">
+                    <img
+                      src={chal.senderPhotoUrl || `https://ui-avatars.com/api/?name=${encodeURIComponent(chal.senderName || 'Player')}&background=f43f5e&color=fff`}
+                      alt={chal.senderName}
+                      className="w-10 h-10 rounded-xl object-cover"
+                    />
+                    <div>
+                      <div className="text-white font-bold text-sm flex items-center gap-1.5">
+                        {chal.senderName || 'Student'}
+                        <Badge className="bg-rose-500/30 text-rose-300 text-[9px] px-1.5 py-0">Duel</Badge>
+                      </div>
+                      <div className="text-[10px] text-white/50 font-medium">Challenged you to 1v1 Battle!</div>
+                    </div>
+                  </div>
+
+                  <div className="flex gap-1.5">
+                    <Button
+                      size="sm"
+                      className="h-8 bg-rose-600 hover:bg-rose-700 text-white font-bold px-3"
+                      onClick={() => handleAcceptDuel(chal)}
+                    >
+                      <Swords className="w-3.5 h-3.5 mr-1" /> Fight!
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="h-8 border-white/10 text-white/60 hover:text-white hover:bg-white/10"
+                      onClick={() => handleDeclineDuel(chal._id)}
+                    >
+                      <X className="w-4 h-4" />
+                    </Button>
+                  </div>
+                </div>
+              ))}
+            </div>
           </div>
         )}
 

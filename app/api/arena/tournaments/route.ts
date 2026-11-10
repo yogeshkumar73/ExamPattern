@@ -2,20 +2,28 @@ import { NextRequest, NextResponse } from 'next/server';
 import dbConnect from '@/lib/mongodb';
 import Tournament from '@/models/Tournament';
 import User from '@/models/User';
+import { createNotification } from '@/lib/services/notificationService';
 
 export async function GET(req: NextRequest) {
   try {
     await dbConnect();
   } catch (err) {
     console.error('DB connection failed:', err);
-    // Return empty array instead of failing
     return NextResponse.json({ tournaments: [] });
   }
 
   const { searchParams } = new URL(req.url);
   const id = searchParams.get('id');
+  const invite = searchParams.get('invite');
+  const requesterId = searchParams.get('userId');
 
   try {
+    if (invite) {
+      const tournament = await Tournament.findOne({ inviteCode: invite.trim().toUpperCase() });
+      if (!tournament) return NextResponse.json({ error: 'Tournament not found with this invite code' }, { status: 404 });
+      return NextResponse.json({ tournament });
+    }
+
     if (id) {
       const tournament = await Tournament.findById(id);
       if (!tournament) return NextResponse.json({ error: 'Tournament not found' }, { status: 404 });
@@ -23,7 +31,19 @@ export async function GET(req: NextRequest) {
     }
 
     const tournaments = await Tournament.find({ status: { $ne: 'finished' } }).sort({ createdAt: -1 });
-    return NextResponse.json({ tournaments });
+
+    // Format tournaments and protect password for non-hosts
+    const sanitized = tournaments.map((t: any) => {
+      const doc = t.toObject ? t.toObject() : { ...t };
+      const isHost = requesterId && doc.createdBy === requesterId;
+      doc.hasPassword = Boolean(doc.password && doc.password.trim());
+      if (!isHost) {
+        delete doc.password;
+      }
+      return doc;
+    });
+
+    return NextResponse.json({ tournaments: sanitized });
   } catch (err: any) {
     console.error('GET /api/arena/tournaments error:', err);
     return NextResponse.json({ error: err.message }, { status: 500 });
@@ -39,7 +59,23 @@ export async function POST(req: NextRequest) {
 
   try {
     const body = await req.json();
-    const { action, name, mode, difficulty, maxParticipants, userId, userName, avatar, tournamentId } = body;
+    const {
+      action,
+      name,
+      mode,
+      difficulty,
+      maxParticipants,
+      prizePool,
+      prizeXP,
+      startTime,
+      scheduledStartTime,
+      password,
+      userId,
+      userName,
+      avatar,
+      tournamentId,
+      inviteCode,
+    } = body;
 
     if (!action) {
       return NextResponse.json({ error: 'Action is required' }, { status: 400 });
@@ -47,22 +83,65 @@ export async function POST(req: NextRequest) {
 
     if (action === 'create') {
       if (!name || !mode) {
-        return NextResponse.json({ error: 'Name and mode are required' }, { status: 400 });
+        return NextResponse.json({ error: 'Name and game mode are required' }, { status: 400 });
       }
       if (!userId) {
         return NextResponse.json({ error: 'User ID is required' }, { status: 400 });
       }
 
       try {
+        const pool = Number(prizePool || prizeXP || 1000);
+        const eventStartTime = scheduledStartTime ? new Date(scheduledStartTime) : (startTime ? new Date(startTime) : new Date());
+        const generatedCode = `TRN-${Math.random().toString(36).substring(2, 8).toUpperCase()}`;
+        const hasPwd = Boolean(password && password.trim());
+
+        let cleanTournamentName = (name || '').trim();
+        if (!cleanTournamentName || cleanTournamentName.includes('@')) {
+          const modeLabel = typeof mode === 'string' ? (mode.charAt(0).toUpperCase() + mode.slice(1)) : 'Battle';
+          cleanTournamentName = `${modeLabel} Championship`;
+        }
+
         const tournament = await Tournament.create({
-          name,
+          name: cleanTournamentName,
           mode,
           difficulty: difficulty || 'intermediate',
-          maxParticipants: maxParticipants || 8,
+          maxParticipants: Number(maxParticipants) || 8,
+          prizeXP: pool,
+          prizePool: pool,
+          startTime: eventStartTime,
+          scheduledStartTime: eventStartTime,
           status: 'open',
           createdBy: userId,
-          participants: userId ? [{ userId, name: userName || 'Anonymous', avatar, seed: 1 }] : [],
+          hostName: userName || 'Host',
+          password: hasPwd ? password.trim() : '',
+          inviteCode: generatedCode,
+          isPrivate: hasPwd,
+          participants: [{
+            userId,
+            name: userName || 'Host',
+            avatar: avatar || '',
+            seed: 1,
+            score: 0,
+          }],
         });
+
+        // Broadcast tournament notification to ALL users
+        try {
+          await createNotification({
+            userId: 'all',
+            senderId: userId,
+            senderName: userName || 'Tournament Host',
+            senderPhotoUrl: avatar || '',
+            title: `🏆 Tournament: ${cleanTournamentName}`,
+            message: `Hosted by ${userName || 'Host'}. Tap Enter Tournament to join.`,
+            category: 'battle_challenge',
+            priority: 'high',
+            actionUrl: `/?step=arena&tab=tournament&tournamentId=${tournament._id}&invite=${generatedCode}`,
+          });
+        } catch (notifErr) {
+          console.error('Failed to broadcast tournament notification:', notifErr);
+        }
+
         return NextResponse.json({ success: true, tournament });
       } catch (createErr: any) {
         console.error('Tournament creation error:', createErr);
@@ -71,67 +150,79 @@ export async function POST(req: NextRequest) {
     }
 
     if (action === 'join') {
-      if (!tournamentId || !userId) {
-        return NextResponse.json({ error: 'Tournament ID and User ID are required' }, { status: 400 });
+      if ((!tournamentId && !inviteCode) || !userId) {
+        return NextResponse.json({ error: 'Tournament identifier and User ID are required' }, { status: 400 });
       }
 
       try {
-        const tournament = await Tournament.findById(tournamentId);
+        let tournament = null;
+        if (tournamentId) {
+          tournament = await Tournament.findById(tournamentId);
+        } else if (inviteCode) {
+          tournament = await Tournament.findOne({ inviteCode: inviteCode.trim().toUpperCase() });
+        }
+
         if (!tournament) {
           return NextResponse.json({ error: 'Tournament not found' }, { status: 404 });
         }
+
         if (tournament.status !== 'open') {
           return NextResponse.json({ error: 'Tournament registration is closed' }, { status: 400 });
         }
 
+        // Verify password if protected and user is not the host
+        if (tournament.password && tournament.password.trim() && tournament.createdBy !== userId) {
+          const suppliedPassword = (body.password || '').trim();
+          if (suppliedPassword !== tournament.password.trim()) {
+            return NextResponse.json({ error: 'Incorrect tournament password' }, { status: 403 });
+          }
+        }
+
         const isAlreadyIn = tournament.participants.some((p: any) => p.userId === userId);
         if (isAlreadyIn) {
-          return NextResponse.json({ error: 'Already registered in this tournament' }, { status: 400 });
+          return NextResponse.json({ success: true, message: 'Already registered in this tournament', tournament });
         }
 
         if (tournament.participants.length >= tournament.maxParticipants) {
-          return NextResponse.json({ error: 'Tournament is full' }, { status: 400 });
+          return NextResponse.json({ error: 'Tournament is already full' }, { status: 400 });
         }
 
         tournament.participants.push({
           userId,
           name: userName || 'Anonymous',
-          avatar,
+          avatar: avatar || '',
           seed: tournament.participants.length + 1,
+          score: 0,
         });
 
         // If full, start the tournament and build bracket
-        if (tournament.participants.length === tournament.maxParticipants) {
+        if (tournament.participants.length >= tournament.maxParticipants) {
           tournament.status = 'active';
           tournament.startTime = new Date();
 
-          // Generate round 1 bracket (assuming 8 participants)
           const participants = [...tournament.participants];
-          const numRounds = Math.log2(participants.length); // e.g. 3 rounds for 8 players
-          const bracket = [];
+          const bracket: any[] = [];
 
           // Generate Round 1 matches
           for (let i = 0; i < participants.length; i += 2) {
             bracket.push({
               round: 1,
-              match: (i / 2) + 1,
+              match: Math.floor(i / 2) + 1,
               player1Id: participants[i].userId,
+              player1Name: participants[i].name,
               player2Id: participants[i + 1]?.userId || null,
+              player2Name: participants[i + 1]?.name || null,
               winnerId: null,
               battleId: `battle-${Date.now()}-${i}`,
               status: 'pending',
             });
           }
 
-          // Placeholders for round 2 & 3
           if (participants.length === 8) {
-            // Round 2 matches (2 matches)
             bracket.push({ round: 2, match: 1, player1Id: null, player2Id: null, winnerId: null, status: 'pending' });
             bracket.push({ round: 2, match: 2, player1Id: null, player2Id: null, winnerId: null, status: 'pending' });
-            // Round 3 match (Final)
             bracket.push({ round: 3, match: 1, player1Id: null, player2Id: null, winnerId: null, status: 'pending' });
           } else if (participants.length === 4) {
-            // Round 2 match (Final)
             bracket.push({ round: 2, match: 1, player1Id: null, player2Id: null, winnerId: null, status: 'pending' });
           }
 
@@ -146,7 +237,63 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    return NextResponse.json({ error: 'Invalid action. Must be "create" or "join"' }, { status: 400 });
+    // Host Control: Manually start tournament early if >= 2 participants
+    if (action === 'start_tournament') {
+      const { tournamentId, userId } = body;
+      const tournament = await Tournament.findById(tournamentId);
+      if (!tournament) return NextResponse.json({ error: 'Tournament not found' }, { status: 404 });
+
+      if (tournament.createdBy !== userId) {
+        return NextResponse.json({ error: 'Only the hosting user can start this tournament' }, { status: 403 });
+      }
+
+      if (tournament.participants.length < 2) {
+        return NextResponse.json({ error: 'At least 2 players are required to start the tournament' }, { status: 400 });
+      }
+
+      tournament.status = 'active';
+      tournament.startTime = new Date();
+
+      const participants = [...tournament.participants];
+      const bracket: any[] = [];
+      for (let i = 0; i < participants.length; i += 2) {
+        bracket.push({
+          round: 1,
+          match: Math.floor(i / 2) + 1,
+          player1Id: participants[i].userId,
+          player1Name: participants[i].name,
+          player2Id: participants[i + 1]?.userId || null,
+          player2Name: participants[i + 1]?.name || null,
+          winnerId: null,
+          battleId: `battle-${Date.now()}-${i}`,
+          status: 'pending',
+        });
+      }
+      tournament.bracket = bracket;
+      await tournament.save();
+
+      return NextResponse.json({ success: true, tournament });
+    }
+
+    // Host Control: Cancel tournament
+    if (action === 'cancel_tournament') {
+      const { tournamentId, userId } = body;
+      const tournament = await Tournament.findById(tournamentId);
+      if (!tournament) return NextResponse.json({ error: 'Tournament not found' }, { status: 404 });
+
+      if (tournament.createdBy !== userId) {
+        return NextResponse.json({ error: 'Only the hosting user can cancel this tournament' }, { status: 403 });
+      }
+
+      tournament.status = 'finished';
+      tournament.isDestroyed = true;
+      tournament.destroyedAt = new Date();
+      await tournament.save();
+
+      return NextResponse.json({ success: true, message: 'Tournament cancelled successfully' });
+    }
+
+    return NextResponse.json({ error: 'Invalid action. Must be create, join, start_tournament, or cancel_tournament' }, { status: 400 });
   } catch (err: any) {
     console.error('POST /api/arena/tournaments error:', err);
     return NextResponse.json({ error: 'Invalid request: ' + err.message }, { status: 400 });

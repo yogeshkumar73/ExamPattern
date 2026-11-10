@@ -151,9 +151,31 @@ export async function PUT(req: Request) {
       feedback.status = "replied";
       await feedback.save();
 
+      // Dispatch platform notification to the user/student
+      try {
+        const { createNotification } = await import("@/lib/services/notificationService");
+        const recipient = feedback.userId || feedback.userEmail;
+        if (recipient) {
+          await createNotification({
+            userId: recipient,
+            recipientEmail: feedback.userEmail || "",
+            recipientName: feedback.userName || "Student",
+            senderId: "admin",
+            senderName: "Aura Support Team (helpsupport9452@gmail.com)",
+            title: "💬 Admin Reply to Your Feedback",
+            message: `Admin reply: "${replyText.trim()}"`,
+            category: "message",
+            priority: "normal",
+            actionUrl: "/?step=feedback",
+          });
+        }
+      } catch (notifErr) {
+        console.warn("[Feedback PUT] Failed to send notification:", notifErr);
+      }
+
       return NextResponse.json({
         success: true,
-        message: "Reply saved successfully.",
+        message: "Reply saved and dispatched successfully.",
         feedback,
       });
     } catch (dbError) {

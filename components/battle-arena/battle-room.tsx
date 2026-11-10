@@ -34,6 +34,12 @@ interface BattleRoomProps {
     battleType: string
     topic?: string
     document?: string
+    opponent?: any
+    teamSize?: number
+    blueTeam?: any[]
+    redTeam?: any[]
+    roomCode?: string
+    isPrivate?: boolean
   }
   user: any
   onBattleEnd: (result: any) => void
@@ -92,10 +98,12 @@ export function BattleRoom({ config, user, onBattleEnd }: BattleRoomProps) {
   const [finalResult, setFinalResult] = useState<'win' | 'loss' | 'draw' | null>(null)
   const [totalAnswered, setTotalAnswered] = useState(0)
   const [opponentProgress, setOpponentProgress] = useState(0)
+  const [teammateScore, setTeammateScore] = useState(0)
 
   const timerRef = useRef<any>(null)
   const totalTimerRef = useRef<any>(null)
   const opponentTimerRef = useRef<any>(null)
+  const teammateTimerRef = useRef<any>(null)
 
   const modeConfig = MODE_CONFIG[config.mode] || MODE_CONFIG.math
   const ModeIcon = modeConfig.icon
@@ -227,21 +235,37 @@ export function BattleRoom({ config, user, onBattleEnd }: BattleRoomProps) {
     return () => clearInterval(totalTimerRef.current)
   }, [phase, questions, config.difficulty])
 
-  // Opponent AI simulation
+  // Opponent & Team simulation
   useEffect(() => {
     if (phase !== 'playing') return
     const speedMs = config.battleType === 'pve'
       ? { beginner: 12000, intermediate: 9000, advanced: 7000, expert: 5000, master: 4000, grandmaster: 3000 }[config.difficulty] || 8000
-      : 15000
+      : config.battleType === 'team' ? 10000 : 13000
+
     opponentTimerRef.current = setInterval(() => {
       setOpponentScore(prev => {
-        const add = Math.floor(Math.random() * (DIFF_XP[config.difficulty] || 50)) + 20
+        const multiplier = config.battleType === 'team' ? (config.teamSize || 2) : 1
+        const add = Math.floor(Math.random() * (DIFF_XP[config.difficulty] || 50) * multiplier) + 20
         return prev + add
       })
-      setOpponentProgress(prev => Math.min(100, prev + Math.floor(Math.random() * 25) + 10))
+      setOpponentProgress(prev => Math.min(100, prev + Math.floor(Math.random() * 20) + 10))
     }, speedMs)
-    return () => clearInterval(opponentTimerRef.current)
-  }, [phase])
+
+    // In team battle, teammate periodically scores for Blue Team
+    if (config.battleType === 'team') {
+      teammateTimerRef.current = setInterval(() => {
+        setTeammateScore(prev => {
+          const add = Math.floor(Math.random() * (DIFF_XP[config.difficulty] || 50)) + 25
+          return prev + add
+        })
+      }, 12000)
+    }
+
+    return () => {
+      clearInterval(opponentTimerRef.current)
+      clearInterval(teammateTimerRef.current)
+    }
+  }, [phase, config.battleType, config.difficulty, config.teamSize])
 
   const handleAnswer = useCallback((answer: string | null) => {
     if (showResult) return
@@ -301,7 +325,10 @@ export function BattleRoom({ config, user, onBattleEnd }: BattleRoomProps) {
     clearInterval(timerRef.current)
     clearInterval(totalTimerRef.current)
     clearInterval(opponentTimerRef.current)
-    const result = playerScore > opponentScore ? 'win' : playerScore < opponentScore ? 'loss' : 'draw'
+    clearInterval(teammateTimerRef.current)
+
+    const mySideScore = config.battleType === 'team' ? (playerScore + teammateScore) : playerScore
+    const result = mySideScore > opponentScore ? 'win' : mySideScore < opponentScore ? 'loss' : 'draw'
     const xpGained = result === 'win'
       ? DIFF_XP[config.difficulty] * 5
       : result === 'draw' ? DIFF_XP[config.difficulty] * 2
@@ -311,17 +338,27 @@ export function BattleRoom({ config, user, onBattleEnd }: BattleRoomProps) {
 
     // Record to API
     if (user?.id) {
+      const oppName = config.battleType === 'team'
+        ? (config.redTeam?.map((r: any) => r.name).join(' & ') || 'Rivals Squad')
+        : config.battleType === 'private'
+        ? `Private Opponent (${config.roomCode || 'Room'})`
+        : config.battleType === 'pve'
+        ? 'AI Overlord'
+        : (config.opponent?.name || 'Opponent')
+
       fetch('/api/arena/battle', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           userId: user.id,
-          result, mode: config.mode, difficulty: config.difficulty,
-          score: playerScore,
+          result,
+          mode: config.mode,
+          difficulty: config.difficulty,
+          score: mySideScore,
           accuracy: totalAnswered > 0 ? Math.round((playerCorrect / totalAnswered) * 100) : 0,
           xpGained,
           pointsGained: result === 'win' ? 200 : result === 'draw' ? 50 : 0,
-          opponentName: config.battleType === 'pve' ? 'AI Overlord' : 'Opponent',
+          opponentName: oppName,
           battleId: `battle-${Date.now()}`,
         }),
       }).catch(() => {})
@@ -453,8 +490,30 @@ export function BattleRoom({ config, user, onBattleEnd }: BattleRoomProps) {
             <ModeIcon className="w-4 h-4" style={{ color: modeConfig.color }} />
           </div>
           <div>
-            <div className="text-white font-black text-sm">{modeConfig.label}</div>
-            <div className="text-white/40 text-xs">{config.difficulty.toUpperCase()} • Q{currentQ + 1}/{questions.length}</div>
+            <div className="text-white font-black text-sm flex items-center gap-2">
+              {modeConfig.label}
+              {config.battleType === 'private' && (
+                <span className="bg-amber-500/20 text-amber-300 border border-amber-500/30 text-[10px] px-1.5 py-0.2 rounded font-mono">
+                  {config.roomCode || 'PRIVATE'}
+                </span>
+              )}
+              {config.battleType === 'team' && (
+                <span className="bg-blue-500/20 text-blue-300 border border-blue-500/30 text-[10px] px-1.5 py-0.2 rounded font-bold">
+                  {config.teamSize || 2}v{config.teamSize || 2} TEAM
+                </span>
+              )}
+              {config.battleType === '1v1' && (
+                <span className="bg-violet-500/20 text-violet-300 border border-violet-500/30 text-[10px] px-1.5 py-0.2 rounded font-bold">
+                  1v1 RANKED
+                </span>
+              )}
+            </div>
+            <div className="text-white/40 text-xs">
+              {config.difficulty.toUpperCase()} • Q{currentQ + 1}/{questions.length}
+              {config.opponent?.name && config.battleType !== 'pve' && config.battleType !== 'team' && (
+                <span className="text-white/60 ml-1.5 font-bold">vs {config.opponent.name}</span>
+              )}
+            </div>
           </div>
         </div>
 
@@ -476,26 +535,66 @@ export function BattleRoom({ config, user, onBattleEnd }: BattleRoomProps) {
 
       {/* Progress Bars */}
       <div className="arena-card p-4 space-y-3">
-        <div>
-          <div className="flex justify-between text-xs font-bold mb-1.5">
-            <span className="text-indigo-400">YOU — {playerScore} pts (Correct: {playerCorrect}/{totalAnswered})</span>
-            <span className="text-indigo-400">{playerProgress}%</span>
+        {config.battleType === 'team' ? (
+          <div className="space-y-3">
+            <div>
+              <div className="flex justify-between text-xs font-bold mb-1.5">
+                <span className="text-cyan-400">BLUE TEAM (YOUR SQUAD) — {playerScore + teammateScore} pts</span>
+                <span className="text-cyan-400">
+                  {Math.min(100, Math.round(((playerScore + teammateScore) / Math.max(1, playerScore + teammateScore + opponentScore)) * 100))}%
+                </span>
+              </div>
+              <div className="h-3 bg-cyan-500/20 rounded-full overflow-hidden battle-progress">
+                <div
+                  className="h-full bg-gradient-to-r from-cyan-500 to-blue-600 rounded-full transition-all duration-500"
+                  style={{ width: `${Math.min(100, Math.round(((playerScore + teammateScore) / Math.max(1, playerScore + teammateScore + opponentScore)) * 100))}%` }}
+                />
+              </div>
+              <div className="flex items-center gap-2 text-[10px] text-white/50 pt-0.5">
+                <span>You: {playerScore} pts</span> • <span>Teammate: {teammateScore} pts</span>
+              </div>
+            </div>
+
+            <div>
+              <div className="flex justify-between text-xs font-bold mb-1.5">
+                <span className="text-rose-400">RED TEAM (RIVALS) — {opponentScore} pts</span>
+                <span className="text-rose-400">{opponentProgress}%</span>
+              </div>
+              <div className="h-3 bg-rose-500/20 rounded-full overflow-hidden battle-progress">
+                <div
+                  className="h-full bg-gradient-to-r from-rose-500 to-red-600 rounded-full transition-all duration-500"
+                  style={{ width: `${opponentProgress}%` }}
+                />
+              </div>
+              <div className="text-[10px] text-white/50 pt-0.5">
+                {config.redTeam?.map((r: any) => r.name).join(' & ') || 'Rivals Squad'}
+              </div>
+            </div>
           </div>
-          <div className="h-3 bg-indigo-500/20 rounded-full overflow-hidden battle-progress">
-            <div className="h-full bg-gradient-to-r from-indigo-500 to-violet-500 rounded-full transition-all duration-500"
-              style={{ width: `${playerProgress}%` }} />
-          </div>
-        </div>
-        <div>
-          <div className="flex justify-between text-xs font-bold mb-1.5">
-            <span className="text-rose-400">{config.battleType === 'pve' ? 'AI OVERLORD' : 'OPPONENT'} — {opponentScore} pts</span>
-            <span className="text-rose-400">{opponentProgress}%</span>
-          </div>
-          <div className="h-3 bg-rose-500/20 rounded-full overflow-hidden battle-progress">
-            <div className="h-full bg-gradient-to-r from-rose-500 to-red-600 rounded-full transition-all duration-500"
-              style={{ width: `${opponentProgress}%` }} />
-          </div>
-        </div>
+        ) : (
+          <>
+            <div>
+              <div className="flex justify-between text-xs font-bold mb-1.5">
+                <span className="text-indigo-400">YOU — {playerScore} pts (Correct: {playerCorrect}/{totalAnswered})</span>
+                <span className="text-indigo-400">{playerProgress}%</span>
+              </div>
+              <div className="h-3 bg-indigo-500/20 rounded-full overflow-hidden battle-progress">
+                <div className="h-full bg-gradient-to-r from-indigo-500 to-violet-500 rounded-full transition-all duration-500"
+                  style={{ width: `${playerProgress}%` }} />
+              </div>
+            </div>
+            <div>
+              <div className="flex justify-between text-xs font-bold mb-1.5">
+                <span className="text-rose-400">{config.battleType === 'pve' ? 'AI OVERLORD' : (config.opponent?.name ? config.opponent.name.toUpperCase() : 'OPPONENT')} — {opponentScore} pts</span>
+                <span className="text-rose-400">{opponentProgress}%</span>
+              </div>
+              <div className="h-3 bg-rose-500/20 rounded-full overflow-hidden battle-progress">
+                <div className="h-full bg-gradient-to-r from-rose-500 to-red-600 rounded-full transition-all duration-500"
+                  style={{ width: `${opponentProgress}%` }} />
+              </div>
+            </div>
+          </>
+        )}
       </div>
 
       {/* Question Area */}

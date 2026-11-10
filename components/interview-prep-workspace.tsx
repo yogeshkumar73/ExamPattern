@@ -36,11 +36,14 @@ interface VoiceConvMessage {
   content: string
 }
 
-const categories = ["React", "NextJs", "Node", "DSA", "SystemDesign", "Python", "Java", "SQL"]
+const categories = ["Basics", "JavaScript", "React", "NextJs", "Node", "DSA", "SystemDesign", "Python", "Java", "SQL"]
 const difficulties = ["Easy", "Medium", "Hard"]
 
 const HIGH_PROB_TOPICS = [
-  { label: "React Fiber & Hooks", category: "React", difficulty: "Medium" },
+  { label: "CS Basics: Process vs Thread & Deadlocks", category: "Basics", difficulty: "Easy" },
+  { label: "Web Basics: Box Model & Critical Path", category: "Basics", difficulty: "Easy" },
+  { label: "JavaScript: Closures, Event Loop & TDZ", category: "JavaScript", difficulty: "Easy" },
+  { label: "React Fiber & Hooks Lifecycle", category: "React", difficulty: "Medium" },
   { label: "Next.js RSC & App Router", category: "NextJs", difficulty: "Hard" },
   { label: "Node.js Event Loop & Streams", category: "Node", difficulty: "Medium" },
   { label: "DSA: LRU Cache & Pointers", category: "DSA", difficulty: "Hard" },
@@ -49,6 +52,8 @@ const HIGH_PROB_TOPICS = [
 ]
 
 const HIGH_PROBABILITY_STARTERS: Record<string, string> = {
+  Basics: "Welcome to your Core Fundamentals & Basics interview! Let's start with foundational system architecture: could you explain the key differences between a Process and a Thread, and how memory is shared?",
+  JavaScript: "Welcome to your JavaScript technical interview! Let's explore asynchronous execution: could you walk me through the JavaScript Event Loop and explain how microtasks differ from macrotasks?",
   React: "Welcome to your React technical interview! Let's start with component architecture: could you explain how React's reconciliation algorithm and Fiber architecture prioritize render updates?",
   NextJs: "Welcome to your Next.js interview! Let's discuss performance: how do React Server Components differ from Client Components in the App Router, and how do you optimize data fetching with caching?",
   Node: "Welcome to your Node.js technical screening! Could you explain the phases of the Node.js event loop and how process.nextTick differs from setImmediate?",
@@ -152,10 +157,16 @@ export function InterviewPrepWorkspace() {
     return `${m}:${s}`
   }
 
-  const loadQuestions = async () => {
+  const loadQuestions = async (cat?: string, diff?: string) => {
     try {
       setLoading(true)
-      const response = await fetch("/api/interview/questions")
+      const qCat = cat !== undefined ? cat : selectedCategory
+      const qDiff = diff !== undefined ? diff : selectedDifficulty
+      const params = new URLSearchParams()
+      if (qCat && qCat !== "All") params.append("category", qCat)
+      if (qDiff && qDiff !== "All") params.append("difficulty", qDiff)
+      const url = `/api/interview/questions${params.toString() ? `?${params.toString()}` : ""}`
+      const response = await fetch(url)
       const data = await response.json()
       if (data.success && Array.isArray(data.questions)) {
         setQuestions(data.questions)
@@ -694,7 +705,13 @@ export function InterviewPrepWorkspace() {
                 <CardContent className="space-y-6 pt-6">
                   <div className="space-y-2">
                     <label className="text-xs font-bold uppercase text-muted-foreground">Focus Area</label>
-                    <Select value={selectedCategory} onValueChange={setSelectedCategory}>
+                    <Select 
+                      value={selectedCategory} 
+                      onValueChange={(cat) => {
+                        setSelectedCategory(cat)
+                        loadQuestions(cat, selectedDifficulty)
+                      }}
+                    >
                       <SelectTrigger className="h-12 border-2 rounded-xl font-bold"><SelectValue /></SelectTrigger>
                       <SelectContent>
                         {categories.map((cat) => <SelectItem key={cat} value={cat} className="font-bold">{cat}</SelectItem>)}
@@ -703,7 +720,13 @@ export function InterviewPrepWorkspace() {
                   </div>
                   <div className="space-y-2">
                     <label className="text-xs font-bold uppercase text-muted-foreground">Difficulty</label>
-                    <Select value={selectedDifficulty} onValueChange={setSelectedDifficulty}>
+                    <Select 
+                      value={selectedDifficulty} 
+                      onValueChange={(diff) => {
+                        setSelectedDifficulty(diff)
+                        loadQuestions(selectedCategory, diff)
+                      }}
+                    >
                       <SelectTrigger className="h-12 border-2 rounded-xl font-bold"><SelectValue /></SelectTrigger>
                       <SelectContent>
                         {difficulties.map((diff) => <SelectItem key={diff} value={diff} className="font-bold">{diff.toUpperCase()}</SelectItem>)}

@@ -9,7 +9,8 @@ import {
   Swords, Trophy, Users, MessageSquare, Mic, Crown, Zap, Target,
   Star, Shield, Globe, Code2, Brain, Calculator, BookOpen, TrendingUp,
   Shuffle, ChevronRight, Lock, Play, Loader2, Flame, Award, Activity,
-  FileText, Gauge, Server, BarChart3, Database, Sparkles, Check, Clock, ShieldCheck
+  FileText, Gauge, Server, BarChart3, Database, Sparkles, Check, Clock, ShieldCheck,
+  Copy, Key, Share2
 } from "lucide-react"
 import { useNav } from "@/hooks/use-nav"
 import { BattleRoom } from "./battle-room"
@@ -111,6 +112,44 @@ export function BattleArena({ userId, userEmail, isAdmin = false }: BattleArenaP
   const [loading, setLoading] = useState(true)
   const [onlineCount, setOnlineCount] = useState(0)
   const [activeTab, setActiveTab] = useState('lobby')
+
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const applyRouteParams = (detail?: any) => {
+        const params = new URLSearchParams(window.location.search)
+        const tab = detail?.tab || params.get('tab')
+        const tId = detail?.tournamentId || params.get('tournamentId')
+        const inv = detail?.invite || params.get('invite')
+        const rCode = detail?.roomCode || params.get('roomCode')
+        const duel = params.get('duel')
+
+        if (tId || inv || tab === 'events' || tab === 'tournament') {
+          setActiveTab('tournament')
+        } else if (tab === 'friends' || duel) {
+          setActiveTab('friends')
+        } else if (rCode) {
+          setActiveTab('lobby')
+          setSelectedBattleType('private')
+          setPrivateRoomCode(rCode)
+        } else if (tab) {
+          setActiveTab(tab)
+        }
+      }
+
+      applyRouteParams()
+
+      const handleArenaNav = (e: any) => {
+        applyRouteParams(e.detail)
+      }
+
+      window.addEventListener('arena-navigate', handleArenaNav)
+      window.addEventListener('popstate', () => applyRouteParams())
+      return () => {
+        window.removeEventListener('arena-navigate', handleArenaNav)
+        window.removeEventListener('popstate', () => applyRouteParams())
+      }
+    }
+  }, [])
   
   // Arena Approval Status — admins are always approved
   const [arenaApprovalStatus, setArenaApprovalStatus] = useState<'pending' | 'approved' | 'rejected' | null>(
@@ -131,6 +170,24 @@ export function BattleArena({ userId, userEmail, isAdmin = false }: BattleArenaP
   // Battle state
   const [inBattle, setInBattle] = useState(false)
   const [battleConfig, setBattleConfig] = useState<any>(null)
+
+  // 1v1 Matchmaking state
+  const [isSearchingMatch, setIsSearchingMatch] = useState(false)
+  const [matchmakingTime, setMatchmakingTime] = useState(0)
+  const [matchedOpponent, setMatchedOpponent] = useState<any>(null)
+
+  // Team Battle state
+  const [teamSize, setTeamSize] = useState<2 | 3>(2)
+
+  // Private Room state
+  const [privateSubTab, setPrivateSubTab] = useState<'create' | 'join'>('create')
+  const [privateRoomCode, setPrivateRoomCode] = useState(() => 'PRIV-' + Math.random().toString(36).substring(2, 7).toUpperCase())
+  const [privatePassword, setPrivatePassword] = useState('')
+  const [joinPrivateCode, setJoinPrivateCode] = useState('')
+  const [joinPrivatePassword, setJoinPrivatePassword] = useState('')
+  const [privateCopied, setPrivateCopied] = useState(false)
+  const [privateFriends, setPrivateFriends] = useState<any[]>([])
+  const [invitedFriends, setInvitedFriends] = useState<Set<string>>(new Set())
 
   // Load user profile
   useEffect(() => {
@@ -265,6 +322,194 @@ export function BattleArena({ userId, userEmail, isAdmin = false }: BattleArenaP
     }
   }
 
+  useEffect(() => {
+    if (!isSearchingMatch) return
+    const interval = setInterval(() => {
+      setMatchmakingTime(t => t + 1)
+    }, 1000)
+    return () => clearInterval(interval)
+  }, [isSearchingMatch])
+
+  useEffect(() => {
+    if (selectedBattleType === 'private' && arenaUser?.id) {
+      fetch(`/api/arena/friends?userId=${arenaUser.id}`)
+        .then(r => r.json())
+        .then(d => {
+          if (d.friends) setPrivateFriends(d.friends)
+        })
+        .catch(() => {})
+    }
+  }, [selectedBattleType, arenaUser?.id])
+
+  const handleFind1v1Opponent = async () => {
+    setIsSearchingMatch(true)
+    setMatchmakingTime(0)
+    setMatchedOpponent(null)
+
+    try {
+      const res = await fetch('/api/arena/battle', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'matchmake',
+          userId: arenaUser?.id,
+          rank: arenaUser?.arenaRank,
+          mode: selectedMode,
+        }),
+      })
+      const data = await res.json()
+      const opponent = data.opponent || {
+        name: 'Apex Striker',
+        photoUrl: 'https://ui-avatars.com/api/?name=Apex+Striker&background=6366f1&color=fff',
+        arenaRank: arenaUser?.arenaRank || 'Silver',
+        level: arenaUser?.level || 3,
+      }
+
+      setTimeout(() => {
+        setMatchedOpponent(opponent)
+        setTimeout(() => {
+          setIsSearchingMatch(false)
+          setBattleConfig({
+            mode: selectedMode,
+            difficulty: selectedDifficulty,
+            battleType: '1v1',
+            opponent,
+            topic: selectedMode === 'custom' ? customTopic : undefined,
+            document: selectedMode === 'custom' ? customDocument : undefined,
+          })
+          setInBattle(true)
+        }, 1800)
+      }, 2500)
+    } catch (_) {
+      setTimeout(() => {
+        setIsSearchingMatch(false)
+        setBattleConfig({
+          mode: selectedMode,
+          difficulty: selectedDifficulty,
+          battleType: '1v1',
+          opponent: { name: 'Rival Blade', level: arenaUser?.level || 2, arenaRank: arenaUser?.arenaRank || 'Bronze' },
+        })
+        setInBattle(true)
+      }, 2000)
+    }
+  }
+
+  const handleStartTeamBattle = () => {
+    const is3v3 = teamSize === 3
+    const blueTeam = [
+      { name: arenaUser?.name || 'You', avatar: arenaUser?.avatar, level: arenaUser?.level || 1 },
+      { name: 'Cipher Ally', avatar: 'https://ui-avatars.com/api/?name=Cipher+Ally&background=3b82f6&color=fff', level: arenaUser?.level || 2 },
+      ...(is3v3 ? [{ name: 'Nova Guard', avatar: 'https://ui-avatars.com/api/?name=Nova+Guard&background=06b6d4&color=fff', level: arenaUser?.level || 3 }] : [])
+    ]
+    const redTeam = [
+      { name: 'Viper Strike', avatar: 'https://ui-avatars.com/api/?name=Viper+Strike&background=ef4444&color=fff', level: arenaUser?.level || 2 },
+      { name: 'Shadow Ghost', avatar: 'https://ui-avatars.com/api/?name=Shadow+Ghost&background=f43f5e&color=fff', level: arenaUser?.level || 2 },
+      ...(is3v3 ? [{ name: 'Crimson Fury', avatar: 'https://ui-avatars.com/api/?name=Crimson+Fury&background=dc2626&color=fff', level: arenaUser?.level || 3 }] : [])
+    ]
+
+    setBattleConfig({
+      mode: selectedMode,
+      difficulty: selectedDifficulty,
+      battleType: 'team',
+      teamSize,
+      blueTeam,
+      redTeam,
+      opponent: redTeam[0],
+      topic: selectedMode === 'custom' ? customTopic : undefined,
+      document: selectedMode === 'custom' ? customDocument : undefined,
+    })
+    setInBattle(true)
+  }
+
+  const handleStartPrivateRoom = async () => {
+    try {
+      await fetch('/api/arena/battle', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'create_private_room',
+          userId: arenaUser?.id,
+          userName: arenaUser?.name,
+          avatar: arenaUser?.avatar,
+          roomCode: privateRoomCode,
+          password: privatePassword,
+          mode: selectedMode,
+          difficulty: selectedDifficulty,
+        })
+      })
+    } catch (_) {}
+
+    setBattleConfig({
+      mode: selectedMode,
+      difficulty: selectedDifficulty,
+      battleType: 'private',
+      roomCode: privateRoomCode,
+      isPrivate: true,
+      opponent: { name: 'Invited Friend', level: arenaUser?.level || 1, arenaRank: arenaUser?.arenaRank || 'Silver' },
+    })
+    setInBattle(true)
+  }
+
+  const handleJoinPrivateRoom = async () => {
+    if (!joinPrivateCode.trim()) {
+      alert('Please enter a room code')
+      return
+    }
+    try {
+      const res = await fetch('/api/arena/battle', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'join_private_room',
+          roomCode: joinPrivateCode,
+          password: joinPrivatePassword,
+          userId: arenaUser?.id,
+          userName: arenaUser?.name,
+          avatar: arenaUser?.avatar,
+        })
+      })
+      const data = await res.json()
+      if (data.success && data.room) {
+        const room = data.room
+        setBattleConfig({
+          mode: room.mode || selectedMode,
+          difficulty: room.difficulty || selectedDifficulty,
+          battleType: 'private',
+          roomCode: room.roomCode || joinPrivateCode,
+          isPrivate: true,
+          opponent: room.participants?.find((p: any) => p.userId !== arenaUser?.id) || { name: 'Host Friend' },
+        })
+        setInBattle(true)
+      } else {
+        alert(data.error || 'Failed to join private room')
+      }
+    } catch (_) {
+      alert('Error connecting to private room')
+    }
+  }
+
+  const handleInviteFriendToPrivate = async (friend: any) => {
+    try {
+      await fetch('/api/arena/battle', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'invite_private',
+          friendId: friend._id,
+          friendName: friend.name,
+          friendEmail: friend.email,
+          roomCode: privateRoomCode,
+          userId: arenaUser?.id,
+          userName: arenaUser?.name,
+          userAvatar: arenaUser?.avatar,
+        })
+      })
+      setInvitedFriends(prev => new Set(prev).add(friend._id))
+    } catch (e) {
+      console.error('Failed to invite friend:', e)
+    }
+  }
+
   const handleStartBattle = async () => {
     // Check if arena is approved - fetch fresh status
     if (arenaUser && !isAdmin) {
@@ -291,10 +536,35 @@ export function BattleArena({ userId, userEmail, isAdmin = false }: BattleArenaP
       }
     }
 
+    if (selectedBattleType === 'tournament') {
+      setActiveTab('tournament')
+      return
+    }
+
+    if (selectedBattleType === '1v1') {
+      handleFind1v1Opponent()
+      return
+    }
+
+    if (selectedBattleType === 'team') {
+      handleStartTeamBattle()
+      return
+    }
+
+    if (selectedBattleType === 'private') {
+      if (privateSubTab === 'create') {
+        handleStartPrivateRoom()
+      } else {
+        handleJoinPrivateRoom()
+      }
+      return
+    }
+
+    // Default: vs AI (pve)
     setBattleConfig({
       mode: selectedMode,
       difficulty: selectedDifficulty,
-      battleType: selectedBattleType,
+      battleType: 'pve',
       topic: selectedMode === 'custom' ? customTopic : undefined,
       document: selectedMode === 'custom' ? customDocument : undefined,
     })
@@ -572,6 +842,160 @@ export function BattleArena({ userId, userEmail, isAdmin = false }: BattleArenaP
                   </div>
                 </div>
 
+                {/* Team Battle Controls */}
+                {selectedBattleType === 'team' && (
+                  <div className="arena-card p-4 bg-blue-500/10 border border-blue-500/20 rounded-2xl space-y-3 animate-in fade-in">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2 text-sm font-bold text-white">
+                        <Users className="w-4 h-4 text-blue-400" /> Team Battle Setup
+                      </div>
+                      <div className="flex gap-2">
+                        <button
+                          type="button"
+                          onClick={() => setTeamSize(2)}
+                          className={`px-3 py-1 rounded-lg text-xs font-bold transition-all ${
+                            teamSize === 2 ? 'bg-blue-600 text-white shadow' : 'bg-white/5 text-white/60 hover:text-white'
+                          }`}
+                        >
+                          2v2 Teamfight
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setTeamSize(3)}
+                          className={`px-3 py-1 rounded-lg text-xs font-bold transition-all ${
+                            teamSize === 3 ? 'bg-blue-600 text-white shadow' : 'bg-white/5 text-white/60 hover:text-white'
+                          }`}
+                        >
+                          3v3 Teamfight
+                        </button>
+                      </div>
+                    </div>
+                    <p className="text-xs text-white/60">
+                      Compete together with your squadmates against a rival team in a {teamSize}v{teamSize} combined score battle!
+                    </p>
+                  </div>
+                )}
+
+                {/* Private Room Controls */}
+                {selectedBattleType === 'private' && (
+                  <div className="arena-card p-4 bg-amber-500/10 border border-amber-500/20 rounded-2xl space-y-3 animate-in fade-in">
+                    <div className="flex items-center justify-between border-b border-white/10 pb-2">
+                      <div className="flex items-center gap-2 text-sm font-bold text-white">
+                        <Lock className="w-4 h-4 text-amber-400" /> Private Room (Friends Only)
+                      </div>
+                      <div className="flex gap-1.5">
+                        <button
+                          type="button"
+                          onClick={() => setPrivateSubTab('create')}
+                          className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all ${
+                            privateSubTab === 'create' ? 'bg-amber-600 text-white' : 'text-white/60 hover:text-white'
+                          }`}
+                        >
+                          Create Room
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setPrivateSubTab('join')}
+                          className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all ${
+                            privateSubTab === 'join' ? 'bg-amber-600 text-white' : 'text-white/60 hover:text-white'
+                          }`}
+                        >
+                          Join Room
+                        </button>
+                      </div>
+                    </div>
+
+                    {privateSubTab === 'create' ? (
+                      <div className="space-y-3 pt-1">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                          <div>
+                            <label className="text-[11px] font-bold text-white/70 block mb-1">Room Code</label>
+                            <div className="flex gap-2">
+                              <input
+                                type="text"
+                                readOnly
+                                value={privateRoomCode}
+                                className="flex-1 bg-black/40 border border-white/10 rounded-xl px-3 py-1.5 text-xs text-white font-mono font-bold"
+                              />
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => {
+                                  navigator.clipboard.writeText(privateRoomCode)
+                                  setPrivateCopied(true)
+                                  setTimeout(() => setPrivateCopied(false), 2500)
+                                }}
+                                className="h-8 px-2.5 border-white/10 text-xs"
+                              >
+                                {privateCopied ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
+                              </Button>
+                            </div>
+                          </div>
+
+                          <div>
+                            <label className="text-[11px] font-bold text-white/70 block mb-1">Optional Room Password</label>
+                            <input
+                              type="password"
+                              placeholder="No password (Open to friends)"
+                              value={privatePassword}
+                              onChange={(e) => setPrivatePassword(e.target.value)}
+                              className="w-full bg-black/40 border border-white/10 rounded-xl px-3 py-1.5 text-xs text-white"
+                            />
+                          </div>
+                        </div>
+
+                        {privateFriends.length > 0 && (
+                          <div className="pt-1">
+                            <label className="text-[11px] font-bold text-white/70 block mb-1.5">Invite Online Friends Directly</label>
+                            <div className="flex gap-2 overflow-x-auto pb-1">
+                              {privateFriends.map(f => (
+                                <div key={f._id} className="flex items-center gap-2 bg-black/40 border border-white/10 rounded-xl px-2.5 py-1.5 text-xs text-white whitespace-nowrap">
+                                  <span>{f.name}</span>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleInviteFriendToPrivate(f)}
+                                    disabled={invitedFriends.has(f._id)}
+                                    className={`text-[10px] font-bold px-2 py-0.5 rounded ${
+                                      invitedFriends.has(f._id) ? 'bg-emerald-500/20 text-emerald-400' : 'bg-indigo-600 hover:bg-indigo-700 text-white'
+                                    }`}
+                                  >
+                                    {invitedFriends.has(f._id) ? 'Invited' : 'Invite'}
+                                  </button>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    ) : (
+                      <div className="space-y-3 pt-1">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                          <div>
+                            <label className="text-[11px] font-bold text-white/70 block mb-1">Enter Room Code</label>
+                            <input
+                              type="text"
+                              placeholder="e.g. PRIV-7X9K2"
+                              value={joinPrivateCode}
+                              onChange={(e) => setJoinPrivateCode(e.target.value.toUpperCase())}
+                              className="w-full bg-black/40 border border-white/10 rounded-xl px-3 py-1.5 text-xs text-white font-mono"
+                            />
+                          </div>
+                          <div>
+                            <label className="text-[11px] font-bold text-white/70 block mb-1">Room Password (If private)</label>
+                            <input
+                              type="password"
+                              placeholder="Password (if set)"
+                              value={joinPrivatePassword}
+                              onChange={(e) => setJoinPrivatePassword(e.target.value)}
+                              className="w-full bg-black/40 border border-white/10 rounded-xl px-3 py-1.5 text-xs text-white"
+                            />
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+
                 {/* Difficulty */}
                 <div className="arena-card p-5">
                   <h2 className="text-white font-black text-lg mb-4 flex items-center gap-2">
@@ -661,8 +1085,10 @@ export function BattleArena({ userId, userEmail, isAdmin = false }: BattleArenaP
                       <>
                         <Play className="w-6 h-6" />
                         {selectedBattleType === 'pve' ? 'CHALLENGE AI BOSS' :
-                         selectedBattleType === '1v1' ? 'FIND OPPONENT' :
-                         selectedBattleType === 'tournament' ? 'JOIN TOURNAMENT' :
+                         selectedBattleType === '1v1' ? 'FIND 1v1 OPPONENT' :
+                         selectedBattleType === 'team' ? `START ${teamSize}v${teamSize} TEAM BATTLE` :
+                         selectedBattleType === 'private' ? (privateSubTab === 'create' ? 'START PRIVATE ROOM' : 'JOIN PRIVATE ROOM') :
+                         selectedBattleType === 'tournament' ? 'OPEN EVENTS & TOURNAMENTS' :
                          'START BATTLE'}
                         <ChevronRight className="w-6 h-6" />
                       </>
@@ -766,7 +1192,20 @@ export function BattleArena({ userId, userEmail, isAdmin = false }: BattleArenaP
 
           {/* ===== FRIENDS ===== */}
           <TabsContent value="friends" className="animate-in fade-in duration-300">
-            {arenaUser && <FriendsPanel currentUser={arenaUser} />}
+            {arenaUser && (
+              <FriendsPanel
+                currentUser={arenaUser}
+                onStartDuel={(friend: any) => {
+                  setBattleConfig({
+                    mode: selectedMode || 'math',
+                    difficulty: selectedDifficulty || 'intermediate',
+                    battleType: '1v1',
+                    opponent: friend,
+                  })
+                  setInBattle(true)
+                }}
+              />
+            )}
           </TabsContent>
 
           {/* ===== CHAT ===== */}
@@ -958,6 +1397,63 @@ export function BattleArena({ userId, userEmail, isAdmin = false }: BattleArenaP
       </TabsContent>
         </Tabs>
       </div>
+
+      {/* 1v1 Ranked Matchmaking Search Overlay */}
+      {isSearchingMatch && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/85 backdrop-blur-md animate-in fade-in">
+          <div className="arena-card p-6 sm:p-8 max-w-sm w-full text-center space-y-4 border border-violet-500/40 bg-slate-900 shadow-2xl rounded-3xl">
+            {!matchedOpponent ? (
+              <>
+                <div className="relative w-24 h-24 mx-auto flex items-center justify-center">
+                  <div className="absolute inset-0 rounded-full border-4 border-violet-500/20 animate-ping" />
+                  <div className="w-20 h-20 rounded-full bg-violet-600/20 border-2 border-violet-500 flex items-center justify-center">
+                    <Swords className="w-10 h-10 text-violet-400 animate-pulse" />
+                  </div>
+                </div>
+                <div>
+                  <h3 className="text-lg font-black text-white">FINDING OPPONENT...</h3>
+                  <p className="text-xs text-white/60 mt-1">Matching in {arenaUser?.arenaRank || 'Ranked'} tier</p>
+                  <div className="font-mono text-indigo-400 font-bold text-sm mt-2">
+                    Searching: 00:{matchmakingTime < 10 ? `0${matchmakingTime}` : matchmakingTime}
+                  </div>
+                </div>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => setIsSearchingMatch(false)}
+                  className="border-white/10 text-white/60 text-xs"
+                >
+                  Cancel Queue
+                </Button>
+              </>
+            ) : (
+              <div className="space-y-4 animate-in zoom-in-95">
+                <Badge className="bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 text-xs py-1 px-3">
+                  MATCH FOUND!
+                </Badge>
+                <div className="flex items-center justify-center gap-4 py-2">
+                  <div className="text-center">
+                    <img src={arenaUser?.avatar} alt="You" className="w-14 h-14 rounded-2xl mx-auto object-cover border-2 border-indigo-500" />
+                    <div className="text-xs font-bold text-white mt-1 max-w-[80px] truncate">{arenaUser?.name}</div>
+                  </div>
+                  <span className="font-black text-rose-500 text-lg">VS</span>
+                  <div className="text-center">
+                    <img
+                      src={matchedOpponent.photoUrl || `https://ui-avatars.com/api/?name=${encodeURIComponent(matchedOpponent.name)}&background=ef4444&color=fff`}
+                      alt={matchedOpponent.name}
+                      className="w-14 h-14 rounded-2xl mx-auto object-cover border-2 border-rose-500"
+                    />
+                    <div className="text-xs font-bold text-white mt-1 max-w-[80px] truncate">{matchedOpponent.name}</div>
+                  </div>
+                </div>
+                <div className="text-xs text-white/60">
+                  Entering 1v1 Battle Arena in 2 seconds...
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   )
 }

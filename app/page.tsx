@@ -2,16 +2,16 @@
 
 import ExamAnalyzer from "@/components/exam-analyzer"
 import { useNav } from "@/hooks/use-nav"
-import { Brain, ShieldCheck, Zap, Code2, Sparkles, ChevronDown } from "lucide-react"
+import { VisionSlider } from "@/components/vision-slider"
+import { Brain, Sparkles } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 
 export default function Home() {
   const { isRegistered, currentStep } = useNav()
 
-  // When registered student is working within the platform, directly mount the application workspace
-  // without forcing them to scroll past the landing marketing hero each time
-  if (isRegistered && currentStep !== "onboarding") {
+  // If user is registered or explicitly on the onboarding / login step, render the active workspace directly
+  if ((isRegistered && currentStep !== "onboarding") || currentStep === "onboarding") {
     return (
       <main className="flex-1 w-full min-h-[calc(100vh-4rem)]">
         <div id="analyzer" className="w-full">
@@ -54,73 +54,8 @@ export default function Home() {
         </div>
       </section>
 
-      {/* Technical Feature Section (The "Code Try Catch" section) */}
-      <section className="py-12 sm:py-24 border-b bg-background">
-        <div className="container mx-auto px-4">
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 lg:gap-16 items-center">
-            <div>
-              <div className="w-12 h-12 bg-primary/10 rounded-xl flex items-center justify-center mb-6">
-                <Code2 className="w-6 h-6 text-primary" />
-              </div>
-              <h2 className="text-2xl sm:text-4xl font-bold mb-4 sm:mb-6 tracking-tight">Robust Error-Resilient Processing</h2>
-              <p className="text-base sm:text-lg text-muted-foreground mb-6 sm:mb-8">
-                We take stability seriously. Every analysis step is protected by multi-layered error handling 
-                and fallback mechanisms to ensure you get results even when models fluctuate.
-              </p>
-              
-              <div className="space-y-4">
-                <div className="flex items-start gap-3">
-                  <div className="mt-1 w-5 h-5 rounded-full bg-green-500/10 flex items-center justify-center flex-shrink-0">
-                    <ShieldCheck className="w-3 h-3 text-green-500" />
-                  </div>
-                  <div>
-                    <span className="font-semibold">Automatic Fallbacks:</span>
-                    <p className="text-muted-foreground text-sm">If an API fails, we automatically switch to secondary models.</p>
-                  </div>
-                </div>
-                <div className="flex items-start gap-3">
-                  <div className="mt-1 w-5 h-5 rounded-full bg-blue-500/10 flex items-center justify-center flex-shrink-0">
-                    <Zap className="w-3 h-3 text-blue-500" />
-                  </div>
-                  <div>
-                    <span className="font-semibold">JSON Validation:</span>
-                    <p className="text-muted-foreground text-sm">Every AI response is strictly validated and cleaned before rendering.</p>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <div className="bg-slate-950 rounded-2xl p-6 shadow-2xl border border-white/10 font-mono text-sm overflow-hidden relative">
-              <div className="absolute top-0 right-0 p-4 opacity-10">
-                <Brain className="w-48 h-48" />
-              </div>
-              <div className="flex gap-2 mb-6">
-                <div className="w-3 h-3 rounded-full bg-red-500/50" />
-                <div className="w-3 h-3 rounded-full bg-yellow-500/50" />
-                <div className="w-3 h-3 rounded-full bg-green-500/50" />
-              </div>
-             <pre className="text-slate-300 overflow-x-auto">
-  <code>{`try {
-  const result = await analyzePaper(content);
-
-  if (!isValid(result)) {
-    throw new ValidationError("Incomplete analysis");
-  }
-
-  return formatPremiumOutput(result);
-
-} catch (error) {
-  console.error("Resilient Mode Engaged:", error);
-  return generateVerifiedBackup(content);
-}`}</code>
-</pre>
-              <div className="mt-6 flex items-center gap-2 text-xs text-primary/80 font-bold uppercase tracking-wider">
-                <Sparkles className="w-3 h-3" /> System: Stable 
-              </div>
-            </div>
-          </div>
-        </div>
-      </section>
+      {/* Vasudhaiva Kutumbakam & Platform Vision Slider (Left-to-Right 10 Themes) */}
+      <VisionSlider />
 
       {/* Main App Section */}
       <div id="analyzer" className="scroll-mt-20">

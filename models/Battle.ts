@@ -2,14 +2,19 @@ import mongoose from 'mongoose';
 
 const BattleSchema = new mongoose.Schema({
   roomId: { type: String, required: true, unique: true },
-  type: { type: String, enum: ['1v1', 'team', 'ranked', 'private', 'tournament'], default: '1v1' },
-  mode: { type: String, enum: ['coding', 'puzzle', 'math', 'gk', 'prediction', 'mixed'], required: true },
+  roomCode: { type: String, default: '' },
+  password: { type: String, default: '' },
+  isPrivate: { type: Boolean, default: false },
+  teamSize: { type: Number, default: 1 },
+  type: { type: String, enum: ['pve', '1v1', 'team', 'ranked', 'private', 'tournament'], default: '1v1' },
+  mode: { type: String, enum: ['coding', 'puzzle', 'math', 'gk', 'prediction', 'mixed', 'topicdoc', 'custom'], required: true },
   difficulty: { type: String, enum: ['beginner', 'intermediate', 'advanced', 'expert', 'master', 'grandmaster'], default: 'beginner' },
   status: { type: String, enum: ['waiting', 'active', 'finished', 'cancelled'], default: 'waiting' },
   participants: [{
     userId: String,
     name: String,
     avatar: String,
+    team: { type: String, default: null }, // 'blue' or 'red'
     score: { type: Number, default: 0 },
     xpGained: { type: Number, default: 0 },
     accuracy: { type: Number, default: 0 },
@@ -27,4 +32,8 @@ const BattleSchema = new mongoose.Schema({
   createdAt: { type: Date, default: Date.now },
 });
 
-export default mongoose.models.Battle || mongoose.model('Battle', BattleSchema);
+if (mongoose.models && mongoose.models.Battle) {
+  delete (mongoose.models as any).Battle;
+}
+
+export default mongoose.model('Battle', BattleSchema);

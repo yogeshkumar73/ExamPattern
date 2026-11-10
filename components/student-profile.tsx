@@ -119,7 +119,7 @@ interface FullProfile extends SessionUser {
 }
 
 export function StudentProfile() {
-  const { setStep, setRegistered, isAdmin, setAdmin, setSessionUser, setProfileComplete, navigate } = useNav()
+  const { setStep, setRegistered, isAdmin, setAdmin, setSessionUser, sessionUser, isRegistered, setProfileComplete, navigate } = useNav()
 
   const [profile, setProfile] = useState<FullProfile>({
     id: "", name: "", email: "", phone: "", branch: "", bio: "",
@@ -263,18 +263,28 @@ export function StudentProfile() {
         }
       } catch {}
 
-      if (localData.email) {
-        const merged = await fetchProfileFromDB(localData.email as string, localData)
+      // Fallback to sessionUser from useNav
+      if (!localData.email && sessionUser?.email) {
+        localData = { ...sessionUser, bio: sessionUser.bio || "" }
+      }
+
+      const effectiveEmail = (localData.email || sessionUser?.email) as string | undefined
+      if (effectiveEmail) {
+        const merged = await fetchProfileFromDB(effectiveEmail, localData)
         setProfile(prev => ({ ...prev, ...merged }))
       } else if (localData.id || localData.name) {
         setProfile(prev => ({ ...prev, ...localData }))
+      } else {
+        // No user logged in: redirect to login page instead of showing fake guest
+        setRegistered(false)
+        setStep("onboarding")
       }
 
       setIsLoadingProfile(false)
     }
 
     load()
-  }, [fetchProfileFromDB])
+  }, [fetchProfileFromDB, sessionUser, setRegistered, setStep])
 
   // ── Fetch battle activity ─────────────────────────────────────────────────────
   useEffect(() => {
@@ -447,6 +457,30 @@ export function StudentProfile() {
       <div className="flex flex-col items-center justify-center h-96 space-y-4">
         <RefreshCw className="w-12 h-12 text-primary animate-spin" />
         <p className="text-muted-foreground font-bold">Loading your profile...</p>
+      </div>
+    )
+  }
+
+  if (!profile.email && !sessionUser?.email) {
+    return (
+      <div className="max-w-md mx-auto py-20 px-4 text-center">
+        <div className="p-8 border border-white/10 rounded-3xl bg-slate-900 shadow-2xl space-y-4">
+          <div className="w-14 h-14 mx-auto rounded-2xl bg-primary/10 border border-primary/20 flex items-center justify-center">
+            <User className="w-7 h-7 text-primary" />
+          </div>
+          <h2 className="text-xl font-bold text-white">Student Account Required</h2>
+          <p className="text-sm text-muted-foreground">
+            Please sign in or register to access your personal student profile.
+          </p>
+          <div className="pt-2 flex flex-col gap-2">
+            <Button onClick={() => setStep("onboarding")} className="w-full font-bold">
+              Sign In / Register
+            </Button>
+            <Button variant="outline" onClick={() => setStep("upload")} className="w-full">
+              Back to Home
+            </Button>
+          </div>
+        </div>
       </div>
     )
   }

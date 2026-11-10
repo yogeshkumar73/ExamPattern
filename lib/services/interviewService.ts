@@ -24,20 +24,28 @@ export async function createMockInterview(payload: { userId: string; categories:
       questionDocs = await InterviewQuestion.find({}).limit(desired);
     }
     
-    // Fallback 2: Dynamically seed the DB with base interview questions if completely empty
-    if (questionDocs.length === 0) {
-      const defaults = [
-        { prompt: "Explain the React reconciliation algorithm and how the Virtual DOM uses Fiber trees to prioritize updates.", category: "React", difficulty: "Medium", tags: ["React", "Fiber"] },
-        { prompt: "What is the difference between useEffect and useLayoutEffect? When can improper dependencies cause memory leaks?", category: "React", difficulty: "Medium", tags: ["React", "Hooks"] },
-        { prompt: "Compare Server-Side Rendering (SSR), SSG, and ISR in Next.js. How do you decide caching trade-offs?", category: "NextJs", difficulty: "Medium", tags: ["NextJs", "SSR"] },
-        { prompt: "Explain the phases of the Node.js event loop and how process.nextTick() prioritizes execution.", category: "Node", difficulty: "Medium", tags: ["Node", "Async"] },
-        { prompt: "How do you implement an LRU Cache with O(1) get and put operations using a Doubly Linked List and Hash Map?", category: "DSA", difficulty: "Hard", tags: ["DSA", "Cache"] },
-        { prompt: "Design a high-throughput URL shortening service like bit.ly. How do you generate unique Base62 keys and handle 100,000 QPS?", category: "SystemDesign", difficulty: "Medium", tags: ["SystemDesign", "Scalability"] },
-        { prompt: "What is the Global Interpreter Lock (GIL) in CPython, and how does it impact concurrency for CPU vs I/O tasks?", category: "Python", difficulty: "Medium", tags: ["Python", "GIL"] },
-        { prompt: "Explain the internal bucket architecture and collision resolution in Java 8+ HashMap.", category: "Java", difficulty: "Medium", tags: ["Java", "HashMap"] },
-        { prompt: "Explain Clustered vs Non-Clustered indexes in SQL and how a B-Tree index optimizes range scans.", category: "SQL", difficulty: "Medium", tags: ["SQL", "Indexing"] }
-      ];
-      questionDocs = await InterviewQuestion.insertMany(defaults);
+    // If not enough questions found for category in DB, load matching from FALLBACK_INTERVIEW_QUESTIONS
+    if (questionDocs.length < desired) {
+      try {
+        const { FALLBACK_INTERVIEW_QUESTIONS } = await import('@/app/api/interview/questions/route');
+        const reqCats = (payload.categories || []).map(c => c.toLowerCase());
+        const matchingFallbacks = FALLBACK_INTERVIEW_QUESTIONS.filter(fb => 
+          reqCats.length === 0 || reqCats.some(c => fb.category.toLowerCase().includes(c) || c.includes(fb.category.toLowerCase()))
+        );
+        const pool = matchingFallbacks.length > 0 ? matchingFallbacks : FALLBACK_INTERVIEW_QUESTIONS;
+        const toAdd = pool.slice(0, desired - questionDocs.length).map(q => ({
+          prompt: q.prompt,
+          category: q.category,
+          difficulty: q.difficulty,
+          tags: q.tags || [],
+        }));
+        if (toAdd.length > 0) {
+          const inserted = await InterviewQuestion.insertMany(toAdd);
+          questionDocs = [...questionDocs, ...inserted];
+        }
+      } catch (fbErr) {
+        console.warn("Fallback seed in interviewService failed:", fbErr);
+      }
     }
 
     // If we have fewer than desired, attempt to generate the remainder via AI

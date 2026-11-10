@@ -42,12 +42,22 @@ const TournamentSchema = new mongoose.Schema({
   winnerId: { type: String, default: null },
   winnerName: { type: String, default: null },
   prizeXP: { type: Number, default: 1000 },
+  prizePool: { type: Number, default: 1000 },
   startTime: { type: Date },
+  scheduledStartTime: { type: Date, default: null },
   endTime: { type: Date },
   createdBy: { type: String },
+  hostName: { type: String, default: '' },
+  password: { type: String, default: '' },
+  inviteCode: { type: String, default: '' },
+  isPrivate: { type: Boolean, default: false },
   createdAt: { type: Date, default: Date.now },
   isDestroyed: { type: Boolean, default: false },
   destroyedAt: { type: Date, default: null },
 });
 
-export default mongoose.models.Tournament || mongoose.model('Tournament', TournamentSchema);
+if (mongoose.models && mongoose.models.Tournament) {
+  delete (mongoose.models as any).Tournament;
+}
+
+export default mongoose.model('Tournament', TournamentSchema);

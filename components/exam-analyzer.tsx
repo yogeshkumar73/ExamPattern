@@ -196,7 +196,10 @@ export default function ExamAnalyzer() {
   if (currentStep === "community") return <PaperRepository />
   if (currentStep === "policy") return <PolicySection />
   if (currentStep === "chat") return <CommunityChat />
-  if (currentStep === "profile") return <StudentProfile />
+  if (currentStep === "profile") {
+    if (!isRegistered && !sessionUser) return <UserOnboarding />
+    return <StudentProfile />
+  }
   if (currentStep === "developer") return <DeveloperSection />
   if (currentStep === "lab") return <SmartLab />
   if (currentStep === "guider") return <GuiderAgent />

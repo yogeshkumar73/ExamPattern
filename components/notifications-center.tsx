@@ -17,7 +17,8 @@ import {
   ExternalLink,
   Mail,
   User,
-  AlertCircle
+  AlertCircle,
+  Trophy
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -474,7 +475,7 @@ export function NotificationsCenter({
                       <div className="flex items-center justify-between gap-2">
                         <div className="flex items-center gap-1.5 min-w-0">
                           <span className="font-black text-xs truncate text-foreground">{item.senderName || "Aura Member"}</span>
-                          {item.senderId && (
+                          {item.senderId && item.category !== "battle_challenge" && (
                             <span className="text-[10px] font-mono text-muted-foreground/80 bg-muted/60 px-1.5 py-0.5 rounded">
                               #{item.senderId.slice(-6).toUpperCase()}
                             </span>
@@ -489,7 +490,7 @@ export function NotificationsCenter({
                       <h4 className="font-bold text-xs text-foreground leading-tight">{item.title}</h4>
                       <p className="text-xs text-muted-foreground leading-relaxed whitespace-pre-wrap">{item.message}</p>
 
-                      {/* Action buttons - Profile redirect, Friend accept & connect, Chat */}
+                      {/* Action buttons */}
                       <div className="flex items-center gap-1.5 pt-1.5 flex-wrap">
                         {!item.isRead && (
                           <Button
@@ -501,48 +502,92 @@ export function NotificationsCenter({
                             <Check className="w-3 h-3 mr-1" /> Mark Read
                           </Button>
                         )}
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          onClick={() => {
-                            if (onNavigate) {
-                              setIsOpen(false);
-                              onNavigate("profile");
-                            }
-                          }}
-                          className="h-6 px-2 text-[10px] font-bold text-indigo-500 hover:bg-indigo-500/10"
-                        >
-                          <User className="w-3 h-3 mr-1" /> Profile
-                        </Button>
-                        {item.senderId && item.senderId !== currentUserId && (
+                        {item.category === "battle_challenge" && (
                           <Button
                             size="sm"
                             variant="ghost"
-                            disabled={connectedUsers.has(item.senderId) || connectingUser === item.senderId}
-                            onClick={() => handleAcceptConnection(item)}
-                            className="h-6 px-2 text-[10px] font-bold text-emerald-500 hover:bg-emerald-500/10"
+                            onClick={() => {
+                              handleMarkRead(item._id);
+                              setIsOpen(false);
+                              const actionUrl = item.actionUrl || '';
+                              const search = actionUrl.includes('?') ? actionUrl.split('?')[1] : '';
+                              const params = new URLSearchParams(search);
+                              const isTournament = item.title?.toLowerCase().includes("tournament") || actionUrl.includes("tournament");
+                              const targetTab = isTournament ? 'tournament' : (params.get('tab') || 'lobby');
+
+                              if (typeof window !== 'undefined') {
+                                const newSearch = search ? `?step=arena&${search}` : `?step=arena&tab=${targetTab}`;
+                                window.history.pushState({}, '', newSearch);
+                                window.dispatchEvent(new CustomEvent('arena-navigate', {
+                                  detail: {
+                                    actionUrl,
+                                    tab: targetTab,
+                                    tournamentId: params.get('tournamentId'),
+                                    invite: params.get('invite'),
+                                    roomCode: params.get('roomCode'),
+                                  }
+                                }));
+                              }
+
+                              if (onNavigate) {
+                                onNavigate("arena");
+                              }
+                            }}
+                            className="h-6 px-2 text-[10px] font-bold text-rose-500 hover:bg-rose-500/10"
                           >
-                            <Users className="w-3 h-3 mr-1" />
-                            {connectedUsers.has(item.senderId)
-                              ? "Connected"
-                              : connectingUser === item.senderId
-                              ? "Connecting..."
-                              : "Accept & Connect"}
+                            {item.title?.toLowerCase().includes("tournament") ? (
+                              <><Trophy className="w-3 h-3 mr-1 text-yellow-400" /> Enter Tournament</>
+                            ) : (
+                              <><Swords className="w-3 h-3 mr-1" /> Enter Duel</>
+                            )}
                           </Button>
                         )}
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          onClick={() => {
-                            if (onNavigate) {
-                              setIsOpen(false);
-                              onNavigate("chat");
-                            }
-                          }}
-                          className="h-6 px-2 text-[10px] font-bold text-cyan-500 hover:bg-cyan-500/10"
-                        >
-                          <MessageSquare className="w-3 h-3 mr-1" /> Chat
-                        </Button>
+                        {item.category !== "battle_challenge" && (
+                          <>
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              onClick={() => {
+                                if (onNavigate) {
+                                  setIsOpen(false);
+                                  onNavigate("profile");
+                                }
+                              }}
+                              className="h-6 px-2 text-[10px] font-bold text-indigo-500 hover:bg-indigo-500/10"
+                            >
+                              <User className="w-3 h-3 mr-1" /> Profile
+                            </Button>
+                            {item.senderId && item.senderId !== currentUserId && (
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                disabled={connectedUsers.has(item.senderId) || connectingUser === item.senderId}
+                                onClick={() => handleAcceptConnection(item)}
+                                className="h-6 px-2 text-[10px] font-bold text-emerald-500 hover:bg-emerald-500/10"
+                              >
+                                <Users className="w-3 h-3 mr-1" />
+                                {connectedUsers.has(item.senderId)
+                                  ? "Connected"
+                                  : connectingUser === item.senderId
+                                  ? "Connecting..."
+                                  : "Accept & Connect"}
+                              </Button>
+                            )}
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              onClick={() => {
+                                if (onNavigate) {
+                                  setIsOpen(false);
+                                  onNavigate("chat");
+                                }
+                              }}
+                              className="h-6 px-2 text-[10px] font-bold text-cyan-500 hover:bg-cyan-500/10"
+                            >
+                              <MessageSquare className="w-3 h-3 mr-1" /> Chat
+                            </Button>
+                          </>
+                        )}
                         <Button
                           size="sm"
                           variant="ghost"
