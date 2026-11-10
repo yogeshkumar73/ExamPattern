@@ -39,6 +39,7 @@ import {
   ChevronDown,
   BookOpen,
   GraduationCap,
+  Home as HomeIcon,
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -64,6 +65,12 @@ import {
 } from "@/components/ui/sheet";
 
 import { useNav, type Step } from "@/hooks/use-nav";
+import {
+  getStoredSession,
+  storeSession,
+  clearStoredSession,
+  generateSessionToken,
+} from "@/lib/session-storage";
 
 type SessionUser = {
   name?: string
@@ -127,7 +134,7 @@ useEffect(() => {
       setAdmin(session?.user?.role === "admin");
       if (session?.user?.email) {
         setRegistered(true);
-        const currentSaved = localStorage.getItem("aura_session");
+        const currentSaved = getStoredSession();
         if (!currentSaved) {
           const userObj = {
             id: session.user.id || `USR-${session.user.email}`,
@@ -138,7 +145,8 @@ useEffect(() => {
             isAdmin: Boolean(session.user.role === "admin"),
             profileComplete: false,
           };
-          localStorage.setItem("aura_session", JSON.stringify({ user: userObj, role: userObj.role, isAdmin: userObj.isAdmin }));
+          const token = generateSessionToken(userObj.id, userObj.email, userObj.role).token;
+          storeSession({ user: userObj, token, role: userObj.role, isAdmin: userObj.isAdmin });
           setSessionUser(userObj as any);
         }
       }
@@ -228,13 +236,13 @@ useEffect(() => {
         const data = await response.json();
 
         if (data?.success === true && data?.user) {
-          // Store admin session in localStorage for API validation
-          localStorage.setItem('aura_session', JSON.stringify({
+          const adminToken = generateSessionToken(data.user.id || "admin-master", data.user.email || "admin@aurastudy.ai", "admin").token;
+          storeSession({
             user: data.user,
-            role: data.user.role,
-            isAdmin: data.user.isAdmin,
-            loginTime: new Date().toISOString()
-          }));
+            token: adminToken,
+            role: data.user.role || "admin",
+            isAdmin: true,
+          });
         }
 
         return data?.success === true;
@@ -326,12 +334,12 @@ useEffect(() => {
     console.error(error);
   }
 
-  localStorage.removeItem("aura_session");
+  clearStoredSession();
 
   setSession(null);
   setAdmin(false);
   setRegistered(false);
-  setStep("onboarding");
+  setStep("home");
 }, [setRegistered, setStep]);
 
   // Manage steps for navigation controls
@@ -368,7 +376,7 @@ const currentIndex = useMemo(
         <div className="flex items-center gap-6">
           <Link
             href="/"
-            onClick={() => setStep("upload")}
+            onClick={() => setStep("home")}
             className="group flex items-center gap-2 font-bold text-xl tracking-tight text-primary transition-transform hover:opacity-80 hover:scale-105"
           >
             <div className="rounded-lg bg-primary/10 p-1.5 transition-colors group-hover:bg-primary/20">
@@ -390,37 +398,53 @@ const currentIndex = useMemo(
           )}
         </div>
 
-        <div className="flex items-center gap-4">
+        <div className="flex items-center gap-2 sm:gap-4">
           {isRegistered && (
-            <nav className="flex items-center space-x-1.5 rounded-xl border bg-muted/30 p-1 shadow-inner">
+            <nav className="flex items-center space-x-1 sm:space-x-1.5 rounded-xl border bg-muted/30 p-0.5 sm:p-1 shadow-inner">
               <Button
                 variant="ghost"
                 size="sm"
-                className="h-8 w-8 p-0 rounded-lg"
+                className="h-7 w-7 sm:h-8 sm:w-8 p-0 rounded-lg"
                 onClick={handlePrev}
                 disabled={currentIndex <= 0}
                 aria-label="Previous Step"
               >
-                <ChevronLeft className="h-4 w-4" />
+                <ChevronLeft className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
               </Button>
-              <div className="min-w-[90px] px-3 text-center text-[10px] font-black uppercase tracking-widest text-primary">
+              <div className="min-w-[64px] sm:min-w-[90px] max-w-[80px] sm:max-w-none truncate px-1.5 sm:px-3 text-center text-[9px] sm:text-[10px] font-black uppercase tracking-widest text-primary">
                 {currentStep}
               </div>
               <Button
                 variant="ghost"
                 size="sm"
-                className="h-8 w-8 p-0 rounded-lg"
+                className="h-7 w-7 sm:h-8 sm:w-8 p-0 rounded-lg"
                 onClick={handleNext}
                 disabled={currentIndex === steps.length - 1}
                 aria-label="Next Step"
               >
-                <ChevronRight className="h-4 w-4" />
+                <ChevronRight className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
               </Button>
             </nav>
           )}
 
           {/* Desktop & Laptop Menubar */}
-          <Menubar className="hidden xl:flex border-none bg-transparent shadow-none gap-1">
+          <div className="hidden xl:flex items-center gap-1">
+            <Button
+              variant={currentStep === "home" ? "default" : "ghost"}
+              size="sm"
+              onClick={() => {
+                setStep("home");
+                if (typeof window !== "undefined") {
+                  window.scrollTo({ top: 0, behavior: "smooth" });
+                }
+              }}
+              className="h-8 px-3 text-xs font-bold gap-1.5 rounded-lg"
+            >
+              <HomeIcon className="h-3.5 w-3.5" />
+              <span>Home</span>
+            </Button>
+
+            <Menubar className="border-none bg-transparent shadow-none gap-1">
             {/* AI Services Group */}
             <MenubarMenu>
               <MenubarTrigger className="cursor-pointer font-bold hover:text-primary transition-colors flex items-center gap-1.5 px-3 py-1.5">
@@ -564,6 +588,7 @@ const currentIndex = useMemo(
               </Button>
             )}
           </Menubar>
+        </div>
 
           {/* Real-time Notifications Bell */}
           <NotificationsCenter
@@ -635,6 +660,13 @@ const currentIndex = useMemo(
                     <div className="text-[10px] font-black uppercase tracking-wider text-muted-foreground px-2 mb-2">
                       Academic & AI Systems
                     </div>
+                    <Button
+                      variant={currentStep === "home" ? "default" : "ghost"}
+                      className="w-full justify-start gap-3 h-11 text-sm font-bold text-primary hover:text-primary rounded-xl"
+                      onClick={() => { setStep("home"); setIsMobileMenuOpen(false); }}
+                    >
+                      <HomeIcon className="h-4 w-4" /> Home Landing Overview
+                    </Button>
                     <Button
                       variant={currentStep === "upload" || currentStep === "analyze" || currentStep === "predict" ? "default" : "ghost"}
                       className="w-full justify-start gap-3 h-11 text-sm font-bold text-amber-500 hover:text-amber-600 rounded-xl"

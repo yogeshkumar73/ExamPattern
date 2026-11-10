@@ -10,6 +10,12 @@ import { Textarea } from "@/components/ui/textarea"
 import { ShieldCheck, User, Users, Lock, Unlock, Phone, CheckCircle2, Download, Upload, FileText, Globe, Scale, ArrowRight, ShieldAlert, Brain, MessageSquare, Send, Mail, Sparkles, Activity, Zap, Trophy, Target, CheckSquare, XSquare, Star, MessageCircle, ExternalLink, Heart, RefreshCw, Gauge, Play, Terminal, Database, Code, Check, Loader2, Clock, Cpu, Sliders, X, Eye, Trash2, AlertCircle, FileCheck, Search } from "lucide-react"
 import { useNav } from "@/hooks/use-nav"
 import { Switch } from "@/components/ui/switch"
+import {
+  getStoredSession,
+  storeSession,
+  generateSessionToken,
+  consumePostLoginRedirect,
+} from "@/lib/session-storage"
 
 // --- ONBOARDING COMPONENT ---
 export function UserOnboarding() {
@@ -22,18 +28,15 @@ export function UserOnboarding() {
   const [adminAuthError, setAdminAuthError] = useState("")
 
   useEffect(() => {
-    const saved = localStorage.getItem("aura_session")
-    if (saved) {
-      try {
-        const parsed = JSON.parse(saved)
-        if (parsed?.user) {
-          setSessionUser(parsed.user)
-          setRegistered(true)
-          setProfileComplete(Boolean(parsed.user.profileComplete))
-          setAdmin(parsed.user.role === 'admin' || parsed.user.isAdmin === true)
-          setStep("profile")
-        }
-      } catch {}
+    // Read only active session token from sessionStorage (window session)
+    const saved = getStoredSession()
+    if (saved?.user && saved?.token) {
+      setSessionUser(saved.user)
+      setRegistered(true)
+      setProfileComplete(Boolean(saved.user.profileComplete))
+      setAdmin(saved.user.role === 'admin' || saved.user.isAdmin === true || saved.isAdmin === true)
+      const target = (consumePostLoginRedirect() as any) || "profile"
+      setStep(target)
     }
   }, [setRegistered, setStep, setSessionUser, setProfileComplete, setAdmin])
 
@@ -96,13 +99,14 @@ export function UserOnboarding() {
           points: 0,
           rank: "Bronze",
         }
-        localStorage.setItem("aura_session", JSON.stringify({ user: sessionUser, role: sessionUser.role, isAdmin: false }))
+        const token = data.token || generateSessionToken(sessionUser.id, sessionUser.email, sessionUser.role).token
+        storeSession({ user: sessionUser, token, role: sessionUser.role, isAdmin: false })
         setSessionUser(sessionUser)
         setProfileComplete(false)
         setAdmin(false)
         setRegistered(true)
-        // Redirect user directly into their personal account
-        setStep("profile")
+        const target = (consumePostLoginRedirect() as any) || "profile"
+        setStep(target)
       } else {
         alert(data.message || "Registration failed. Please try again.")
       }
@@ -154,12 +158,14 @@ export function UserOnboarding() {
           points: data.user.points || 0,
           rank: data.user.rank || "Bronze",
         }
-        localStorage.setItem("aura_session", JSON.stringify({ user: sessionUser, role: sessionUser.role, isAdmin: sessionUser.role === 'admin' }))
+        const token = data.token || generateSessionToken(sessionUser.id, sessionUser.email, sessionUser.role).token
+        storeSession({ user: sessionUser, token, role: sessionUser.role, isAdmin: sessionUser.role === 'admin' })
         setSessionUser(sessionUser)
         setProfileComplete(Boolean(sessionUser.profileComplete))
         setAdmin(sessionUser.role === 'admin')
         setRegistered(true)
-        setStep("profile")
+        const target = (consumePostLoginRedirect() as any) || (sessionUser.profileComplete ? "home" : "setup")
+        setStep(target)
       } else if (res.status === 403) {
         alert(data.message || "Your account has been suspended by an administrator.")
       } else {
@@ -239,7 +245,8 @@ export function UserOnboarding() {
           isAdmin: true,
           profileComplete: true,
         }
-        localStorage.setItem("aura_session", JSON.stringify({ user: adminSession }))
+        const adminToken = generateSessionToken(adminSession.id, adminSession.email, "admin").token
+        storeSession({ user: adminSession, token: adminToken, role: "admin", isAdmin: true })
         setSessionUser(adminSession)
         setProfileComplete(true)
         setAdmin(true)
@@ -268,6 +275,12 @@ export function UserOnboarding() {
         </CardHeader>
         
         <CardContent className="pt-8 space-y-6">
+          {typeof window !== "undefined" && sessionStorage.getItem("aura_redirect_after_login") && (
+            <div className="p-3 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-500 text-xs font-semibold flex items-center gap-2">
+              <Lock className="w-4 h-4 flex-shrink-0" />
+              <span>Authentication required. Sign in or register to access <strong>{sessionStorage.getItem("aura_redirect_after_login")}</strong>.</span>
+            </div>
+          )}
           {mode === "admin" ? (
             <div className="flex items-center justify-between pb-2 border-b border-border/40">
               <span className="text-xs font-black text-rose-500 uppercase tracking-widest flex items-center gap-1.5">

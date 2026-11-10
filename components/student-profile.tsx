@@ -34,6 +34,11 @@ import {
   Bell,
 } from "lucide-react"
 import { useNav, type SessionUser } from "@/hooks/use-nav"
+import {
+  getStoredSession,
+  storeSession,
+  clearStoredSession,
+} from "@/lib/session-storage"
 import { NotificationsCenter } from "@/components/notifications-center"
 
 const STREAMS = [
@@ -149,14 +154,17 @@ export function StudentProfile() {
     setTimeout(() => setToast(null), 3500)
   }
 
-  // ── Persist user data to localStorage ────────────────────────────────────────
+  // ── Persist user data to sessionStorage ────────────────────────────────────────
   const persistToSession = useCallback((userData: Partial<FullProfile>) => {
     try {
-      const saved = localStorage.getItem("aura_session")
+      const saved = getStoredSession()
       if (saved) {
-        const sess = JSON.parse(saved)
-        sess.user = { ...sess.user, ...userData }
-        localStorage.setItem("aura_session", JSON.stringify(sess))
+        storeSession({
+          user: { ...saved.user, ...userData },
+          token: saved.token,
+          role: saved.role,
+          isAdmin: saved.isAdmin,
+        })
       }
     } catch {}
   }, [])
@@ -415,12 +423,12 @@ export function StudentProfile() {
 
   // ── Logout ────────────────────────────────────────────────────────────────────
   const handleLogout = () => {
-    localStorage.removeItem("aura_session")
+    clearStoredSession()
     setRegistered(false)
     setAdmin(false)
     setSessionUser(null)
     setProfileComplete(false)
-    setStep("onboarding")
+    setStep("home")
   }
 
   // ── Derived values ────────────────────────────────────────────────────────────
@@ -489,7 +497,7 @@ export function StudentProfile() {
     <div className="container mx-auto py-6 sm:py-8 px-4 max-w-5xl animate-in fade-in zoom-in-95 duration-500">
       {/* Toast */}
       {toast && (
-        <div className="fixed top-6 right-6 z-50 px-6 py-3 bg-primary text-white rounded-2xl shadow-2xl font-bold text-sm animate-in slide-in-from-right-4 duration-300">
+        <div className="fixed top-6 right-6 z-50 px-6 py-3 bg-indigo-600 text-white rounded-2xl shadow-2xl font-bold text-sm animate-in slide-in-from-right-4 duration-300">
           {toast}
         </div>
       )}

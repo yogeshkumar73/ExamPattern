@@ -5,8 +5,16 @@ and keyword frequency overlap. Computes mapping confidence and flags uncertain m
 """
 
 from typing import List, Tuple
-from sklearn.feature_extraction.text import TfidfVectorizer
-from sklearn.metrics.pairwise import cosine_similarity
+
+try:
+    from sklearn.feature_extraction.text import TfidfVectorizer
+    from sklearn.metrics.pairwise import cosine_similarity
+    SKLEARN_AVAILABLE = True
+except ImportError:
+    SKLEARN_AVAILABLE = False
+    TfidfVectorizer = None  # type: ignore
+    cosine_similarity = None  # type: ignore
+
 from .models import SyllabusTopicRecord, ExtractedQuestionRecord
 
 
@@ -32,6 +40,8 @@ def map_questions_to_topics(
     question_texts = [q.questionText for q in questions]
 
     try:
+        if not SKLEARN_AVAILABLE or TfidfVectorizer is None or cosine_similarity is None:
+            raise ImportError("scikit-learn not available, using pure keyword matcher")
         vectorizer = TfidfVectorizer(stop_words="english", max_features=1500)
         # Fit on combined corpus
         combined = topic_corpus + question_texts

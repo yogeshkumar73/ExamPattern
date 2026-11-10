@@ -189,6 +189,11 @@ export default function ExamAnalyzer() {
 
   // --- RENDER ROUTING WITH AUTHORIZATION ---
   if (currentStep === "onboarding") return <UserOnboarding />
+
+  // Intercept unauthenticated guest users attempting to access any service before login
+  if (!isRegistered && !sessionUser && currentStep !== "policy") {
+    return <UserOnboarding />
+  }
   if (currentStep === "admin") {
     if (!isAdmin) return <StudentProfile />
     return <AdminPanel />
@@ -827,7 +832,7 @@ export default function ExamAnalyzer() {
                                 <td className="py-3 px-4 font-bold text-foreground">{t.name}</td>
                                 <td className="py-3 px-4 text-muted-foreground">{t.unit || "Core"}</td>
                                 <td className="py-3 px-4">
-                                  <Badge className="bg-primary text-white font-black text-[10px]">
+                                  <Badge className="bg-indigo-600 hover:bg-indigo-500 text-white font-black text-[11px] px-2.5 py-0.5 border-none shadow-sm">
                                     {t.priorityScore ?? t.probabilityMatch ?? 70}/100
                                   </Badge>
                                 </td>

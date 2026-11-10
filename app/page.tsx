@@ -1,19 +1,47 @@
 "use client"
 
+import React from "react"
 import ExamAnalyzer from "@/components/exam-analyzer"
 import { useNav } from "@/hooks/use-nav"
+import { HomeHeroSlider } from "@/components/home-hero-slider"
+import { PracticePlatformShowcase } from "@/components/practice-platform-showcase"
+import { PlatformVision } from "@/components/platform-vision"
 import { VisionSlider } from "@/components/vision-slider"
-import { Brain, Sparkles } from "lucide-react"
+import { Brain, ChevronLeft, Sparkles, Swords, Code2, GraduationCap, ShieldCheck, HeartHandshake } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 
 export default function Home() {
-  const { isRegistered, currentStep } = useNav()
+  const { currentStep, setStep } = useNav()
 
-  // If user is registered or explicitly on the onboarding / login step, render the active workspace directly
-  if ((isRegistered && currentStep !== "onboarding") || currentStep === "onboarding") {
+  // If user explicitly navigated to a dedicated tool workspace (e.g. Arena, Lab, Admin, Profile, Guider, etc.)
+  if (currentStep !== "home") {
     return (
       <main className="flex-1 w-full min-h-[calc(100vh-4rem)]">
+        {/* Navigation Breadcrumb to return to Home */}
+        <div className="border-b bg-background/95 backdrop-blur-md sticky top-16 z-40 shadow-sm">
+          <div className="container mx-auto px-4 py-2.5 flex items-center justify-between">
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => {
+                setStep("home")
+                if (typeof window !== "undefined") {
+                  window.scrollTo({ top: 0, behavior: "smooth" })
+                }
+              }}
+              className="h-8 gap-2 text-xs font-bold text-muted-foreground hover:text-foreground hover:bg-background/80 rounded-lg transition-all"
+            >
+              <ChevronLeft className="w-4 h-4" />
+              <span>Back to Home Overview</span>
+            </Button>
+            <Badge variant="outline" className="text-[11px] font-mono uppercase tracking-widest text-primary border-primary/30">
+              Active Mode: {currentStep}
+            </Badge>
+          </div>
+        </div>
+
+        {/* Dedicated Workspace View */}
         <div id="analyzer" className="w-full">
           <ExamAnalyzer />
         </div>
@@ -21,59 +49,148 @@ export default function Home() {
     )
   }
 
+  // Home Landing Page View: Welcoming New Students, Practice Platform, and Vision
   return (
-    <main className="flex-1">
-      {/* Hero / Welcome Section */}
-      <section className="relative pt-12 sm:pt-20 pb-16 sm:pb-32 overflow-hidden border-b bg-muted/20">
-        <div className="container mx-auto px-4 relative z-10 text-center">
-          <Badge variant="outline" className="mb-4 sm:mb-6 py-1.5 px-3 sm:px-4 text-xs sm:text-sm bg-primary/5 border-primary/20 text-primary animate-bounce">
-            Introducing Aura Prime v2.0
-          </Badge>
-          <h1 className="text-3xl sm:text-5xl md:text-6xl lg:text-7xl font-extrabold tracking-tight mb-6 sm:mb-8 bg-clip-text text-transparent bg-gradient-to-r from-foreground via-primary to-indigo-600 leading-tight">
-            Intelligent Exam Analysis <br className="hidden sm:inline" />
-            Powered by Deep Learning
-          </h1>
-          <p className="text-base sm:text-xl text-muted-foreground max-w-3xl mx-auto mb-8 sm:mb-12 leading-relaxed px-2">
-            Upload your source materials and let our advanced AI models identify hidden patterns, 
-            weight topics, and predict potential examination questions with 94% accuracy.
-          </p>
-          <div className="flex flex-col sm:flex-row justify-center items-center gap-3 sm:gap-4 max-w-sm sm:max-w-none mx-auto">
-            <Button size="lg" className="w-full sm:w-auto h-12 sm:h-14 px-6 sm:px-10 text-base sm:text-lg font-bold rounded-full" asChild>
-              <a href="#analyzer">Start Analyzing</a>
-            </Button>
-            <Button size="lg" variant="outline" className="w-full sm:w-auto h-12 sm:h-14 px-6 sm:px-10 text-base sm:text-lg font-medium rounded-full bg-background/50">
-              View Sample Results
-            </Button>
-          </div>
-        </div>
+    <main className="flex-1 flex flex-col min-h-screen">
+      {/* 1. Hero Slide Component: Welcomes New Users & Dynamic Feature Redirects */}
+      <HomeHeroSlider />
 
-        {/* Decorative background elements */}
-        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-full h-full -z-10 pointer-events-none">
-          <div className="absolute top-0 left-1/4 w-96 h-96 bg-primary/10 rounded-full blur-[120px]" />
-          <div className="absolute bottom-0 right-1/4 w-96 h-96 bg-indigo-500/10 rounded-full blur-[120px]" />
+      {/* 2. Practice Platform Showcase: Interactive Compiler, Challenges, & 1v1 PvP Preview */}
+      <PracticePlatformShowcase />
+
+      {/* 3. Platform Vision Component: Vasudhaiva Kutumbakam & Future of Student Education */}
+      <PlatformVision />
+
+      {/* 4. Vasudhaiva Kutumbakam Continuous 10-Theme Cultural Slider */}
+      <div className="border-b bg-background/50">
+        <VisionSlider />
+      </div>
+
+      {/* 5. Exam Pattern Analyzer Quick Access & Input Section */}
+      <section id="analyzer" className="scroll-mt-20 py-16 bg-muted/10 border-b">
+        <div className="container mx-auto px-4 max-w-7xl">
+          <div className="text-center max-w-3xl mx-auto mb-10">
+            <Badge variant="outline" className="mb-3 py-1 px-3 text-xs font-bold uppercase tracking-widest bg-primary/10 text-primary border-primary/20">
+              AI EXAM SUITE
+            </Badge>
+            <h2 className="text-3xl sm:text-4xl font-black text-foreground mb-3">
+              Deep Syllabus & Question Paper Predictor
+            </h2>
+            <p className="text-sm sm:text-base text-muted-foreground">
+              Extract syllabus topic weights and historical question patterns directly below.
+            </p>
+          </div>
+
+          <ExamAnalyzer />
         </div>
       </section>
 
-      {/* Vasudhaiva Kutumbakam & Platform Vision Slider (Left-to-Right 10 Themes) */}
-      <VisionSlider />
+      {/* 6. Professional Academic Footer */}
+      <footer className="py-14 border-t bg-card text-card-foreground">
+        <div className="container mx-auto px-4 max-w-7xl">
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-8 mb-12">
+            <div className="space-y-3">
+              <div className="flex items-center gap-2 font-black text-lg text-primary">
+                <Brain className="w-6 h-6" />
+                <span>Aura Study AI</span>
+              </div>
+              <p className="text-xs text-muted-foreground leading-relaxed">
+                Empowering university and engineering students globally with high-velocity algorithmic practice, real-time 1v1 battle arenas, and deep learning exam prediction.
+              </p>
+              <div className="text-xs font-semibold text-emerald-500">
+                • Vasudhaiva Kutumbakam (वसुधैव कुटुम्बकम्)
+              </div>
+            </div>
 
-      {/* Main App Section */}
-      <div id="analyzer" className="scroll-mt-20">
-        <ExamAnalyzer />
-      </div>
+            <div>
+              <h4 className="font-bold text-sm mb-3 uppercase tracking-wider text-foreground">Practice Platforms</h4>
+              <ul className="space-y-2 text-xs text-muted-foreground">
+                <li>
+                  <button onClick={() => setStep("lab")} className="hover:text-primary transition-colors">
+                    Interactive Web Compiler
+                  </button>
+                </li>
+                <li>
+                  <button onClick={() => setStep("arena")} className="hover:text-primary transition-colors">
+                    1v1 Algorithm Battle Arena
+                  </button>
+                </li>
+                <li>
+                  <button onClick={() => setStep("lab")} className="hover:text-primary transition-colors">
+                    Curated Problem Bank
+                  </button>
+                </li>
+                <li>
+                  <button onClick={() => setStep("guider")} className="hover:text-primary transition-colors">
+                    AI Socratic Guider & Debugger
+                  </button>
+                </li>
+              </ul>
+            </div>
 
-      <footer className="py-12 border-t bg-muted/30">
-        <div className="container mx-auto px-4 text-center">
-          <div className="flex items-center justify-center gap-2 font-bold mb-4 opacity-50">
-            <Brain className="w-5 h-5" />
-            <span>Aura Prime Analyzer</span>
+            <div>
+              <h4 className="font-bold text-sm mb-3 uppercase tracking-wider text-foreground">Academic AI</h4>
+              <ul className="space-y-2 text-xs text-muted-foreground">
+                <li>
+                  <button onClick={() => setStep("upload")} className="hover:text-primary transition-colors">
+                    Syllabus Topic Weighting
+                  </button>
+                </li>
+                <li>
+                  <button onClick={() => setStep("community")} className="hover:text-primary transition-colors">
+                    Past Question Paper Repository
+                  </button>
+                </li>
+                <li>
+                  <button onClick={() => setStep("guider")} className="hover:text-primary transition-colors">
+                    Technical Mock Interviews
+                  </button>
+                </li>
+                <li>
+                  <button onClick={() => setStep("chat")} className="hover:text-primary transition-colors">
+                    Student Discussion Forum
+                  </button>
+                </li>
+              </ul>
+            </div>
+
+            <div>
+              <h4 className="font-bold text-sm mb-3 uppercase tracking-wider text-foreground">Platform</h4>
+              <ul className="space-y-2 text-xs text-muted-foreground">
+                <li>
+                  <button onClick={() => setStep("policy")} className="hover:text-primary transition-colors">
+                    Terms & Academic Integrity
+                  </button>
+                </li>
+                <li>
+                  <button onClick={() => setStep("feedback")} className="hover:text-primary transition-colors">
+                    Submit Student Feedback
+                  </button>
+                </li>
+                <li>
+                  <button onClick={() => setStep("developer")} className="hover:text-primary transition-colors">
+                    Developer Architecture
+                  </button>
+                </li>
+                <li>
+                  <button onClick={() => setStep("community-join")} className="hover:text-primary transition-colors">
+                    Join WhatsApp Community
+                  </button>
+                </li>
+              </ul>
+            </div>
           </div>
-          <p className="text-sm text-muted-foreground">
-            © 2026 Aura Technologies. All rights reserved. Built for academic excellence.
-          </p>
+
+          <div className="pt-8 border-t border-border/40 flex flex-col sm:flex-row items-center justify-between gap-4 text-xs text-muted-foreground">
+            <div>
+              © 2026 Aura Study AI. Built for academic excellence & cognitive empowerment.
+            </div>
+            <div className="flex items-center gap-4">
+              <span>Sa Vidya Ya Vimuktaye (सा विद्या या विमुक्तये)</span>
+            </div>
+          </div>
         </div>
       </footer>
     </main>
   )
 }
-

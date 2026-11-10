@@ -45,7 +45,7 @@ export async function GET(req: NextRequest) {
 
       if (res.ok) {
         const data = await res.json();
-        if (data.success && data.data?.entries) {
+        if (data.success && Array.isArray(data.data?.entries) && data.data.entries.length > 0) {
           const leaderboard = data.data.entries.map((entry: any) => ({
             rank: entry.rank,
             userId: entry.player_id,
@@ -73,51 +73,56 @@ export async function GET(req: NextRequest) {
           });
         }
       }
-    }catch (err: any) {
-  console.error("Battle Service Error");
-  console.error("Message:", err.message);
-  console.error("Cause:", err.cause);
-  console.error(err);
-}
+    } catch (err: any) {
+      // Battle service offline or unavailable — fall through to MongoDB fallback gracefully
+      if (process.env.NODE_ENV === 'development') {
+        console.warn(`[Arena Leaderboard] Battle service port 8001 unreachable (${err?.code || err?.message || 'offline'}), falling back to MongoDB.`);
+      }
+    }
   }
 
-  // ── 2. MongoDB Fallback ───────────────────────────────────
+  // ── 2. MongoDB Real Registered Users ───────────────────────
   await dbConnect();
 
-  let sortField: Record<string, any> = { arenaPoints: -1 };
-  if (category === 'coding')     sortField = { 'gameStats.coding.xp': -1 };
-  if (category === 'puzzle')     sortField = { 'gameStats.puzzle.xp': -1 };
-  if (category === 'math')       sortField = { 'gameStats.math.xp': -1 };
-  if (category === 'gk')         sortField = { 'gameStats.gk.xp': -1 };
-  if (category === 'prediction') sortField = { 'gameStats.prediction.xp': -1 };
-  if (category === 'battle')     sortField = { wins: -1 };
-  if (category === 'xp')         sortField = { xp: -1 };
+  let sortField: Record<string, any> = { arenaPoints: -1, xp: -1 };
+  if (category === 'coding')     sortField = { 'gameStats.coding.xp': -1, arenaPoints: -1, xp: -1 };
+  if (category === 'puzzle')     sortField = { 'gameStats.puzzle.xp': -1, arenaPoints: -1, xp: -1 };
+  if (category === 'math')       sortField = { 'gameStats.math.xp': -1, arenaPoints: -1, xp: -1 };
+  if (category === 'gk')         sortField = { 'gameStats.gk.xp': -1, arenaPoints: -1, xp: -1 };
+  if (category === 'prediction') sortField = { 'gameStats.prediction.xp': -1, arenaPoints: -1, xp: -1 };
+  if (category === 'battle')     sortField = { wins: -1, arenaPoints: -1 };
+  if (category === 'xp')         sortField = { xp: -1, arenaPoints: -1 };
 
   try {
     const users = await User.find({ status: { $ne: 'Blocked' } }, {
-      name: 1, photoUrl: 1, arenaPoints: 1, arenaRank: 1, xp: 1, level: 1,
+      name: 1, email: 1, photoUrl: 1, arenaPoints: 1, arenaRank: 1, xp: 1, level: 1,
       wins: 1, losses: 1, winRate: 1, badges: 1, gameStats: 1, totalBattles: 1,
       currentStreak: 1, accuracy: 1,
     }).sort(sortField).limit(limit);
 
-    const leaderboard = users.map((u: any, i: number) => ({
-      rank: i + 1,
-      userId: u._id,
-      name: u.name,
-      avatar: u.photoUrl || `https://ui-avatars.com/api/?name=${encodeURIComponent(u.name)}&background=6366f1&color=fff`,
-      arenaPoints: u.arenaPoints || 0,
-      arenaRank: computeArenaRank(u.arenaPoints || 0),
-      xp: u.xp || 0,
-      level: u.level || 1,
-      wins: u.wins || 0,
-      losses: u.losses || 0,
-      winRate: u.winRate || 0,
-      badges: u.badges || [],
-      totalBattles: u.totalBattles || 0,
-      currentStreak: u.currentStreak || 0,
-      accuracy: u.accuracy || 0,
-      categoryXP: category !== 'global' ? u.gameStats?.[category]?.xp || 0 : undefined,
-    }));
+    const leaderboard = users.map((u: any, i: number) => {
+      const arenaPts = Number(u.arenaPoints || 0);
+      const categoryScore = category !== 'global' ? Number(u.gameStats?.[category]?.xp ?? u.xp ?? arenaPts) : undefined;
+      return {
+        rank: i + 1,
+        userId: String(u._id),
+        name: u.name || 'Anonymous Student',
+        email: u.email || '',
+        avatar: u.photoUrl || `https://ui-avatars.com/api/?name=${encodeURIComponent(u.name || 'User')}&background=6366f1&color=fff`,
+        arenaPoints: arenaPts,
+        arenaRank: u.arenaRank && u.arenaRank !== 'Unranked' ? u.arenaRank : computeArenaRank(arenaPts),
+        xp: Number(u.xp || 0),
+        level: Number(u.level || 1),
+        wins: Number(u.wins || 0),
+        losses: Number(u.losses || 0),
+        winRate: Number(u.winRate || 0),
+        badges: Array.isArray(u.badges) && u.badges.length > 0 ? u.badges : (u.wins > 5 ? ['🏆', '🔥'] : ['🏆']),
+        totalBattles: Number(u.totalBattles || ((u.wins || 0) + (u.losses || 0))),
+        currentStreak: Number(u.currentStreak || 0),
+        accuracy: Number(u.accuracy || 0),
+        categoryXP: categoryScore,
+      };
+    });
 
     return NextResponse.json({ leaderboard, category, total: leaderboard.length, source: 'db' });
   } catch (err: any) {

@@ -24,19 +24,6 @@ const PODIUM_CONFIG = [
   { pos: 3, size: 'h-20', bgFrom: '#7c2d12', bgTo: '#d97706', medal: '🥉', z: 'z-10' },
 ]
 
-const BACKFILL_CONTENDERS = [
-  { name: "AlgoMaster99", avatarBg: "6366f1" },
-  { name: "CodeNinja",    avatarBg: "8b5cf6" },
-  { name: "ByteWizard",   avatarBg: "3b82f6" },
-  { name: "LogicKing",    avatarBg: "ec4899" },
-  { name: "BrainStorm",   avatarBg: "10b981" },
-  { name: "DataDragon",   avatarBg: "f59e0b" },
-  { name: "NeuralNerd",   avatarBg: "06b6d4" },
-  { name: "HackForce",    avatarBg: "14b8a6" },
-  { name: "CyberSage",    avatarBg: "84cc16" },
-  { name: "PixelPunk",    avatarBg: "e11d48" },
-]
-
 function computeRankTier(points: number): string {
   if (points >= 5000) return 'Grandmaster';
   if (points >= 3000) return 'Master';
@@ -47,162 +34,85 @@ function computeRankTier(points: number): string {
   return 'Bronze';
 }
 
-// Generate guaranteed 1-10 leaderboard in strict descending order
-function generateMockLeaderboard(
+// Process and dynamically rank real users from DB without fake bots or static dummy data
+function processRealLeaderboard(
   category: string,
   backendData: any[] = []
 ) {
-  let mapped: any[] = []
-
-  // 1. Process backend users if available
-  if (Array.isArray(backendData) && backendData.length > 0) {
-    mapped = backendData.map((player, index) => {
-      let wins = Number(player.wins ?? 0)
-      let losses = Number(player.losses ?? 0)
-      let xp = Number(player.xp ?? 0)
-      let arenaPoints = Number(player.arenaPoints ?? 0)
-      let level = Number(player.level ?? 1)
-      let currentStreak = Number(player.currentStreak ?? 0)
-      let accuracy = Number(player.accuracy ?? 0)
-
-      if (xp === 0 && wins === 0 && arenaPoints === 0) {
-        arenaPoints = Math.max(0, 8500 - index * 380 + Math.floor(Math.random() * 200))
-        xp = Math.max(0, 12000 - index * 550 + Math.floor(Math.random() * 500))
-        level = Math.max(1, 25 - Math.floor(index * 1.2))
-        wins = Math.max(0, 120 - index * 5 + Math.floor(Math.random() * 20))
-        losses = Math.max(0, 20 + index * 2 + Math.floor(Math.random() * 10))
-        currentStreak = Math.max(0, 15 - index)
-        accuracy = Math.max(40, 98 - index * 2.5)
-      }
-
-      const totalBattles = wins + losses
-      const winRate = player.winRate ?? (totalBattles > 0 ? Math.round((wins / totalBattles) * 100) : 0)
-
-      return {
-        rank: index + 1,
-        userId: player.userId ?? player._id ?? `user-${index}`,
-        name: player.name ?? "Unknown Player",
-        avatar: player.photoUrl || player.avatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(player.name ?? "User")}&background=6366f1&color=fff`,
-        arenaPoints,
-        arenaRank: player.arenaRank && player.arenaRank !== 'Unranked' ? player.arenaRank : computeRankTier(arenaPoints),
-        xp,
-        level,
-        wins,
-        losses,
-        totalBattles,
-        winRate,
-        badges: Array.isArray(player.badges) && player.badges.length > 0 ? player.badges : ["🏆", "⚡", "🔥"].slice(0, Math.max(1, 3 - Math.floor(index / 5))),
-        currentStreak,
-        accuracy,
-        categoryXP: category !== "global" ? Number(player.categoryXP ?? xp) : undefined,
-      }
-    })
+  if (!Array.isArray(backendData) || backendData.length === 0) {
+    return []
   }
 
-  // 2. Sort existing users strictly descending
-  mapped.sort((a, b) => {
-    const ptsA = category !== "global" ? (a.categoryXP ?? a.xp ?? a.arenaPoints) : a.arenaPoints
-    const ptsB = category !== "global" ? (b.categoryXP ?? b.xp ?? b.arenaPoints) : b.arenaPoints
-    return ptsB - ptsA
+  // 1. Map only real registered users from DB
+  const mapped = backendData.map((player) => {
+    const wins = Number(player.wins ?? 0)
+    const losses = Number(player.losses ?? 0)
+    const totalBattles = Number(player.totalBattles ?? (wins + losses))
+    const winRate = Number(player.winRate ?? (totalBattles > 0 ? Math.round((wins / totalBattles) * 100) : 0))
+    const xp = Number(player.xp ?? 0)
+    const arenaPoints = Number(player.arenaPoints ?? 0)
+    const level = Number(player.level ?? (xp > 0 ? Math.max(1, Math.floor(Math.sqrt(xp / 100)) + 1) : 1))
+    const currentStreak = Number(player.currentStreak ?? 0)
+    const accuracy = Number(player.accuracy ?? 0)
+    const categoryXP = category !== 'global' ? Number(player.categoryXP ?? xp ?? arenaPoints) : undefined
+
+    // Clean corrupted badges from DB if any
+    const rawBadges = Array.isArray(player.badges) ? player.badges : []
+    const cleanBadges = rawBadges.filter((b: any) => typeof b === 'string' && b.trim().length > 0 && !b.includes('?'))
+    const badges = cleanBadges.length > 0 ? cleanBadges : (wins > 5 ? ['🏆', '🔥'] : wins > 0 ? ['⚔️'] : ['⭐'])
+
+    return {
+      userId: String(player.userId ?? player._id ?? ''),
+      name: player.name || 'Student Player',
+      email: player.email || '',
+      avatar: player.avatar || player.photoUrl || `https://ui-avatars.com/api/?name=${encodeURIComponent(player.name || 'User')}&background=6366f1&color=fff`,
+      arenaPoints,
+      arenaRank: player.arenaRank && player.arenaRank !== 'Unranked' ? player.arenaRank : computeRankTier(arenaPoints),
+      xp,
+      level,
+      wins,
+      losses,
+      totalBattles,
+      winRate,
+      badges,
+      currentStreak,
+      accuracy,
+      categoryXP,
+    }
   })
 
-  // 3. Ensure ranks 1 to 10 are completely populated in strict descending order
-  if (mapped.length < 10) {
-    const lowestPlayer = mapped.length > 0 ? mapped[mapped.length - 1] : null
-    const lowestPts = lowestPlayer
-      ? (category !== "global" ? (lowestPlayer.categoryXP ?? lowestPlayer.xp ?? lowestPlayer.arenaPoints) : lowestPlayer.arenaPoints)
-      : 2000
-
-    const basePts = Math.max(300, lowestPts)
-    const step = Math.max(70, Math.floor(basePts / (12 - mapped.length)))
-
-    for (let i = mapped.length; i < 10; i++) {
-      const contender = BACKFILL_CONTENDERS[(i - mapped.length) % BACKFILL_CONTENDERS.length]
-      const pts = Math.max(50, basePts - (i - mapped.length + 1) * step)
-      const xp = Math.round(pts * 1.35)
-      const tier = computeRankTier(pts)
-      const wins = Math.max(4, Math.floor(pts / 55))
-      const losses = Math.max(2, Math.floor(wins * 0.38))
-      const winRate = Math.round((wins / (wins + losses)) * 100)
-
-      mapped.push({
-        rank: i + 1,
-        userId: `arena-contender-${i}-${contender.name.toLowerCase()}`,
-        name: contender.name,
-        avatar: `https://ui-avatars.com/api/?name=${encodeURIComponent(contender.name)}&background=${contender.avatarBg}&color=fff`,
-        arenaPoints: pts,
-        arenaRank: tier,
-        xp,
-        level: Math.max(1, Math.floor(pts / 350)),
-        wins,
-        losses,
-        totalBattles: wins + losses,
-        winRate,
-        badges: ["⚡", "🎯"],
-        currentStreak: Math.max(1, 5 - (i - mapped.length)),
-        accuracy: Math.max(60, 92 - (i - mapped.length) * 3),
-        categoryXP: category !== "global" ? pts : undefined,
-      })
+  // 2. Dynamically compare scores and sort strictly descending
+  mapped.sort((a, b) => {
+    const scoreA = category !== 'global' ? (a.categoryXP ?? a.xp ?? a.arenaPoints) : a.arenaPoints
+    const scoreB = category !== 'global' ? (b.categoryXP ?? b.xp ?? b.arenaPoints) : b.arenaPoints
+    if (scoreB !== scoreA) {
+      return scoreB - scoreA
     }
-  }
+    // Tiebreakers: XP, then total wins
+    if (b.xp !== a.xp) return b.xp - a.xp
+    return b.wins - a.wins
+  })
 
-  // 4. Return Top 10 in guaranteed descending order
-  return mapped
-    .sort((a, b) => {
-      const ptsA = category !== "global" ? (a.categoryXP ?? a.xp ?? a.arenaPoints) : a.arenaPoints
-      const ptsB = category !== "global" ? (b.categoryXP ?? b.xp ?? b.arenaPoints) : b.arenaPoints
-      return ptsB - ptsA
-    })
-    .slice(0, 10)
-    .map((player, index) => ({
-      ...player,
-      rank: index + 1,
-    }))
-}
-
-// Dynamically simulate live battle point adjustments for 2-minute updates
-function applyDynamicArenaShifts(list: any[], category: string) {
-  return list
-    .map((p) => {
-      const delta = Math.floor(Math.random() * 32) - 6 // -6 to +25 live battle points delta
-      const newPts = Math.max(60, p.arenaPoints + delta)
-      const newXp = p.xp + Math.max(0, delta * 2)
-      const winsDelta = delta > 12 ? 1 : 0
-      const lossesDelta = delta < 0 ? 1 : 0
-      const newWins = p.wins + winsDelta
-      const newLosses = p.losses + lossesDelta
-      const newTotal = newWins + newLosses
-      const newWinRate = newTotal > 0 ? Math.round((newWins / newTotal) * 100) : p.winRate
-
-      return {
-        ...p,
-        arenaPoints: newPts,
-        xp: newXp,
-        wins: newWins,
-        losses: newLosses,
-        winRate: newWinRate,
-        categoryXP: category !== 'global' ? newPts : undefined,
-        arenaRank: computeRankTier(newPts),
-      }
-    })
-    .sort((a, b) => {
-      const ptsA = category !== "global" ? (a.categoryXP ?? a.xp ?? a.arenaPoints) : a.arenaPoints
-      const ptsB = category !== "global" ? (b.categoryXP ?? b.xp ?? b.arenaPoints) : b.arenaPoints
-      return ptsB - ptsA
-    })
-    .slice(0, 10)
-    .map((p, index) => ({
-      ...p,
-      rank: index + 1,
-    }))
+  // 3. Assign dynamic ranks 1, 2, 3...
+  return mapped.map((player, index) => ({
+    ...player,
+    rank: index + 1,
+  }))
 }
 
 interface ArenaLeaderboardProps {
   currentUserId?: string
+  currentUserName?: string
+  currentUserEmail?: string
   refreshTrigger?: number
 }
 
-export function ArenaLeaderboard({ currentUserId, refreshTrigger = 0 }: ArenaLeaderboardProps) {
+export function ArenaLeaderboard({ 
+  currentUserId, 
+  currentUserName, 
+  currentUserEmail, 
+  refreshTrigger = 0 
+}: ArenaLeaderboardProps) {
   const [activeCategory, setActiveCategory] = useState('global')
   const [leaderboard, setLeaderboard] = useState<any[]>([])
   const [loading, setLoading] = useState(false)
@@ -220,18 +130,13 @@ export function ArenaLeaderboard({ currentUserId, refreshTrigger = 0 }: ArenaLea
     setAnimate(false)
 
     try {
-      const res = await fetch(`/api/arena/leaderboard?category=${activeCategory}&limit=20&t=${Date.now()}`)
+      const res = await fetch(`/api/arena/leaderboard?category=${activeCategory}&limit=50&t=${Date.now()}`)
       const data = await res.json()
       let list: any[] = []
-      if (data.leaderboard && data.leaderboard.length > 0) {
-        list = generateMockLeaderboard(activeCategory, data.leaderboard)
+      if (data.leaderboard && Array.isArray(data.leaderboard) && data.leaderboard.length > 0) {
+        list = processRealLeaderboard(activeCategory, data.leaderboard)
       } else {
-        list = generateMockLeaderboard(activeCategory)
-      }
-
-      // If auto-refreshed after 2 mins, apply dynamic live battle shifts for dynamic updates
-      if (isAuto) {
-        list = applyDynamicArenaShifts(list, activeCategory)
+        list = []
       }
 
       setLeaderboard(list)
@@ -239,10 +144,9 @@ export function ArenaLeaderboard({ currentUserId, refreshTrigger = 0 }: ArenaLea
       setLastUpdatedText(
         `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}:${now.getSeconds().toString().padStart(2, '0')}`
       )
-    } catch {
-      let fallback = generateMockLeaderboard(activeCategory)
-      if (isAuto) fallback = applyDynamicArenaShifts(fallback, activeCategory)
-      setLeaderboard(fallback)
+    } catch (e) {
+      console.warn("Could not load leaderboard:", e)
+      setLeaderboard([])
     } finally {
       setLoading(false)
       setIsUpdating(false)
@@ -299,13 +203,13 @@ export function ArenaLeaderboard({ currentUserId, refreshTrigger = 0 }: ArenaLea
       </div>
 
       {/* Podium (Top 3 Champions) */}
-      {top3.length >= 3 && (
+      {top3.length > 0 && (
         <div className="arena-card p-6">
           <div className="flex items-center justify-between mb-8">
             <div className="w-20 hidden md:block" />
             <h2 className="text-white font-black text-center flex items-center justify-center gap-2 text-base md:text-lg">
               <Crown className="w-5 h-5 text-yellow-400" />
-              TOP CHAMPIONS (RANKS 1 – 3)
+              TOP CHAMPIONS (RANKS 1 – {top3.length})
             </h2>
             <div className="text-xs text-white/40 font-mono hidden md:flex items-center gap-1.5">
               <Clock className="w-3.5 h-3.5" />
@@ -314,24 +218,37 @@ export function ArenaLeaderboard({ currentUserId, refreshTrigger = 0 }: ArenaLea
           </div>
 
           <div className="flex items-end justify-center gap-4">
-            {PODIUM_CONFIG.map(({ pos, size, bgFrom, bgTo, medal, z }) => {
+            {PODIUM_CONFIG.filter(cfg => cfg.pos <= top3.length).map(({ pos, size, bgFrom, bgTo, medal, z }) => {
               const player = top3[pos - 1]
               if (!player) return null
+              const isCurrentUser =
+                (currentUserId && player.userId === currentUserId) ||
+                (currentUserName && player.name && player.name.toLowerCase() === currentUserName.toLowerCase()) ||
+                (currentUserEmail && player.email && player.email.toLowerCase() === currentUserEmail.toLowerCase()) ||
+                (player.name && player.name.toLowerCase() === 'yogesh')
+
               return (
                 <div key={pos} className={`flex flex-col items-center ${z} transition-all duration-300`}>
                   <div className="relative mb-3">
                     <img
                       src={player.avatar}
                       alt={player.name}
-                      className="w-16 h-16 rounded-2xl border-2 border-white/20 object-cover shadow-lg"
+                      className={`w-16 h-16 rounded-2xl border-2 object-cover shadow-lg ${
+                        isCurrentUser ? 'border-indigo-400 ring-2 ring-indigo-500/50' : 'border-white/20'
+                      }`}
                     />
                     <div className="absolute -top-3 left-1/2 -translate-x-1/2 text-2xl">{medal}</div>
                     <div className="absolute -bottom-1 -right-1 text-xs bg-black/60 rounded-full px-1">
                       {RANK_ICONS[player.arenaRank] || '⬜'}
                     </div>
                   </div>
-                  <div className="text-white font-black text-sm text-center mb-1 max-w-[110px] truncate">
-                    {player.name}
+                  <div className="text-white font-black text-sm text-center mb-1 max-w-[120px] truncate flex items-center justify-center gap-1">
+                    <span className={isCurrentUser ? 'text-indigo-300' : 'text-white'}>{player.name}</span>
+                    {isCurrentUser && (
+                      <span className="bg-indigo-500/20 text-indigo-300 px-1 py-0.5 rounded text-[9px] font-bold border border-indigo-500/30">
+                        YOU
+                      </span>
+                    )}
                   </div>
                   <div className="text-xs font-bold text-yellow-400/90 mb-3">
                     {(activeCategory === 'global' ? player.arenaPoints : (player.categoryXP || player.arenaPoints)).toLocaleString()} pts
@@ -389,11 +306,27 @@ export function ArenaLeaderboard({ currentUserId, refreshTrigger = 0 }: ArenaLea
           <div className="flex items-center justify-center py-12">
             <div className="w-8 h-8 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin" />
           </div>
+        ) : leaderboard.length === 0 ? (
+          <div className="p-8 text-center text-white/50 text-sm">
+            <Trophy className="w-8 h-8 mx-auto mb-2 text-white/20" />
+            <p className="font-semibold text-white/80">No active contenders found for this category yet.</p>
+            <p className="text-xs text-white/40 mt-1">Play battles to take the #1 spot!</p>
+          </div>
+        ) : rest.length === 0 ? (
+          <div className="p-8 text-center text-white/50 text-sm">
+            <Trophy className="w-8 h-8 mx-auto mb-2 text-yellow-400/40" />
+            <p className="font-semibold text-white/80">All current contenders are featured on the Top Champions Podium!</p>
+            <p className="text-xs text-white/40 mt-1">More contenders will appear here as new players join and compete.</p>
+          </div>
         ) : (
           <div className="divide-y divide-white/5">
             {rest.map((player, idx) => {
               const rank = idx + 4
-              const isCurrentUser = player.userId === currentUserId || (player.name && player.name.toLowerCase() === 'yogesh')
+              const isCurrentUser =
+                (currentUserId && player.userId === currentUserId) ||
+                (currentUserName && player.name && player.name.toLowerCase() === currentUserName.toLowerCase()) ||
+                (currentUserEmail && player.email && player.email.toLowerCase() === currentUserEmail.toLowerCase()) ||
+                (player.name && player.name.toLowerCase() === 'yogesh')
               return (
                 <div
                   key={player.userId || `rank-${rank}`}

@@ -92,7 +92,7 @@ export default function QuestionPredictor({ analysisResult }: QuestionPredictorP
                   <Card key={index} className="overflow-hidden border-2 transition-all hover:border-primary/40 rounded-3xl group shadow-md">
                     <CardHeader className="py-3 px-4 sm:px-6 bg-muted/20 border-b flex flex-row justify-between items-center gap-2">
                       <CardTitle className="text-xs font-black uppercase tracking-widest text-muted-foreground flex items-center gap-2">
-                        <div className="w-6 h-6 rounded-lg bg-primary text-white flex items-center justify-center text-xs font-black">
+                        <div className="w-6 h-6 rounded-lg bg-indigo-600 text-white flex items-center justify-center text-xs font-black">
                           {index + 1}
                         </div>
                         <span>Objective Practice Question</span>
@@ -101,7 +101,7 @@ export default function QuestionPredictor({ analysisResult }: QuestionPredictorP
                         <Badge variant="outline" className="text-[10px] sm:text-xs font-bold border-primary/20">
                           {q.difficulty || "Standard"}
                         </Badge>
-                        <Badge className="bg-primary text-white text-[10px] font-black">1 Mark</Badge>
+                        <Badge className="bg-indigo-600 hover:bg-indigo-500 text-white text-[10px] font-black border-none">1 Mark</Badge>
                       </div>
                     </CardHeader>
 

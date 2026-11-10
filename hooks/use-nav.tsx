@@ -1,8 +1,17 @@
 "use client"
 
 import React, { createContext, useContext, useState, useCallback, useEffect } from "react"
+import {
+  getStoredSession,
+  storeSession,
+  clearStoredSession,
+  hasValidSessionToken,
+  savePostLoginRedirect,
+  generateSessionToken,
+} from "@/lib/session-storage"
 
 export type Step =
+  | "home"
   | "onboarding"
   | "setup"        // mandatory stream/course setup after registration
   | "upload"
@@ -64,35 +73,29 @@ interface NavContextType {
 const NavContext = createContext<NavContextType | undefined>(undefined)
 
 export function NavProvider({ children }: { children: React.ReactNode }) {
-  const [currentStep, setCurrentStep] = useState<Step>("onboarding")
+  const [currentStep, setCurrentStep] = useState<Step>("home")
   const [isRegistered, setRegistered] = useState(false)
   const [isAdmin, setAdmin] = useState(false)
   const [sessionUser, setSessionUser] = useState<SessionUser | null>(null)
   const [profileComplete, setProfileComplete] = useState(false)
 
-  // Sync global session state from localStorage on client-side mount & cross-tab events
+  // Sync session state from sessionStorage (browser window lifecycle)
   useEffect(() => {
     if (typeof window !== "undefined") {
       const syncSession = async () => {
-        const saved = localStorage.getItem("aura_session")
-        if (saved) {
-          try {
-            const parsed = JSON.parse(saved)
-            if (parsed?.user && parsed.user.email) {
-              setSessionUser(parsed.user)
-              setRegistered(true)
-              setProfileComplete(parsed.user.profileComplete || false)
-              if (parsed.user.role === "admin" || parsed.user.isAdmin === true) {
-                setAdmin(true)
-              }
-              return
-            }
-          } catch (e) {
-            console.error("Failed to restore session in NavProvider:", e)
+        // Read strictly from sessionStorage; null indicates window was closed or token expired
+        const stored = getStoredSession()
+        if (stored && stored.user && stored.token) {
+          setSessionUser(stored.user)
+          setRegistered(true)
+          setProfileComplete(Boolean(stored.user.profileComplete))
+          if (stored.user.role === "admin" || stored.user.isAdmin === true || stored.isAdmin === true) {
+            setAdmin(true)
           }
+          return
         }
 
-        // Auto-sync with NextAuth /api/auth/session if localStorage session not found
+        // Auto-sync with NextAuth /api/auth/session if active server session exists
         try {
           const res = await fetch("/api/auth/session", { credentials: "include" })
           if (res.ok) {
@@ -110,7 +113,8 @@ export function NavProvider({ children }: { children: React.ReactNode }) {
                   profileComplete: Boolean(u.profileComplete),
                 }
                 const isAdminUser = Boolean(u.isAdmin || u.role === "admin")
-                localStorage.setItem("aura_session", JSON.stringify({ user: sessionUserObj, role: sessionUserObj.role, isAdmin: isAdminUser }))
+                const token = generateSessionToken(sessionUserObj.id, sessionUserObj.email, sessionUserObj.role || "student").token
+                storeSession({ user: sessionUserObj, token, role: sessionUserObj.role, isAdmin: isAdminUser })
                 setSessionUser(sessionUserObj)
                 setRegistered(true)
                 setAdmin(isAdminUser)
@@ -123,6 +127,8 @@ export function NavProvider({ children }: { children: React.ReactNode }) {
           // Unauthenticated or network error
         }
 
+        // Unauthenticated guest: clear persistent disk storage and enforce guest state
+        clearStoredSession()
         setSessionUser(null)
         setRegistered(false)
         setAdmin(false)
@@ -139,7 +145,7 @@ export function NavProvider({ children }: { children: React.ReactNode }) {
 
       window.addEventListener("storage", handleStorageChange)
 
-      // Auto-detect arena step from URL query parameters or custom navigation events
+      // Auto-detect arena step from URL query parameters with authorization guard
       const checkArenaRoute = () => {
         try {
           const params = new URLSearchParams(window.location.search)
@@ -152,7 +158,13 @@ export function NavProvider({ children }: { children: React.ReactNode }) {
             params.get("invite") ||
             params.get("roomCode")
           ) {
-            setCurrentStep("arena")
+            if (hasValidSessionToken()) {
+              setCurrentStep("arena")
+            } else {
+              // Intercept guest from entering service without login
+              savePostLoginRedirect("arena")
+              setCurrentStep("onboarding")
+            }
           }
         } catch (e) {
           console.error("Failed to parse URL in useNav:", e)
@@ -161,7 +173,14 @@ export function NavProvider({ children }: { children: React.ReactNode }) {
 
       checkArenaRoute()
       window.addEventListener("popstate", checkArenaRoute)
-      const handleArenaNav = () => setCurrentStep("arena")
+      const handleArenaNav = () => {
+        if (hasValidSessionToken()) {
+          setCurrentStep("arena")
+        } else {
+          savePostLoginRedirect("arena")
+          setCurrentStep("onboarding")
+        }
+      }
       window.addEventListener("arena-navigate", handleArenaNav)
 
       return () => {
@@ -172,27 +191,44 @@ export function NavProvider({ children }: { children: React.ReactNode }) {
     }
   }, [])
 
-  const setStep = useCallback((step: Step) => {
-    setCurrentStep(step)
-  }, [])
+  // Steps that can be accessed without an authenticated session
+  const PUBLIC_STEPS: Step[] = ["home", "onboarding", "policy"]
 
-  /** Navigate with guard: forces login if unauthenticated for profile/admin/setup */
+  /**
+   * Set step with authentication verification:
+   * Guests are intercepted and redirected to "onboarding" before entering any platform service.
+   */
+  const setStep = useCallback((step: Step) => {
+    // 1. Allow public landing and informational pages freely
+    if (PUBLIC_STEPS.includes(step)) {
+      setCurrentStep(step)
+      return
+    }
+
+    // 2. Verify active session token in sessionStorage
+    const isSessionActive = hasValidSessionToken()
+    if (!isRegistered || !isSessionActive) {
+      // Remember intended service destination for post-login redirect
+      savePostLoginRedirect(step)
+      setCurrentStep("onboarding")
+      return
+    }
+
+    // 3. For authenticated users, verify mandatory profile completion before general services
+    if (!profileComplete && step !== "setup" && step !== "profile") {
+      setCurrentStep("setup")
+      return
+    }
+
+    setCurrentStep(step)
+  }, [isRegistered, profileComplete])
+
+  /** Navigate with guard */
   const navigate = useCallback(
     (step: Step) => {
-      // Unauthenticated users trying to access protected views are redirected to login
-      if (!isRegistered && (step === "profile" || step === "admin" || step === "setup")) {
-        setCurrentStep("onboarding")
-        return
-      }
-      // Allow these steps without profile being complete
-      const exemptSteps: Step[] = ["onboarding", "setup", "profile"]
-      if (isRegistered && !profileComplete && !exemptSteps.includes(step)) {
-        setCurrentStep("setup")
-        return
-      }
-      setCurrentStep(step)
+      setStep(step)
     },
-    [isRegistered, profileComplete]
+    [setStep]
   )
 
   return (

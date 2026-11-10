@@ -17,50 +17,83 @@ import {
   ChevronsUpDown, 
   Sparkles, 
   ShieldCheck, 
-  ExternalLink,
-  Layers,
   Award,
   Zap,
-  Building2,
   HardHat,
+  Building2,
+  GraduationCap,
+  MapPin,
   Phone,
   Mail,
-  MapPin,
-  GraduationCap,
-  FileCheck,
   CheckCircle2,
-  Compass,
   Wind
 } from "lucide-react"
 
-export function DeveloperSection() {
-  const [openCards, setOpenCards] = useState<Record<number, boolean>>({})
-  const [allExpanded, setAllExpanded] = useState(false)
-  const [activeFilter, setActiveFilter] = useState<"all" | "tech" | "civil" | "leadership">("all")
+export interface DeveloperProfile {
+  id: string
+  name: string
+  role: string
+  tagline: string
+  category: "software" | "civil" | "leadership"
+  avatar: string
+  bio: string
+  skills: string[]
+  badgeColor: string
+  github?: string
+  linkedin?: string
+  twitter?: string
+  instagram?: string
+  whatsapp?: string
+  phone?: string
+  email?: string
+  location?: string
+  experience?: string
+  projects?: Array<{
+    company: string
+    designation: string
+    client: string
+    foundation: string
+    project: string
+    location: string
+  }>
+  education?: Array<{
+    qualification: string
+    board: string
+    year: string
+    percentage: string
+  }>
+  testingScope?: string[]
+}
 
-  const toggleCard = (index: number) => {
+export function DeveloperSection() {
+  const [openCards, setOpenCards] = useState<Record<string, boolean>>({})
+  const [allExpanded, setAllExpanded] = useState(false)
+  const [selectedFilter, setSelectedFilter] = useState<"all" | "software" | "civil">("all")
+
+  const toggleCard = (id: string) => {
     setOpenCards(prev => ({
       ...prev,
-      [index]: !prev[index]
+      [id]: !prev[id]
     }))
   }
 
   const toggleAll = () => {
     const nextState = !allExpanded
     setAllExpanded(nextState)
-    const newOpenState: Record<number, boolean> = {}
-    developers.forEach((_, idx) => {
-      newOpenState[idx] = nextState
+    const newOpenState: Record<string, boolean> = {}
+    developers.forEach((dev) => {
+      newOpenState[dev.id] = nextState
     })
     setOpenCards(newOpenState)
   }
 
-  const developers = [
+  const developers: DeveloperProfile[] = [
     {
+      id: "devvrat",
       name: "Devvrat Prajapatee",
       role: "Admin & Head of Project",
-      category: "leadership",
       tagline: "Architecting Next-Gen Educational Systems & AI Solutions",
+      category: "leadership",
       avatar: "https://i.ibb.co/tpxG7Pzt/Whats-App-Image-2026-06-07-at-1-29-03-PM.jpg",
       bio: "Technology leader with expertise in System Design, Full-Stack Development, AI Architecture, Product Strategy, and Team Leadership, delivering innovative solutions through strategic thinking, problem-solving, and cross-domain experience.",
       skills: ["System Design", "Full-Stack Development", "AI Architecture", "Project Management", "Product Strategy", "Team Leadership", "Cross-Domain Engineering", "Algorithmic Problem Solving"],
@@ -70,90 +103,65 @@ export function DeveloperSection() {
       badgeColor: "from-blue-600 to-indigo-600"
     },
     {
+      id: "yogesh",
       name: "Yogesh Kumar",
       role: "Lead Full-Stack Engineer",
-      category: "tech",
       tagline: "Full-Stack Specialist • AI Prompt Engineering & Scalable Systems",
+      category: "software",
       avatar: "https://i.ibb.co/1ffSb34W/Image-vf0km5vf0km5vf0k.png",
       bio: "Full-Stack Developer specializing in React, Node.js, MongoDB, Python, and AI technologies, with experience in NLP, LangChain, TensorFlow, and modern UI/UX design. Passionate about building scalable, intelligent, and user-focused solutions through innovation and problem-solving.",
       skills: ["React", "Node.js", "MongoDB", "AI Prompts", "Python", "TensorFlow", "NLP", "LangChain", "Figma", "TailwindCSS", "Framer Motion", "Problem Solving"],
       github: "https://github.com/yogeshkumar73",
       twitter: "#",
       linkedin: "https://www.linkedin.com/in/yogesh-kumar-824264253",
-      whatsapp: "",
       badgeColor: "from-emerald-600 to-teal-600"
     },
     {
+      id: "devendra",
       name: "Devendra Kumar",
       role: "Civil Site Engineer",
+      tagline: "Wind Project Foundation & RCC Structures Site Specialist",
       category: "civil",
-      tagline: "Site Engineer • 2+ Years Exp in Wind Energy & Pile Foundation",
-      avatar: "/devendra-kumar.jpg",
+      avatar: "/images/devendra-kumar.jpg",
+      bio: "Civil site engineer with 2+ years of on-site execution experience specializing in wind turbine foundations, pile foundations, RCC structures, QA/QC testing, and contractor supervision across major renewable energy projects.",
+      skills: [
+        "Auto Leveling & Leveling",
+        "RCC & Structural Work",
+        "Site Execution & Supervision",
+        "QA/QC & Safety Management",
+        "Pile Foundation Execution",
+        "Contractor Coordination"
+      ],
       phone: "6393231233",
       email: "kapildevendra578@gmail.com",
-      location: "Hamirpur, Uttar Pradesh, India 210505",
-      whatsapp: "6393231233",
-      bio: "Site engineer civil engineer with over 2 years wind foundation project in execution and supervision. Strong expertise in wind project pile foundation, RCC structures site execution, QA/QC, safety management, and contractor coordination. Proven capability to manage construction activities from foundation to finishing while ensuring compliance with engineering drawings.",
-      skills: [
-        "Site Execution & Supervision",
-        "RCC & Structural Work",
-        "Deep Pile Foundation",
-        "Auto Leveling & Surveying",
-        "QA/QC & Safety Management",
-        "Concrete Cube & Slump Testing",
-        "Silt & Sieve Analysis",
-        "Field Density Test (FDD)",
-        "IS Code Curing Protocol",
-        "Contractor & Vendor Coordination",
-        "Wind & Solar Energy Projects",
-        "MS Excel & Resource Planning"
-      ],
+      location: "Hamirpur, UP, India",
+      experience: "2+ Years in Execution, Supervision, Wind Projects & Pile Foundation",
+      whatsapp: "916393231233",
+      badgeColor: "from-amber-600 via-orange-600 to-yellow-600",
       projects: [
         {
-          company: "Pratik Construction",
-          role: "Site Engineer",
-          client: "KP ENERGY",
-          foundation: "SENVION (4.2)",
-          project: "370MW Wind Project Vagara",
-          location: "Bharuch, Vagara, Gujarat"
-        },
-        {
-          company: "Prakash Developers",
-          role: "Site Engineer",
-          client: "JSW ENERGY",
-          foundation: "SANY (4.4), ENVISION (3.3), SUZLON (2.1)",
-          project: "556MW Wind Project & Dolvi 300MW Wind Project",
-          location: "Tuljapur, Lohara, Ausa, Maharashtra"
-        },
-        {
-          company: "BMS Project",
-          role: "Trainee Engineer",
-          client: "Infrastructure Development",
-          foundation: "SANY (4), ENVISION (3.3), SUZLON (2.1)",
-          project: "Jetty Pile Foundation",
-          location: "Okha, Gujarat"
+          company: "Pratik Construction & Prakash Developers",
+          designation: "Site Engineer",
+          client: "KP ENERGY / JSW ENERGY",
+          foundation: "Wind & Pile Foundations (SENVION / SANY / SUZLON)",
+          project: "370MW & 556MW Wind Projects",
+          location: "Gujarat & Maharashtra"
         }
       ],
-      qaqcHighlights: [
-        "Concrete Cube, Slump, Silt, Sieve analysis, Flakiness & Elongation",
-        "Batching plant-lab testing & Core cutting testing",
-        "IS Code curing & machinery calibration verification",
-        "Steel cutting and placing verification as per drawing",
-        "Shuttering, cover blocks & structural finishing inspection",
-        "Field Density Test (FDD) of soil by Core Cutter method"
-      ],
       education: [
-        { qualification: "Diploma in Civil Engineering", board: "Lucknow Board", year: "2024", percentage: "65%" },
-        { qualification: "12th Standard", board: "UP Board", year: "2021", percentage: "72%" },
-        { qualification: "10th Standard", board: "UP Board", year: "2019", percentage: "73%" }
+        { qualification: "Diploma in Civil Engineering", board: "Lucknow Board", year: "2024", percentage: "65%" }
       ],
-      badgeColor: "from-amber-600 to-yellow-600"
+      testingScope: [
+        "Quality testing of Cube & Slump, Silt Content & Sieve Analysis",
+        "Concrete Curing & Drawing Compliance (IS Code)"
+      ]
     },
     {
+      id: "kuldeep",
       name: "Kuldeep Prajapatee",
       role: "Management Head",
-      category: "leadership",
       tagline: "Strategic Leadership, AI Governance & Operational Excellence",
+      category: "leadership",
       avatar: "https://i.ibb.co/bMZRLtr2/Whats-App-Image-2025-11-03-at-12-39-19-PM-1.jpg",
       bio: "Experienced and versatile professional with strong expertise in Leadership, Strategic Planning, Management, AI Ethics, Communication, Problem Solving, and Team Coaching. Known for driving organizational growth, building high-performing teams, and delivering innovative solutions across multiple domains including technology, education, and business.",
       skills: ["Leadership", "Strategic Planning", "Management", "AI Ethics", "Executive Communication", "Problem Solving", "Team Coaching", "Multi-Domain Strategy"],
@@ -163,10 +171,11 @@ export function DeveloperSection() {
       badgeColor: "from-purple-600 to-pink-600"
     },
     {
+      id: "abhishek",
       name: "Abhishek Prajapatee",
       role: "Help & Support Head",
-      category: "leadership",
       tagline: "User Experience Champion & Technical Resolution Specialist",
+      category: "leadership",
       avatar: "https://i.ibb.co/0RHdHkCq/Whats-App-Image-2026-06-07-at-5-11-25-PM.jpg",
       bio: "Customer-focused professional specializing in Technical Support, AI Troubleshooting, Problem Solving, Communication, and User Experience Enhancement. Experienced in leading teams, analyzing customer feedback, and supporting marketing and sales initiatives to improve customer satisfaction and business performance.",
       skills: ["Customer Support", "Technical Assistance", "Problem Solving", "Communication", "Team Leadership", "AI Troubleshooting", "UX Enhancement", "Feedback Analysis", "Growth Operations"],
@@ -176,10 +185,11 @@ export function DeveloperSection() {
       badgeColor: "from-amber-600 to-orange-600"
     },
     {
+      id: "samantha",
       name: "Samantha Lee",
       role: "AI & ML Specialist",
-      category: "tech",
       tagline: "Machine Learning Fine-Tuning & Knowledge Retrieval",
+      category: "software",
       avatar: "https://i.pravatar.cc/300?u=sam",
       bio: "Focuses on fine-tuning foundational models for educational use cases, prompt engineering, semantic embeddings, and vector similarity search across diverse university syllabi.",
       skills: ["Python", "TensorFlow", "NLP", "LangChain", "Vector Embeddings", "RAG Pipeline"],
@@ -188,10 +198,11 @@ export function DeveloperSection() {
       badgeColor: "from-indigo-600 to-cyan-600"
     },
     {
+      id: "david",
       name: "David Chen",
       role: "UI/UX Designer & Frontend",
-      category: "tech",
       tagline: "Design Systems & High-Fidelity Interaction Design",
+      category: "software",
       avatar: "https://i.pravatar.cc/300?u=david",
       bio: "Creates beautiful, glass-morphic interfaces and responsive interaction flows tailored for maximum student engagement, accessibility, and high performance on all devices.",
       skills: ["Figma", "Design Systems", "TailwindCSS", "Framer Motion", "Accessibility", "Micro-Interactions"],
@@ -202,8 +213,10 @@ export function DeveloperSection() {
   ]
 
   const filteredDevelopers = developers.filter(dev => {
-    if (activeFilter === "all") return true
-    return dev.category === activeFilter
+    if (selectedFilter === "all") return true
+    if (selectedFilter === "software") return dev.category === "software" || dev.category === "leadership"
+    if (selectedFilter === "civil") return dev.category === "civil"
+    return true
   })
 
   return (
@@ -218,43 +231,41 @@ export function DeveloperSection() {
           THE DEVELOPER CORE
         </h1>
         <p className="text-base sm:text-lg text-muted-foreground max-w-2xl mx-auto font-medium">
-          Meet the engineers, civil site specialists, and leaders building the next generation of AI-assisted education and infrastructure.
+          Meet the engineers building next-generation AI platforms, digital architectures, and civil infrastructure.
         </p>
 
-        {/* Filter Tabs & Global Fold / Unfold Control */}
-        <div className="pt-4 flex flex-wrap justify-center items-center gap-2 sm:gap-3">
-          <div className="flex flex-wrap justify-center gap-1.5 p-1 rounded-xl bg-muted/50 border border-border/50">
+        {/* Filter Pills & Global Fold / Unfold Control */}
+        <div className="pt-4 flex flex-wrap justify-center items-center gap-3">
+          <div className="inline-flex p-1 rounded-xl bg-muted/60 border border-border/60">
             <button
-              onClick={() => setActiveFilter("all")}
-              className={`px-3 py-1.5 rounded-lg text-xs font-black transition-all ${
-                activeFilter === "all" ? "bg-primary text-primary-foreground shadow" : "text-muted-foreground hover:text-foreground"
+              onClick={() => setSelectedFilter("all")}
+              className={`px-3 sm:px-4 py-1.5 rounded-lg text-xs font-black transition-all ${
+                selectedFilter === "all"
+                  ? "bg-primary text-primary-foreground shadow"
+                  : "text-muted-foreground hover:text-foreground"
               }`}
             >
-              All Members ({developers.length})
+              All Disciplines ({developers.length})
             </button>
             <button
-              onClick={() => setActiveFilter("civil")}
-              className={`px-3 py-1.5 rounded-lg text-xs font-black transition-all flex items-center gap-1.5 ${
-                activeFilter === "civil" ? "bg-amber-600 text-white shadow" : "text-muted-foreground hover:text-amber-500"
+              onClick={() => setSelectedFilter("software")}
+              className={`px-3 sm:px-4 py-1.5 rounded-lg text-xs font-black transition-all ${
+                selectedFilter === "software"
+                  ? "bg-primary text-primary-foreground shadow"
+                  : "text-muted-foreground hover:text-foreground"
               }`}
             >
-              <HardHat className="w-3 h-3" /> Civil Engineering
+              Software & AI Systems
             </button>
             <button
-              onClick={() => setActiveFilter("tech")}
-              className={`px-3 py-1.5 rounded-lg text-xs font-black transition-all flex items-center gap-1.5 ${
-                activeFilter === "tech" ? "bg-indigo-600 text-white shadow" : "text-muted-foreground hover:text-indigo-400"
+              onClick={() => setSelectedFilter("civil")}
+              className={`px-3 sm:px-4 py-1.5 rounded-lg text-xs font-black transition-all flex items-center gap-1.5 ${
+                selectedFilter === "civil"
+                  ? "bg-amber-600 text-white shadow"
+                  : "text-muted-foreground hover:text-foreground"
               }`}
             >
-              <Cpu className="w-3 h-3" /> Software & AI
-            </button>
-            <button
-              onClick={() => setActiveFilter("leadership")}
-              className={`px-3 py-1.5 rounded-lg text-xs font-black transition-all flex items-center gap-1.5 ${
-                activeFilter === "leadership" ? "bg-purple-600 text-white shadow" : "text-muted-foreground hover:text-purple-400"
-              }`}
-            >
-              <Award className="w-3 h-3" /> Leadership
+              <HardHat className="w-3.5 h-3.5" /> Civil & Infrastructure
             </button>
           </div>
 
@@ -264,59 +275,58 @@ export function DeveloperSection() {
             variant="outline"
             className="h-9 px-4 text-xs font-black tracking-wider uppercase border-2 border-primary/30 hover:bg-primary/10 gap-2 transition-all shadow-sm rounded-xl"
           >
-            <ChevronsUpDown className="w-3.5 h-3.5 text-primary" />
-            {allExpanded ? "Fold All" : "Unfold All"}
+            <ChevronsUpDown className="w-4 h-4 text-primary" />
+            {allExpanded ? "Fold All Profiles" : "Unfold All Profiles"}
           </Button>
         </div>
       </div>
 
       {/* Developers Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-        {filteredDevelopers.map((dev, i) => {
-          const originalIndex = developers.findIndex(d => d.name === dev.name)
-          const isOpen = !!openCards[originalIndex]
+        {filteredDevelopers.map((dev) => {
+          const isOpen = !!openCards[dev.id]
+          const isCivil = dev.category === "civil"
 
           return (
             <Card 
-              key={dev.name} 
+              key={dev.id} 
               className={`group overflow-hidden border-2 transition-all duration-300 shadow-xl flex flex-col justify-between ${
                 isOpen 
-                  ? "border-primary/60 shadow-primary/20 bg-card ring-1 ring-primary/20" 
+                  ? isCivil 
+                    ? "border-amber-500/60 shadow-amber-500/20 bg-card ring-1 ring-amber-500/20"
+                    : "border-primary/60 shadow-primary/20 bg-card ring-1 ring-primary/20" 
                   : "border-border/80 hover:border-primary/40 hover:shadow-lg bg-card/60"
               }`}
             >
               <div>
                 {/* Banner Header with Large Profile Picture */}
                 <div className={`h-44 sm:h-48 relative border-b border-border/40 ${
-                  dev.category === "civil" 
-                    ? "bg-gradient-to-br from-amber-950 via-slate-900 to-indigo-950" 
+                  isCivil 
+                    ? "bg-gradient-to-br from-amber-950 via-slate-900 to-yellow-950" 
                     : "bg-gradient-to-br from-indigo-950 via-slate-900 to-purple-950"
                 }`}>
                   <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-primary/20 via-transparent to-transparent" />
                   
-                  {/* Category Pill on Banner */}
-                  <div className="absolute top-3 right-3 z-10">
-                    {dev.category === "civil" ? (
-                      <Badge className="bg-amber-500/20 text-amber-300 border border-amber-500/40 text-[10px] font-black uppercase px-2.5 py-0.5 flex items-center gap-1">
-                        <Wind className="w-3 h-3 text-amber-400" /> Wind & Pile Foundation
-                      </Badge>
-                    ) : (
-                      <Badge variant="outline" className="text-[10px] font-black uppercase border-primary/30 text-primary bg-background/50">
-                        Core Team
-                      </Badge>
-                    )}
-                  </div>
+                  {isCivil && (
+                    <div className="absolute top-3 left-4 z-10 flex items-center gap-1.5 px-3 py-1 rounded-full bg-black/60 backdrop-blur-md border border-amber-500/30 text-amber-400 text-[10px] font-black uppercase tracking-wider">
+                      <HardHat className="w-3.5 h-3.5" /> Civil Infrastructure
+                    </div>
+                  )}
 
                   {/* Large Profile Picture */}
                   <div className="absolute -bottom-16 sm:-bottom-20 inset-x-0 flex justify-center">
-                    <div className="w-32 h-32 sm:w-36 sm:h-36 md:w-40 md:h-40 rounded-full border-4 border-background shadow-2xl overflow-hidden bg-muted ring-4 ring-primary/30 group-hover:ring-primary/60 transition-all duration-500 relative">
+                    <div className={`w-32 h-32 sm:w-36 sm:h-36 md:w-40 md:h-40 rounded-full border-4 border-background shadow-2xl overflow-hidden bg-muted ring-4 transition-all duration-500 relative ${
+                      isCivil 
+                        ? "ring-amber-500/40 group-hover:ring-amber-500/70" 
+                        : "ring-primary/30 group-hover:ring-primary/60"
+                    }`}>
                       <img 
                         src={dev.avatar} 
                         alt={dev.name} 
                         className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
                         onError={(e) => {
-                          const target = e.target as HTMLImageElement;
-                          target.src = `https://ui-avatars.com/api/?name=${encodeURIComponent(dev.name)}&background=4f46e5&color=fff&size=256`;
+                          const target = e.target as HTMLImageElement
+                          target.src = `https://ui-avatars.com/api/?name=${encodeURIComponent(dev.name)}&background=4f46e5&color=fff&size=256`
                         }}
                       />
                     </div>
@@ -327,7 +337,7 @@ export function DeveloperSection() {
                 <CardHeader className="text-center pt-20 sm:pt-24 pb-3 px-6 space-y-2">
                   <div className="flex items-center justify-center gap-1.5">
                     <CardTitle className="text-2xl font-black tracking-tight">{dev.name}</CardTitle>
-                    <ShieldCheck className="w-5 h-5 text-emerald-500 shrink-0" title="Verified Member" />
+                    <ShieldCheck className={`w-5 h-5 shrink-0 ${isCivil ? "text-amber-500" : "text-emerald-500"}`} title="Verified Core Team" />
                   </div>
                   
                   <div>
@@ -340,26 +350,10 @@ export function DeveloperSection() {
                     "{dev.tagline}"
                   </p>
 
-                  {/* Quick Contact for Civil Engineer if available */}
-                  {(dev.phone || dev.email || dev.location) && (
-                    <div className="flex flex-wrap justify-center gap-1.5 pt-1 text-[11px]">
-                      {dev.phone && (
-                        <a 
-                          href={`tel:${dev.phone}`} 
-                          className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-muted/60 hover:bg-muted text-foreground font-bold border border-border/60 transition-all"
-                        >
-                          <Phone className="w-3 h-3 text-emerald-500" /> {dev.phone}
-                        </a>
-                      )}
-                      {dev.email && (
-                        <a 
-                          href={`mailto:${dev.email}`} 
-                          className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-muted/60 hover:bg-muted text-foreground font-bold border border-border/60 transition-all"
-                        >
-                          <Mail className="w-3 h-3 text-indigo-400" /> {dev.email}
-                        </a>
-                      )}
-                    </div>
+                  {dev.experience && (
+                    <p className="text-[11px] text-amber-400/90 font-bold flex items-center justify-center gap-1">
+                      <Wind className="w-3.5 h-3.5" /> {dev.experience}
+                    </p>
                   )}
                 </CardHeader>
 
@@ -380,13 +374,15 @@ export function DeveloperSection() {
                 {/* Expandable / Collapsible Full Details */}
                 <div 
                   className={`transition-all duration-500 ease-in-out overflow-hidden px-6 ${
-                    isOpen ? "max-h-[2200px] opacity-100 pt-4 pb-2" : "max-h-0 opacity-0 py-0"
+                    isOpen ? "max-h-[1400px] opacity-100 pt-4 pb-2" : "max-h-0 opacity-0 py-0"
                   }`}
                 >
                   <div className="space-y-5 pt-3 border-t border-border/50 text-left">
                     {/* Professional Bio */}
                     <div className="space-y-1.5">
-                      <div className="flex items-center gap-1.5 text-xs font-black uppercase text-primary tracking-wider">
+                      <div className={`flex items-center gap-1.5 text-xs font-black uppercase tracking-wider ${
+                        isCivil ? "text-amber-400" : "text-primary"
+                      }`}>
                         <Award className="w-3.5 h-3.5" /> Professional Overview
                       </div>
                       <p className="text-xs sm:text-sm text-muted-foreground font-medium leading-relaxed bg-muted/20 p-3 rounded-xl border border-border/40">
@@ -396,62 +392,50 @@ export function DeveloperSection() {
 
                     {/* Civil Engineering Projects (if applicable) */}
                     {dev.projects && dev.projects.length > 0 && (
-                      <div className="space-y-2 pt-1">
-                        <div className="flex items-center gap-1.5 text-xs font-black uppercase text-amber-500 tracking-wider">
-                          <Building2 className="w-3.5 h-3.5" /> Wind & Civil Mega-Projects
+                      <div className="space-y-2">
+                        <div className="flex items-center gap-1.5 text-xs font-black uppercase text-amber-400 tracking-wider">
+                          <Building2 className="w-3.5 h-3.5" /> Wind & Foundation Projects
                         </div>
-                        <div className="space-y-2">
+                        <div className="space-y-2.5">
                           {dev.projects.map((proj, pIdx) => (
-                            <div key={pIdx} className="p-3 rounded-xl bg-card border border-amber-500/25 text-xs space-y-1 shadow-sm">
+                            <div key={pIdx} className="p-3 rounded-xl bg-muted/30 border border-border/50 space-y-1 text-xs">
                               <div className="flex justify-between items-start flex-wrap gap-1">
-                                <span className="font-bold text-foreground">{proj.company}</span>
-                                <Badge variant="outline" className="text-[10px] text-amber-400 border-amber-500/40">
-                                  {proj.project}
+                                <span className="font-black text-foreground text-sm">{proj.company}</span>
+                                <Badge variant="outline" className="text-[10px] border-amber-500/40 text-amber-400 font-bold">
+                                  {proj.designation}
                                 </Badge>
                               </div>
-                              <p className="text-muted-foreground text-[11px]">
-                                <strong>Client:</strong> {proj.client} • <strong>Location:</strong> {proj.location}
-                              </p>
-                              {proj.foundation && (
-                                <p className="text-[11px] text-muted-foreground"><strong>Foundation:</strong> {proj.foundation}</p>
-                              )}
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-
-                    {/* QA/QC Lab & Inspection Highlights (if applicable) */}
-                    {dev.qaqcHighlights && dev.qaqcHighlights.length > 0 && (
-                      <div className="space-y-1.5 pt-1">
-                        <div className="flex items-center gap-1.5 text-xs font-black uppercase text-amber-500 tracking-wider">
-                          <FileCheck className="w-3.5 h-3.5" /> QA/QC & Lab Inspection Testing
-                        </div>
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
-                          {dev.qaqcHighlights.map((qc, qcIdx) => (
-                            <div key={qcIdx} className="text-[11px] font-medium text-muted-foreground bg-muted/20 p-2 rounded-lg flex items-center gap-1.5 border border-border/30">
-                              <CheckCircle2 className="w-3 h-3 text-emerald-500 shrink-0" />
-                              <span>{qc}</span>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-
-                    {/* Education (if applicable) */}
-                    {dev.education && dev.education.length > 0 && (
-                      <div className="space-y-1.5 pt-1">
-                        <div className="flex items-center gap-1.5 text-xs font-black uppercase text-amber-500 tracking-wider">
-                          <GraduationCap className="w-3.5 h-3.5" /> Education & Qualifications
-                        </div>
-                        <div className="space-y-1.5">
-                          {dev.education.map((edu, eIdx) => (
-                            <div key={eIdx} className="flex justify-between items-center text-xs bg-muted/20 p-2 rounded-lg border border-border/30">
-                              <div>
-                                <span className="font-bold text-foreground">{edu.qualification}</span>
-                                <span className="text-muted-foreground text-[11px]"> ({edu.board}, {edu.year})</span>
+                              <div className="text-muted-foreground font-medium">
+                                <span className="font-bold text-foreground">Client:</span> {proj.client} • <span className="font-bold text-foreground">Foundation:</span> {proj.foundation}
                               </div>
-                              <Badge variant="secondary" className="text-[10px] font-black text-amber-400">{edu.percentage}</Badge>
+                              <div className="text-muted-foreground font-medium">
+                                <span className="font-bold text-foreground">Project:</span> {proj.project}
+                              </div>
+                              <div className="flex items-center gap-1 text-[11px] text-muted-foreground pt-0.5">
+                                <MapPin className="w-3 h-3 text-amber-500" /> {proj.location}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Education Credentials (if applicable) */}
+                    {dev.education && dev.education.length > 0 && (
+                      <div className="space-y-2">
+                        <div className="flex items-center gap-1.5 text-xs font-black uppercase text-amber-400 tracking-wider">
+                          <GraduationCap className="w-3.5 h-3.5" /> Education & Board Credentials
+                        </div>
+                        <div className="grid grid-cols-1 gap-1.5">
+                          {dev.education.map((edu, eIdx) => (
+                            <div key={eIdx} className="p-2.5 rounded-lg bg-muted/20 border border-border/40 flex justify-between items-center text-xs">
+                              <div>
+                                <p className="font-black text-foreground">{edu.qualification}</p>
+                                <p className="text-[11px] text-muted-foreground">{edu.board} • Year {edu.year}</p>
+                              </div>
+                              <Badge variant="secondary" className="font-black text-amber-400 bg-amber-500/10 border border-amber-500/30">
+                                {edu.percentage}
+                              </Badge>
                             </div>
                           ))}
                         </div>
@@ -460,7 +444,9 @@ export function DeveloperSection() {
 
                     {/* All Core Skills */}
                     <div className="space-y-1.5">
-                      <div className="flex items-center gap-1.5 text-xs font-black uppercase text-primary tracking-wider">
+                      <div className={`flex items-center gap-1.5 text-xs font-black uppercase tracking-wider ${
+                        isCivil ? "text-amber-400" : "text-primary"
+                      }`}>
                         <Zap className="w-3.5 h-3.5" /> Core Competencies & Stack
                       </div>
                       <div className="flex flex-wrap gap-1.5">
@@ -476,36 +462,43 @@ export function DeveloperSection() {
                       </div>
                     </div>
 
+                    {/* Testing Scope for Civil Engineering */}
+                    {dev.testingScope && dev.testingScope.length > 0 && (
+                      <div className="space-y-2">
+                        <div className="flex items-center gap-1.5 text-xs font-black uppercase text-amber-400 tracking-wider">
+                          <CheckCircle2 className="w-3.5 h-3.5" /> QA/QC & Material Testing Scope
+                        </div>
+                        <div className="space-y-1 bg-muted/20 p-3 rounded-xl border border-border/40">
+                          {dev.testingScope.map((test, tIdx) => (
+                            <div key={tIdx} className="flex items-start gap-1.5 text-xs text-muted-foreground font-medium">
+                              <span className="text-amber-400 font-black">•</span>
+                              <span>{test}</span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
                     {/* Social & Contact Links */}
-                    <div className="space-y-1.5 pt-2">
+                    <div className="space-y-1.5 pt-2 border-t border-border/40">
                       <div className="text-[11px] font-black uppercase text-muted-foreground tracking-wider">
-                        Connect & Verification
+                        Connect with {dev.name.split(" ")[0]}
                       </div>
                       <div className="flex flex-wrap gap-2 pt-1">
                         {dev.phone && (
                           <a 
-                            href={`tel:${dev.phone}`} 
-                            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-400 transition-all border border-emerald-500/30"
+                            href={`tel:${dev.phone}`}
+                            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold bg-muted hover:bg-muted/80 text-foreground transition-all border border-border"
                           >
-                            <Phone className="w-3.5 h-3.5" /> Call {dev.phone}
+                            <Phone className="w-3.5 h-3.5 text-amber-400" /> {dev.phone}
                           </a>
                         )}
                         {dev.email && (
                           <a 
-                            href={`mailto:${dev.email}`} 
-                            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold bg-indigo-500/15 hover:bg-indigo-500/25 text-indigo-400 transition-all border border-indigo-500/30"
+                            href={`mailto:${dev.email}`}
+                            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold bg-muted hover:bg-muted/80 text-foreground transition-all border border-border"
                           >
-                            <Mail className="w-3.5 h-3.5" /> Email
-                          </a>
-                        )}
-                        {dev.whatsapp && dev.whatsapp !== "#" && (
-                          <a 
-                            href={dev.whatsapp.startsWith("http") ? dev.whatsapp : `https://wa.me/${dev.whatsapp.replace(/[^0-9]/g, '')}`} 
-                            target="_blank" 
-                            rel="noopener noreferrer"
-                            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold bg-[#25D366]/15 hover:bg-[#25D366]/25 text-[#25D366] transition-all border border-[#25D366]/30"
-                          >
-                            <MessageCircle className="w-3.5 h-3.5" /> WhatsApp
+                            <Mail className="w-3.5 h-3.5 text-indigo-400" /> {dev.email}
                           </a>
                         )}
                         {dev.github && dev.github !== "#" && (
@@ -538,6 +531,16 @@ export function DeveloperSection() {
                             <Instagram className="w-3.5 h-3.5" /> Instagram
                           </a>
                         )}
+                        {dev.whatsapp && dev.whatsapp !== "#" && (
+                          <a 
+                            href={dev.whatsapp.startsWith("http") ? dev.whatsapp : `https://wa.me/${dev.whatsapp}`} 
+                            target="_blank" 
+                            rel="noopener noreferrer"
+                            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold bg-[#25D366]/15 hover:bg-[#25D366]/25 text-[#25D366] transition-all border border-[#25D366]/30"
+                          >
+                            <MessageCircle className="w-3.5 h-3.5" /> WhatsApp
+                          </a>
+                        )}
                         {dev.twitter && dev.twitter !== "#" && (
                           <a 
                             href={dev.twitter.startsWith("http") ? dev.twitter : `https://${dev.twitter}`} 
@@ -549,6 +552,11 @@ export function DeveloperSection() {
                           </a>
                         )}
                       </div>
+                      {dev.location && (
+                        <p className="text-[11px] text-muted-foreground font-medium pt-1 flex items-center gap-1">
+                          <MapPin className="w-3 h-3 text-amber-500" /> {dev.location}
+                        </p>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -558,21 +566,23 @@ export function DeveloperSection() {
               <div className="p-4 pt-3 border-t border-border/40 mt-3 bg-muted/10">
                 <Button
                   type="button"
-                  onClick={() => toggleCard(originalIndex)}
+                  onClick={() => toggleCard(dev.id)}
                   variant="ghost"
                   className={`w-full h-10 text-xs font-black uppercase tracking-wider rounded-xl transition-all flex items-center justify-center gap-2 ${
                     isOpen 
-                      ? "bg-primary/10 text-primary hover:bg-primary/20" 
+                      ? isCivil 
+                        ? "bg-amber-500/10 text-amber-400 hover:bg-amber-500/20" 
+                        : "bg-primary/10 text-primary hover:bg-primary/20" 
                       : "text-muted-foreground hover:text-foreground hover:bg-muted"
                   }`}
                 >
                   {isOpen ? (
                     <>
-                      Fold Profile <ChevronUp className="w-4 h-4 text-primary" />
+                      Fold Profile <ChevronUp className="w-4 h-4" />
                     </>
                   ) : (
                     <>
-                      Unfold Full Profile <ChevronDown className="w-4 h-4 text-primary" />
+                      Unfold Full Profile <ChevronDown className="w-4 h-4" />
                     </>
                   )}
                 </Button>
@@ -590,8 +600,8 @@ export function DeveloperSection() {
               <Cpu className="w-6 h-6 text-primary" />
             </div>
             <div>
-              <CardTitle className="text-2xl font-black">System Architecture</CardTitle>
-              <CardDescription>Aura Study AI v2.2.0 Production Engine</CardDescription>
+              <CardTitle className="text-2xl font-black">System & Engineering Architecture</CardTitle>
+              <CardDescription>Aura Study AI v2.2.0 Multi-Discipline Engineering Core</CardDescription>
             </div>
           </CardHeader>
           <CardContent className="p-8 grid grid-cols-2 md:grid-cols-4 gap-6 text-center">
@@ -604,12 +614,12 @@ export function DeveloperSection() {
               <div className="text-xs font-bold text-muted-foreground uppercase">Distributed Database</div>
             </div>
             <div className="space-y-2 p-3 rounded-xl bg-muted/20 border border-border/40">
-              <div className="font-black text-xl text-primary">Google Gemini 2.5</div>
-              <div className="text-xs font-bold text-muted-foreground uppercase">Neural AI Engine</div>
+              <div className="font-black text-xl text-amber-400">Wind & RCC</div>
+              <div className="text-xs font-bold text-muted-foreground uppercase">Civil Foundation Execution</div>
             </div>
             <div className="space-y-2 p-3 rounded-xl bg-muted/20 border border-border/40">
-              <div className="font-black text-xl text-primary">Tailwind & Radix</div>
-              <div className="text-xs font-bold text-muted-foreground uppercase">Glassmorphic UI</div>
+              <div className="font-black text-xl text-primary">Google Gemini 2.5</div>
+              <div className="text-xs font-bold text-muted-foreground uppercase">Neural AI Engine</div>
             </div>
           </CardContent>
         </Card>
@@ -617,4 +627,3 @@ export function DeveloperSection() {
     </div>
   )
 }
-export { CivilEngineerCard } from "./civil-engineer-card"

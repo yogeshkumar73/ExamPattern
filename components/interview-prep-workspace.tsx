@@ -569,27 +569,27 @@ export function InterviewPrepWorkspace() {
 
       {/* Navigation Tabs */}
       {!mockInterview && (
-        <div className="flex gap-4 mb-6 border-b pb-4">
+        <div className="flex flex-wrap sm:flex-nowrap gap-2 sm:gap-4 mb-6 border-b pb-4 overflow-x-auto">
           <Button
             variant={activeTab === "setup" ? "default" : "outline"}
-            className={`font-bold ${activeTab === "setup" ? "bg-indigo-500 text-white" : ""}`}
+            className={`font-bold flex-1 sm:flex-initial text-xs sm:text-sm py-2 px-3 sm:px-4 ${activeTab === "setup" ? "bg-indigo-500 text-white" : ""}`}
             onClick={() => setActiveTab("setup")}
           >
-            <Users className="w-4 h-4 mr-2" /> Standard Assessment
+            <Users className="w-4 h-4 mr-1.5 sm:mr-2 shrink-0" /> <span className="truncate">Standard Assessment</span>
           </Button>
           <Button
             variant={activeTab === "chat" ? "default" : "outline"}
-            className={`font-bold ${activeTab === "chat" ? "bg-purple-500 text-white" : ""}`}
+            className={`font-bold flex-1 sm:flex-initial text-xs sm:text-sm py-2 px-3 sm:px-4 ${activeTab === "chat" ? "bg-purple-500 text-white" : ""}`}
             onClick={() => setActiveTab("chat")}
           >
-            <MessageSquare className="w-4 h-4 mr-2" /> AI Coach Chat
+            <MessageSquare className="w-4 h-4 mr-1.5 sm:mr-2 shrink-0" /> <span className="truncate">AI Coach Chat</span>
           </Button>
           <Button
             variant={activeTab === "voice" ? "default" : "outline"}
-            className={`font-bold ${activeTab === "voice" ? "bg-green-500 text-white" : ""}`}
+            className={`font-bold flex-1 sm:flex-initial text-xs sm:text-sm py-2 px-3 sm:px-4 ${activeTab === "voice" ? "bg-green-500 text-white" : ""}`}
             onClick={() => setActiveTab("voice")}
           >
-            <PhoneCall className="w-4 h-4 mr-2" /> Live Voice Call
+            <PhoneCall className="w-4 h-4 mr-1.5 sm:mr-2 shrink-0" /> <span className="truncate">Live Voice Call</span>
           </Button>
         </div>
       )}
