@@ -123,9 +123,10 @@ interface FullProfile extends SessionUser {
   arenaLeaderboardRank?: number
 }
 
-export function StudentProfile() {
-  const { setStep, setRegistered, isAdmin, setAdmin, setSessionUser, sessionUser, isRegistered, setProfileComplete, navigate } = useNav()
+export function StudentProfile({ initialTab }: { initialTab?: ProfileTab } = {}) {
+  const { currentStep, setStep, setRegistered, isAdmin, setAdmin, setSessionUser, sessionUser, isRegistered, setProfileComplete, navigate } = useNav()
 
+  const defaultTab: ProfileTab = initialTab || (currentStep === "setup" ? "academic" : "overview")
   const [profile, setProfile] = useState<FullProfile>({
     id: "", name: "", email: "", phone: "", branch: "", bio: "",
     photoUrl: "", stream: "", course: "", department: "", grade: "",
@@ -135,11 +136,11 @@ export function StudentProfile() {
     arenaRank: "Unranked", leaderboardRank: 1, arenaLeaderboardRank: 1,
   })
 
-  const [isEditing, setIsEditing] = useState(false)
+  const [isEditing, setIsEditing] = useState(currentStep === "setup")
   const [isSaving, setIsSaving] = useState(false)
   const [isLoadingProfile, setIsLoadingProfile] = useState(true)
   const [isLoadingAchievements, setIsLoadingAchievements] = useState(false)
-  const [activeTab, setActiveTab] = useState<ProfileTab>("overview")
+  const [activeTab, setActiveTab] = useState<ProfileTab>(defaultTab)
   const [battleActivity, setBattleActivity] = useState<any[]>([])
   const [battleStats, setBattleStats] = useState<{ wins: number; losses: number; total: number }>({ wins: 0, losses: 0, total: 0 })
   const [achievements, setAchievements] = useState<Achievement[]>([])
@@ -356,12 +357,19 @@ export function StudentProfile() {
 
       const data = await res.json()
       if (res.ok && data.user) {
-        const updated = { ...profile, ...data.user }
+        const isComplete = Boolean(
+          data.user.profileComplete || 
+          (data.user.stream && data.user.course && String(data.user.stream).trim() !== "" && String(data.user.course).trim() !== "")
+        )
+        const updated = { ...profile, ...data.user, profileComplete: isComplete }
         setProfile(updated)
         setSessionUser(updated)
-        setProfileComplete(data.user.profileComplete || false)
+        setProfileComplete(isComplete)
         persistToSession(updated)
         showToast("✅ Profile saved successfully!")
+        if (currentStep === "setup") {
+          setTimeout(() => setStep("home"), 1000)
+        }
       } else {
         showToast("⚠️ " + (data.message || "Failed to save."))
       }

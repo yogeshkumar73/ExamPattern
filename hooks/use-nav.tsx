@@ -86,9 +86,14 @@ export function NavProvider({ children }: { children: React.ReactNode }) {
         // Read strictly from sessionStorage; null indicates window was closed or token expired
         const stored = getStoredSession()
         if (stored && stored.user && stored.token) {
-          setSessionUser(stored.user)
+          const isComplete = Boolean(
+            stored.user.profileComplete || 
+            (stored.user.stream && stored.user.course && String(stored.user.stream).trim() !== "" && String(stored.user.course).trim() !== "")
+          )
+          const updatedUser = { ...stored.user, profileComplete: isComplete }
+          setSessionUser(updatedUser)
           setRegistered(true)
-          setProfileComplete(Boolean(stored.user.profileComplete))
+          setProfileComplete(isComplete)
           if (stored.user.role === "admin" || stored.user.isAdmin === true || stored.isAdmin === true) {
             setAdmin(true)
           }
@@ -205,7 +210,7 @@ export function NavProvider({ children }: { children: React.ReactNode }) {
       return
     }
 
-    // 2. Verify active session token in sessionStorage
+    // 2. Verify active session token in sessionStorage or localStorage
     const isSessionActive = hasValidSessionToken()
     if (!isRegistered || !isSessionActive) {
       // Remember intended service destination for post-login redirect
@@ -214,14 +219,9 @@ export function NavProvider({ children }: { children: React.ReactNode }) {
       return
     }
 
-    // 3. For authenticated users, verify mandatory profile completion before general services
-    if (!profileComplete && step !== "setup" && step !== "profile") {
-      setCurrentStep("setup")
-      return
-    }
-
+    // Authenticated: smoothly navigate to the chosen platform service
     setCurrentStep(step)
-  }, [isRegistered, profileComplete])
+  }, [isRegistered])
 
   /** Navigate with guard */
   const navigate = useCallback(

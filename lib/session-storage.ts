@@ -72,34 +72,41 @@ export function storeSession(data: { user: any; token?: string; role?: string; i
     loginTime: new Date().toISOString(),
   }
 
-  // Store in sessionStorage (browser tab/window lifecycle)
+  // Store in sessionStorage and localStorage for reliable persistence across tabs/reloads
   try {
     sessionStorage.setItem(SESSION_KEY, JSON.stringify(payload))
     sessionStorage.setItem(TOKEN_KEY, token)
-
-    // Clear persistent disk storage to prevent lingering sessions across browser restarts
-    localStorage.removeItem(SESSION_KEY)
-    localStorage.removeItem(TOKEN_KEY)
+    localStorage.setItem(SESSION_KEY, JSON.stringify(payload))
+    localStorage.setItem(TOKEN_KEY, token)
   } catch (err) {
     console.error("[SessionStorage] Failed to store session:", err)
   }
 }
 
 /**
- * Retrieve the active session from sessionStorage.
- * Returns null if the browser window was closed, token is missing, or invalid.
+ * Retrieve the active session from sessionStorage or localStorage fallback.
+ * Returns null if token is missing or invalid.
  */
 export function getStoredSession(): AuraSessionData | null {
   if (typeof window === "undefined") return null
 
   try {
-    const raw = sessionStorage.getItem(SESSION_KEY)
-    const token = sessionStorage.getItem(TOKEN_KEY)
+    let raw = sessionStorage.getItem(SESSION_KEY)
+    let token = sessionStorage.getItem(TOKEN_KEY)
+
+    // Fallback to localStorage if new tab or refreshed
+    if (!raw) {
+      raw = localStorage.getItem(SESSION_KEY)
+      token = localStorage.getItem(TOKEN_KEY)
+      if (raw && token) {
+        try {
+          sessionStorage.setItem(SESSION_KEY, raw)
+          sessionStorage.setItem(TOKEN_KEY, token)
+        } catch {}
+      }
+    }
 
     if (!raw) {
-      // Window was closed/reopened or user never logged in: purge any stale disk storage
-      localStorage.removeItem(SESSION_KEY)
-      localStorage.removeItem(TOKEN_KEY)
       return null
     }
 
@@ -149,6 +156,7 @@ export function clearStoredSession(): void {
     sessionStorage.removeItem(REDIRECT_KEY)
     localStorage.removeItem(SESSION_KEY)
     localStorage.removeItem(TOKEN_KEY)
+    localStorage.removeItem(REDIRECT_KEY)
   } catch (err) {
     console.error("[SessionStorage] Error clearing session:", err)
   }

@@ -28,12 +28,16 @@ export function UserOnboarding() {
   const [adminAuthError, setAdminAuthError] = useState("")
 
   useEffect(() => {
-    // Read only active session token from sessionStorage (window session)
+    // Read only active session token from sessionStorage / localStorage
     const saved = getStoredSession()
     if (saved?.user && saved?.token) {
-      setSessionUser(saved.user)
+      const isComplete = Boolean(
+        saved.user.profileComplete || 
+        (saved.user.stream && saved.user.course && String(saved.user.stream).trim() !== "" && String(saved.user.course).trim() !== "")
+      )
+      setSessionUser({ ...saved.user, profileComplete: isComplete })
       setRegistered(true)
-      setProfileComplete(Boolean(saved.user.profileComplete))
+      setProfileComplete(isComplete)
       setAdmin(saved.user.role === 'admin' || saved.user.isAdmin === true || saved.isAdmin === true)
       const target = (consumePostLoginRedirect() as any) || "profile"
       setStep(target)
@@ -136,36 +140,40 @@ export function UserOnboarding() {
       const data = await res.json()
       
       if (res.ok && data.user) {
-        const sessionUser = {
-          id: data.user.id || data.user._id,
-          name: data.user.name,
-          email: data.user.email,
-          phone: data.user.phone || "",
-          photoUrl: data.user.photoUrl || "",
-          branch: data.user.branch || "",
-          bio: data.user.bio || "",
-          stream: data.user.stream || "",
-          course: data.user.course || "",
-          department: data.user.department || "",
-          grade: data.user.grade || "",
-          isLabApproved: data.user.isLabApproved ?? true,
-          status: data.user.status || "Active",
-          role: data.user.role || "student",
-          profileComplete: data.user.profileComplete || false,
-          arenaApprovalStatus: data.user.arenaApprovalStatus || "approved",
-          arenaApprovalReason: data.user.arenaApprovalReason || "",
-          arenaAccess: data.user.arenaAccess || { status: "approved", approved: true },
-          points: data.user.points || 0,
-          rank: data.user.rank || "Bronze",
-        }
-        const token = data.token || generateSessionToken(sessionUser.id, sessionUser.email, sessionUser.role).token
-        storeSession({ user: sessionUser, token, role: sessionUser.role, isAdmin: sessionUser.role === 'admin' })
-        setSessionUser(sessionUser)
-        setProfileComplete(Boolean(sessionUser.profileComplete))
-        setAdmin(sessionUser.role === 'admin')
-        setRegistered(true)
-        const target = (consumePostLoginRedirect() as any) || (sessionUser.profileComplete ? "home" : "setup")
-        setStep(target)
+          const isComplete = Boolean(
+            data.user.profileComplete ||
+            (data.user.stream && data.user.course && String(data.user.stream).trim() !== "" && String(data.user.course).trim() !== "")
+          )
+          const sessionUser = {
+            id: data.user.id || data.user._id,
+            name: data.user.name,
+            email: data.user.email,
+            phone: data.user.phone || "",
+            photoUrl: data.user.photoUrl || "",
+            branch: data.user.branch || "",
+            bio: data.user.bio || "",
+            stream: data.user.stream || "",
+            course: data.user.course || "",
+            department: data.user.department || "",
+            grade: data.user.grade || "",
+            isLabApproved: data.user.isLabApproved ?? true,
+            status: data.user.status || "Active",
+            role: data.user.role || "student",
+            profileComplete: isComplete,
+            arenaApprovalStatus: data.user.arenaApprovalStatus || "approved",
+            arenaApprovalReason: data.user.arenaApprovalReason || "",
+            arenaAccess: data.user.arenaAccess || { status: "approved", approved: true },
+            points: data.user.points || 0,
+            rank: data.user.rank || "Bronze",
+          }
+          const token = data.token || generateSessionToken(sessionUser.id, sessionUser.email, sessionUser.role).token
+          storeSession({ user: sessionUser, token, role: sessionUser.role, isAdmin: sessionUser.role === 'admin' })
+          setSessionUser(sessionUser)
+          setProfileComplete(isComplete)
+          setAdmin(sessionUser.role === 'admin')
+          setRegistered(true)
+          const target = (consumePostLoginRedirect() as any) || (isComplete ? "home" : "setup")
+          setStep(target)
       } else if (res.status === 403) {
         alert(data.message || "Your account has been suspended by an administrator.")
       } else {

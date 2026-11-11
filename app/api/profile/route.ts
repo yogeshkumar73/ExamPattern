@@ -89,12 +89,22 @@ export async function PUT(req: Request) {
       }
     }
 
-    // Handle standard profile updates
-    const profileComplete = !!(stream && stream !== "" && course && course !== "");
-
     try {
       await dbConnect();
       const query = userId ? { _id: userId } : { email };
+
+      const existingUser = await User.findOne(query);
+      if (!existingUser) {
+        return NextResponse.json({ message: "User not found." }, { status: 404 });
+      }
+
+      const finalStream = stream !== undefined ? stream : (existingUser.stream || "");
+      const finalCourse = course !== undefined ? course : (existingUser.course || "");
+      const profileComplete = Boolean(
+        (finalStream && finalStream.trim() !== "") && 
+        (finalCourse && finalCourse.trim() !== "")
+      );
+
       const updateFields: Record<string, any> = {
         ...(photoUrl !== undefined && { photoUrl }),
         ...(bio !== undefined && { bio }),
@@ -196,7 +206,11 @@ export async function PUT(req: Request) {
     if (course !== undefined) user.course = course;
     if (department !== undefined) user.department = department;
     if (grade !== undefined) user.grade = grade;
-    user.profileComplete = profileComplete;
+    const mockStream = stream !== undefined ? stream : (user.stream || "");
+    const mockCourse = course !== undefined ? course : (user.course || "");
+    user.profileComplete = Boolean(
+      mockStream && mockStream.trim() !== "" && mockCourse && mockCourse.trim() !== ""
+    );
 
     return NextResponse.json({
       message: "Profile updated successfully (offline mode).",

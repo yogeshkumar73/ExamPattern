@@ -83,7 +83,7 @@ type Session = {
 } | null
 
 export function Header() {
-  const { currentStep, setStep, isRegistered, isAdmin, setAdmin, setRegistered, sessionUser } = useNav()
+  const { currentStep, setStep, isRegistered, isAdmin, setAdmin, setRegistered, sessionUser, setSessionUser } = useNav()
 
   const [session, setSession] = useState<Session>(null)
   const [isAdminDialogOpen, setAdminDialogOpen] = useState(false)
@@ -136,6 +136,10 @@ useEffect(() => {
         setRegistered(true);
         const currentSaved = getStoredSession();
         if (!currentSaved) {
+          const isComplete = Boolean(
+            session.user.profileComplete || 
+            (session.user.stream && session.user.course && String(session.user.stream).trim() !== "" && String(session.user.course).trim() !== "")
+          );
           const userObj = {
             id: session.user.id || `USR-${session.user.email}`,
             name: session.user.name || "Student",
@@ -143,7 +147,7 @@ useEffect(() => {
             photoUrl: session.user.image || session.user.photoUrl || "",
             role: session.user.role || "student",
             isAdmin: Boolean(session.user.role === "admin"),
-            profileComplete: false,
+            profileComplete: isComplete,
           };
           const token = generateSessionToken(userObj.id, userObj.email, userObj.role).token;
           storeSession({ user: userObj, token, role: userObj.role, isAdmin: userObj.isAdmin });
@@ -329,7 +333,7 @@ useEffect(() => {
 );
  const handleSignOut = useCallback(async () => {
   try {
-   await signOut({ redirect: true });
+    await signOut({ redirect: false });
   } catch (error) {
     console.error(error);
   }
@@ -357,16 +361,22 @@ const currentIndex = useMemo(
 );
 
   const handlePrev = useCallback(() => {
-  if (currentIndex <= 0) return;
-
-  setStep(steps[currentIndex - 1]);
-}, [currentIndex, steps, setStep]);
+    if (currentIndex === -1) {
+      setStep("upload");
+      return;
+    }
+    if (currentIndex <= 0) return;
+    setStep(steps[currentIndex - 1]);
+  }, [currentIndex, steps, setStep]);
 
   const handleNext = useCallback(() => {
-  if (currentIndex >= steps.length - 1) return;
-
-  setStep(steps[currentIndex + 1]);
-}, [currentIndex, steps, setStep]);
+    if (currentIndex === -1) {
+      setStep("upload");
+      return;
+    }
+    if (currentIndex >= steps.length - 1) return;
+    setStep(steps[currentIndex + 1]);
+  }, [currentIndex, steps, setStep]);
 
 
 
@@ -406,7 +416,7 @@ const currentIndex = useMemo(
                 size="sm"
                 className="h-7 w-7 sm:h-8 sm:w-8 p-0 rounded-lg"
                 onClick={handlePrev}
-                disabled={currentIndex <= 0}
+                disabled={currentIndex === 0}
                 aria-label="Previous Step"
               >
                 <ChevronLeft className="h-3.5 w-3.5 sm:h-4 sm:w-4" />

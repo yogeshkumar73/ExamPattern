@@ -194,6 +194,9 @@ export default function ExamAnalyzer() {
   if (!isRegistered && !sessionUser && currentStep !== "policy") {
     return <UserOnboarding />
   }
+  if (currentStep === "setup") {
+    return <StudentProfile initialTab="academic" />
+  }
   if (currentStep === "admin") {
     if (!isAdmin) return <StudentProfile />
     return <AdminPanel />
@@ -353,7 +356,7 @@ export default function ExamAnalyzer() {
         )}
       </div>
 
-      <Tabs value={currentStep} onValueChange={(val) => setStep(val as any)} className="w-full">
+      <Tabs value={["upload", "analyze", "predict"].includes(currentStep) ? currentStep : "upload"} onValueChange={(val) => setStep(val as any)} className="w-full">
         {/* Navigation Tabs Header */}
         <div className="flex justify-center mb-8 sm:mb-10">
           <TabsList className="grid w-full max-w-3xl grid-cols-3 p-1 h-12 sm:h-16 bg-muted/30 backdrop-blur-md rounded-xl sm:rounded-2xl border shadow-2xl">

@@ -123,7 +123,10 @@ export async function POST(req: Request) {
   grade: user.grade ?? "",
   role: user.role ?? "student",
 
-  profileComplete: user.profileComplete ?? false,
+  profileComplete: Boolean(
+    user.profileComplete ||
+    (user.stream && user.course && String(user.stream).trim() !== "" && String(user.course).trim() !== "")
+  ),
   status: user.status ?? "Active",
 
   // Arena access flags
@@ -227,10 +230,18 @@ export async function POST(req: Request) {
             approvedAt: new Date().toISOString(),
             rejectedAt: null,
           },
+          createdAt: new Date().toISOString(),
         };
 
         mockUsers.push(newMock);
         user = newMock;
+      }
+
+      if (!user) {
+        return NextResponse.json(
+          { message: "User not found." },
+          { status: 404 }
+        );
       }
 
       if (user.status === "Suspended") {
@@ -266,8 +277,10 @@ export async function POST(req: Request) {
         department: user.department ?? "",
         grade: user.grade ?? "",
         role: user.role ?? "student",
-        profileComplete:
-          user.profileComplete ?? false,
+        profileComplete: Boolean(
+          user.profileComplete ||
+          (user.stream && user.course && String(user.stream).trim() !== "" && String(user.course).trim() !== "")
+        ),
         isLabApproved:
           user.isLabApproved ?? false,
         status: user.status ?? "Active",
