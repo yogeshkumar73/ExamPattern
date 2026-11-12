@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import dbConnect from '@/lib/mongodb';
 import User from '@/models/User';
+import { verifyAdminRequest } from '@/lib/security';
 
 /**
  * GET /api/admin/arena-approvals - Get all arena approval requests / users
@@ -9,51 +10,11 @@ import User from '@/models/User';
  * DELETE /api/admin/arena-approvals - Reset approval status for a user
  */
 
-function getSessionUser(req: NextRequest) {
-  try {
-    const header = req.headers.get('x-session-user');
-    if (!header) {
-      return null;
-    }
-    
-    const parsed = JSON.parse(decodeURIComponent(header));
-    const user = parsed?.user || parsed;
-    
-    if (!user) {
-      return null;
-    }
-    
-    return {
-      ...user,
-      role: user?.role || 'admin',
-      isAdmin: user?.isAdmin !== false,
-    };
-  } catch (err) {
-    console.error('[Arena Approvals] Failed to parse session user:', err);
-    return null;
-  }
-}
-
-function checkAdminAuth(user: any, req?: NextRequest) {
-  if (req) {
-    const cookieHeader = req.headers.get('cookie') || '';
-    if (cookieHeader.includes('admin-session=')) {
-      return true;
-    }
-  }
-
-  if (!user) {
-    return false;
-  }
-  
-  return user.role === 'admin' || user.isAdmin === true;
-}
-
 export async function GET(request: NextRequest) {
   try {
-    const sessionUser = getSessionUser(request);
-    if (!checkAdminAuth(sessionUser, request)) {
-      return NextResponse.json({ error: 'Unauthorized - Admin access required' }, { status: 401 });
+    const auth = verifyAdminRequest(request);
+    if (!auth.authorized) {
+      return NextResponse.json({ error: auth.reason || 'Unauthorized - Admin access required' }, { status: 401 });
     }
 
     await dbConnect();
@@ -106,9 +67,9 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
-    const sessionUser = getSessionUser(request);
-    if (!checkAdminAuth(sessionUser, request)) {
-      return NextResponse.json({ error: 'Unauthorized - Admin access required' }, { status: 401 });
+    const auth = verifyAdminRequest(request);
+    if (!auth.authorized) {
+      return NextResponse.json({ error: auth.reason || 'Unauthorized - Admin access required' }, { status: 401 });
     }
 
     const { userId, action, reason } = await request.json();
@@ -267,9 +228,9 @@ export async function POST(request: NextRequest) {
  */
 export async function PUT(request: NextRequest) {
   try {
-    const sessionUser = getSessionUser(request);
-    if (!checkAdminAuth(sessionUser, request)) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    const auth = verifyAdminRequest(request);
+    if (!auth.authorized) {
+      return NextResponse.json({ error: auth.reason || "Unauthorized - Admin access required" }, { status: 401 });
     }
 
     const { userIds, action, reason } = await request.json();
@@ -386,9 +347,9 @@ export async function PUT(request: NextRequest) {
  */
 export async function DELETE(request: NextRequest) {
   try {
-    const sessionUser = getSessionUser(request);
-    if (!checkAdminAuth(sessionUser, request)) {
-      return NextResponse.json({ error: 'Unauthorized - Admin access required' }, { status: 401 });
+    const auth = verifyAdminRequest(request);
+    if (!auth.authorized) {
+      return NextResponse.json({ error: auth.reason || 'Unauthorized - Admin access required' }, { status: 401 });
     }
 
     const searchParams = request.nextUrl.searchParams;

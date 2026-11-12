@@ -27,7 +27,7 @@ function computeArenaRank(points: number): string {
 export async function PUT(req: Request) {
   try {
     const body = await req.json();
-    const { userId, email, photoUrl, bio, branch, phone, name, stream, course, department, grade, updates } = body;
+    const { userId, email, photoUrl, bio, branch, phone, name, stream, course, department, grade, country, countryCode, city, ip, updates } = body;
 
     if (!userId && !email) {
       return NextResponse.json({ message: "User ID or email is required." }, { status: 400 });
@@ -115,6 +115,10 @@ export async function PUT(req: Request) {
         ...(course !== undefined && { course }),
         ...(department !== undefined && { department }),
         ...(grade !== undefined && { grade }),
+        ...(country !== undefined && { country }),
+        ...(countryCode !== undefined && { countryCode }),
+        ...(city !== undefined && { city }),
+        ...(ip !== undefined && { ip }),
         profileComplete,
       };
 
@@ -166,6 +170,10 @@ export async function PUT(req: Request) {
           course: user.course || "",
           department: user.department || "",
           grade: user.grade || "",
+          country: user.country || "",
+          countryCode: user.countryCode || "",
+          city: user.city || "",
+          ip: user.ip || "",
           status: user.status || "Active",
           profileComplete: user.profileComplete || false,
           isLabApproved: user.isLabApproved || false,
@@ -243,14 +251,25 @@ export async function GET(req: Request) {
   try {
     const { searchParams } = new URL(req.url);
     const email = searchParams.get("email");
+    const userId = searchParams.get("userId");
 
-    if (!email) {
-      return NextResponse.json({ message: "Email is required." }, { status: 400 });
+    if (!email && !userId) {
+      return NextResponse.json({ message: "Email or userId is required." }, { status: 400 });
     }
 
     try {
       await dbConnect();
-      const user = await User.findOne({ email }).select("-password");
+      const mongoose = (await import("mongoose")).default;
+      let query: any = {};
+      if (userId) {
+        const safeRegex = new RegExp(`^${userId.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, "i");
+        query = mongoose.isValidObjectId(userId)
+          ? { _id: userId }
+          : { $or: [{ customId: userId }, { email: userId }, { name: safeRegex }] };
+      } else {
+        query = { email };
+      }
+      const user = await User.findOne(query).select("-password");
       if (user) {
         const userPoints = Math.max(user.xp || 0, user.points || 0);
         const dynamicRank = computeRankTier(userPoints);
@@ -291,6 +310,10 @@ export async function GET(req: Request) {
   stream: user.stream || "",
   course: user.course || "",
   department: user.department || "",
+  country: user.country || "India",
+  countryCode: user.countryCode || "IN",
+  city: user.city || "New Delhi",
+  ip: user.ip || "127.0.0.1",
   status: user.status || "Active",
 
   // ==========================
@@ -341,6 +364,12 @@ export async function GET(req: Request) {
   },
 
   arenaCanAccess: user.status !== "Suspended" && (user.arenaApprovalStatus === "approved" || user.arenaAccess?.approved === true || user.role === "admin"),
+
+  // ==========================
+  // Badges & Achievements
+  // ==========================
+  badges: user.badges || [],
+  achievements: user.achievements || [],
 },
         });
       }
@@ -348,7 +377,10 @@ export async function GET(req: Request) {
       console.warn("MongoDB unavailable, using mock DB:", dbErr);
     }
 
-    const user = mockUsers.find((u) => u.email === email);
+    const user = mockUsers.find((u) => 
+      (userId && (u._id === userId || (u as any).id === userId || u.name?.toLowerCase() === userId.toLowerCase())) || 
+      (email && u.email?.toLowerCase() === email.toLowerCase())
+    );
     if (!user) {
       return NextResponse.json({ message: "User not found." }, { status: 404 });
     }

@@ -15,7 +15,7 @@ export interface StaticArenaQuestion {
   hint?: string;
 }
 
-export type ArenaCategory = 'coding' | 'puzzle' | 'math' | 'gk' | 'prediction' | 'topicdoc' | 'mixed';
+export type ArenaCategory = 'coding' | 'puzzle' | 'math' | 'gk' | 'prediction' | 'topicdoc' | 'mixed' | 'color';
 export type ArenaDifficulty = 'beginner' | 'intermediate' | 'advanced' | 'expert' | 'master' | 'grandmaster';
 
 export const TIME_MAP: Record<ArenaDifficulty, number> = {
@@ -10095,6 +10095,380 @@ export const ARENA_QUESTION_BANK: Record<ArenaCategory, Record<ArenaDifficulty, 
         "pointsReward": 2000
       }
     ]
+  },
+  "color": {
+    "beginner": [
+      {
+        "title": "Primary Mixing: Red + Yellow",
+        "description": "When mixing primary paint pigments, what color is created by blending Red and Yellow?",
+        "options": ["Orange", "Green", "Purple", "Brown"],
+        "correctAnswer": "Orange",
+        "boilerplate": "",
+        "tags": ["color", "color-mixing", "primary"],
+        "hint": "Think of warm autumn leaves and citrus fruit.",
+        "timeLimit": 20,
+        "xpReward": 50,
+        "pointsReward": 100
+      },
+      {
+        "title": "Primary Mixing: Blue + Yellow",
+        "description": "Which secondary color is produced when Blue and Yellow pigments are combined?",
+        "options": ["Green", "Purple", "Orange", "Gray"],
+        "correctAnswer": "Green",
+        "boilerplate": "",
+        "tags": ["color", "color-mixing", "secondary"],
+        "hint": "The vibrant color of grass and leaves.",
+        "timeLimit": 20,
+        "xpReward": 50,
+        "pointsReward": 100
+      },
+      {
+        "title": "Primary Mixing: Red + Blue",
+        "description": "What color is formed by mixing equal amounts of Red and Blue pigment?",
+        "options": ["Purple / Violet", "Orange", "Green", "Cyan"],
+        "correctAnswer": "Purple / Violet",
+        "boilerplate": "",
+        "tags": ["color", "color-mixing", "secondary"],
+        "hint": "A regal color often associated with royalty and grapes.",
+        "timeLimit": 20,
+        "xpReward": 50,
+        "pointsReward": 100
+      },
+      {
+        "title": "Hex Color: Pure Red",
+        "description": "In 24-bit hex web color notation (#RRGGBB), which code represents pure vibrant Red?",
+        "options": ["#FF0000", "#00FF00", "#0000FF", "#FFFF00"],
+        "correctAnswer": "#FF0000",
+        "boilerplate": "",
+        "tags": ["color", "hex", "rgb"],
+        "hint": "The first pair of hex digits is at maximum (FF) while the rest are zero.",
+        "timeLimit": 20,
+        "xpReward": 50,
+        "pointsReward": 100
+      },
+      {
+        "title": "Hex Color: Pure White",
+        "description": "In digital displays using RGB hex code, what is the code for pure White?",
+        "options": ["#FFFFFF", "#000000", "#AAAAAA", "#777777"],
+        "correctAnswer": "#FFFFFF",
+        "boilerplate": "",
+        "tags": ["color", "hex", "web-colors"],
+        "hint": "All three color channels (Red, Green, Blue) are set to their maximum value of 255 (FF).",
+        "timeLimit": 20,
+        "xpReward": 50,
+        "pointsReward": 100
+      }
+    ],
+    "intermediate": [
+      {
+        "title": "Additive RGB: Red + Green Light",
+        "description": "On digital screens using the additive RGB color model, mixing Red light and Green light yields:",
+        "options": ["Yellow (#FFFF00)", "Magenta (#FF00FF)", "Cyan (#00FFFF)", "White (#FFFFFF)"],
+        "correctAnswer": "Yellow (#FFFF00)",
+        "boilerplate": "",
+        "tags": ["color", "additive", "rgb-light"],
+        "hint": "rgb(255, 255, 0) combines red and green light beams.",
+        "timeLimit": 20,
+        "xpReward": 100,
+        "pointsReward": 200
+      },
+      {
+        "title": "Complementary Color Pair",
+        "description": "On a traditional artistic color wheel, which color is directly opposite (complementary to) Blue?",
+        "options": ["Orange", "Yellow", "Red", "Green"],
+        "correctAnswer": "Orange",
+        "boilerplate": "",
+        "tags": ["color", "harmony", "complementary"],
+        "hint": "A primary color is always complementary to the secondary mixture of the other two primaries.",
+        "timeLimit": 20,
+        "xpReward": 100,
+        "pointsReward": 200
+      },
+      {
+        "title": "Hex Color: Pure Cyan",
+        "description": "What is the 6-digit hex code for pure Cyan (equal full Green and Blue light)?",
+        "options": ["#00FFFF", "#FF00FF", "#FFFF00", "#0000FF"],
+        "correctAnswer": "#00FFFF",
+        "boilerplate": "",
+        "tags": ["color", "hex", "additive"],
+        "hint": "Red is 00, Green is FF, and Blue is FF.",
+        "timeLimit": 20,
+        "xpReward": 100,
+        "pointsReward": 200
+      },
+      {
+        "title": "Color Models: Screen vs Print",
+        "description": "Digital displays rely on an additive color model, whereas physical color printing utilizes which model?",
+        "options": ["Subtractive (CMYK)", "Additive (RGB)", "Polarized (HSV)", "Direct Thermal"],
+        "correctAnswer": "Subtractive (CMYK)",
+        "boilerplate": "",
+        "tags": ["color", "color-models", "print"],
+        "hint": "Inks subtract light reflected off white paper.",
+        "timeLimit": 20,
+        "xpReward": 100,
+        "pointsReward": 200
+      },
+      {
+        "title": "Tertiary Color Definition",
+        "description": "How is a tertiary color systematically created in color theory?",
+        "options": ["Mixing a primary color with an adjacent secondary color", "Mixing two complementary colors together", "Mixing white into any pure hue", "Mixing three primary colors in equal proportions"],
+        "correctAnswer": "Mixing a primary color with an adjacent secondary color",
+        "boilerplate": "",
+        "tags": ["color", "tertiary", "color-wheel"],
+        "hint": "Examples include Red-Orange, Blue-Green, and Yellow-Green.",
+        "timeLimit": 20,
+        "xpReward": 100,
+        "pointsReward": 200
+      }
+    ],
+    "advanced": [
+      {
+        "title": "CMYK Subtractive Synthesis: Cyan + Yellow",
+        "description": "In subtractive CMYK ink printing, overlapping pure Cyan and pure Yellow dots absorbs red and blue light to reflect:",
+        "options": ["Green", "Magenta", "Blue", "Black"],
+        "correctAnswer": "Green",
+        "boilerplate": "",
+        "tags": ["color", "cmyk", "subtractive"],
+        "hint": "Cyan absorbs red light, yellow absorbs blue light, leaving only this spectrum to reflect.",
+        "timeLimit": 20,
+        "xpReward": 200,
+        "pointsReward": 400
+      },
+      {
+        "title": "Hex Byte Decomposition: #3A78C4",
+        "description": "In the CSS hex color code #3A78C4, what is the decimal value of the Green channel (0x78)?",
+        "options": ["120", "58", "196", "240"],
+        "correctAnswer": "120",
+        "boilerplate": "",
+        "tags": ["color", "hex", "math"],
+        "hint": "7 * 16 + 8 = 112 + 8.",
+        "timeLimit": 20,
+        "xpReward": 200,
+        "pointsReward": 400
+      },
+      {
+        "title": "Split-Complementary Harmony",
+        "description": "For a base hue of Red, what are its two split-complementary colors?",
+        "options": ["Yellow-Green and Blue-Green", "Yellow and Blue", "Orange and Violet", "Green and Blue"],
+        "correctAnswer": "Yellow-Green and Blue-Green",
+        "boilerplate": "",
+        "tags": ["color", "harmony", "split-complementary"],
+        "hint": "Direct complement is Green; split complements flank Green on either side.",
+        "timeLimit": 20,
+        "xpReward": 200,
+        "pointsReward": 400
+      },
+      {
+        "title": "Color Terminology: Tint vs Shade vs Tone",
+        "description": "In classical painting and color design, a 'Shade' is produced by adding what to a pure hue?",
+        "options": ["Black", "White", "Gray", "Complementary Color"],
+        "correctAnswer": "Black",
+        "boilerplate": "",
+        "tags": ["color", "terminology", "tint-shade-tone"],
+        "hint": "Tint = hue + White; Tone = hue + Gray; Shade = hue + Black.",
+        "timeLimit": 20,
+        "xpReward": 200,
+        "pointsReward": 400
+      },
+      {
+        "title": "Warm vs Cool Color Temperature",
+        "description": "Which of the following color palettes consists strictly of 'Cool' hues?",
+        "options": ["Cyan, Azure, Cobalt, and Emerald", "Scarlet, Amber, Tangerine, and Gold", "Crimson, Coral, Peach, and Maroon", "Ochre, Rust, Vermilion, and Terracotta"],
+        "correctAnswer": "Cyan, Azure, Cobalt, and Emerald",
+        "boilerplate": "",
+        "tags": ["color", "temperature", "chroma"],
+        "hint": "Cool colors evoke water, sky, ice, and lush foliage.",
+        "timeLimit": 20,
+        "xpReward": 200,
+        "pointsReward": 400
+      }
+    ],
+    "expert": [
+      {
+        "title": "HSL Color Wheel Angles",
+        "description": "On the standard 360-degree HSL hue circle where Red is at 0 degrees, what hue angle corresponds to pure Cyan?",
+        "options": ["180°", "120°", "240°", "300°"],
+        "correctAnswer": "180°",
+        "boilerplate": "",
+        "tags": ["color", "hsl", "color-wheel"],
+        "hint": "Red is 0°, Green is 120°, Blue is 240°. Cyan is midway between Green and Blue.",
+        "timeLimit": 25,
+        "xpReward": 400,
+        "pointsReward": 800
+      },
+      {
+        "title": "Triadic Color Harmony Geometry",
+        "description": "What is the exact angular spacing between each pair of colors forming a Triadic harmony on the hue wheel?",
+        "options": ["120°", "90°", "180°", "60°"],
+        "correctAnswer": "120°",
+        "boilerplate": "",
+        "tags": ["color", "harmony", "triadic"],
+        "hint": "Three equally spaced vertices dividing 360° into 3 equal parts.",
+        "timeLimit": 25,
+        "xpReward": 400,
+        "pointsReward": 800
+      },
+      {
+        "title": "HSL Desaturation to Neutral",
+        "description": "In HSL color space, setting Saturation to 0% (S=0%) with Lightness at 50% (L=50%) results in:",
+        "options": ["Medium Gray (#808080)", "Pure Black (#000000)", "Pure White (#FFFFFF)", "Pure Red (#FF0000)"],
+        "correctAnswer": "Medium Gray (#808080)",
+        "boilerplate": "",
+        "tags": ["color", "hsl", "lightness"],
+        "hint": "Zero saturation removes all chromatic content, producing an achromatic tone.",
+        "timeLimit": 25,
+        "xpReward": 400,
+        "pointsReward": 800
+      },
+      {
+        "title": "Hex Bitwise Color Inversion",
+        "description": "What is the exact bitwise inverse (complementary hex) of the dark navy hex #112233?",
+        "options": ["#EEDDCC", "#FFEEDD", "#332211", "#998877"],
+        "correctAnswer": "#EEDDCC",
+        "boilerplate": "",
+        "tags": ["color", "hex", "bitwise"],
+        "hint": "Invert each byte: 0xFF - 0x11 = 0xEE, 0xFF - 0x22 = 0xDD, 0xFF - 0x33 = 0xCC.",
+        "timeLimit": 25,
+        "xpReward": 400,
+        "pointsReward": 800
+      },
+      {
+        "title": "Relative Luminance Calculation",
+        "description": "Under ITU-R BT.709 standards, which RGB channel contributes the greatest percentage to perceived photometric luminance Y?",
+        "options": ["Green (~71.52%)", "Red (~21.26%)", "Blue (~7.22%)", "All channels contribute equally (33.33%)"],
+        "correctAnswer": "Green (~71.52%)",
+        "boilerplate": "",
+        "tags": ["color", "luminance", "perceptual"],
+        "hint": "Y = 0.2126*R + 0.7152*G + 0.0722*B.",
+        "timeLimit": 25,
+        "xpReward": 400,
+        "pointsReward": 800
+      }
+    ],
+    "master": [
+      {
+        "title": "Visible Light Spectrum: Green Range",
+        "description": "What is the approximate wavelength range in nanometers (nm) for spectral green light in the electromagnetic spectrum?",
+        "options": ["495 - 570 nm", "380 - 450 nm", "620 - 750 nm", "570 - 590 nm"],
+        "correctAnswer": "495 - 570 nm",
+        "boilerplate": "",
+        "tags": ["color", "physics", "wavelength"],
+        "hint": "Located between blue (~450-495 nm) and yellow (~570-590 nm).",
+        "timeLimit": 25,
+        "xpReward": 700,
+        "pointsReward": 1400
+      },
+      {
+        "title": "Retinal Photoreceptor Biology",
+        "description": "Which retinal photoreceptor cells mediate high-acuity color vision under photopic (bright light) conditions?",
+        "options": ["Cones (S, M, and L types)", "Rods (scotopic vision)", "Bipolar retinal neurons", "Amacrine cells"],
+        "correctAnswer": "Cones (S, M, and L types)",
+        "boilerplate": "",
+        "tags": ["color", "biology", "vision"],
+        "hint": "Short, Medium, and Long wavelength sensitive photoreceptors.",
+        "timeLimit": 25,
+        "xpReward": 700,
+        "pointsReward": 1400
+      },
+      {
+        "title": "Hering's Opponent-Process Theory",
+        "description": "According to Ewald Hering's opponent-process theory of human color vision, what are the three paired opponent channels?",
+        "options": ["Red-Green, Blue-Yellow, Black-White", "Red-Cyan, Green-Magenta, Blue-Yellow", "Red-Blue, Green-Yellow, Orange-Violet", "Cyan-Magenta, Yellow-Black, Light-Dark"],
+        "correctAnswer": "Red-Green, Blue-Yellow, Black-White",
+        "boilerplate": "",
+        "tags": ["color", "neuroscience", "opponent-process"],
+        "hint": "You cannot visually perceive a 'reddish-green' or a 'yellowish-blue'.",
+        "timeLimit": 25,
+        "xpReward": 700,
+        "pointsReward": 1400
+      },
+      {
+        "title": "Metamerism in Colorimetry",
+        "description": "What optical and perceptual phenomenon occurs when two physical specimens match in color under one light source but differ under another?",
+        "options": ["Metamerism", "Simultaneous Contrast", "Purkinje Shift", "Abney Effect"],
+        "correctAnswer": "Metamerism",
+        "boilerplate": "",
+        "tags": ["color", "optics", "metamerism"],
+        "hint": "Arises because different spectral power distributions can yield identical tristimulus XYZ values.",
+        "timeLimit": 25,
+        "xpReward": 700,
+        "pointsReward": 1400
+      },
+      {
+        "title": "S-Cone Spectral Peak Sensitivity",
+        "description": "In the human retina, S-cones (Short-wavelength sensitive) exhibit peak spectral absorption near which wavelength?",
+        "options": ["~420 - 440 nm", "~530 - 540 nm", "~560 - 570 nm", "~650 - 660 nm"],
+        "correctAnswer": "~420 - 440 nm",
+        "boilerplate": "",
+        "tags": ["color", "photoreception", "s-cones"],
+        "hint": "Sensitive to violet and deep blue light.",
+        "timeLimit": 25,
+        "xpReward": 700,
+        "pointsReward": 1400
+      }
+    ],
+    "grandmaster": [
+      {
+        "title": "CIE 1931 Equal-Energy Illuminant E",
+        "description": "In the CIE 1931 xy chromaticity diagram, what are the exact chromaticity coordinates (x, y) of the hypothetical equal-energy illuminant E?",
+        "options": ["(0.3333, 0.3333)", "(0.3127, 0.3290)", "(0.2500, 0.2500)", "(0.3457, 0.3585)"],
+        "correctAnswer": "(0.3333, 0.3333)",
+        "boilerplate": "",
+        "tags": ["color", "cie1931", "colorimetry"],
+        "hint": "X = Y = Z for equal energy, so x = y = 1/3.",
+        "timeLimit": 30,
+        "xpReward": 1000,
+        "pointsReward": 2000
+      },
+      {
+        "title": "CIELAB Just Noticeable Difference (JND)",
+        "description": "In CIE L*a*b* (CIELAB 1976), what approximate Delta E* value corresponds to a Just Noticeable Difference (JND) for human observers?",
+        "options": ["Delta E* ≈ 1.0", "Delta E* ≈ 5.0", "Delta E* ≈ 0.05", "Delta E* ≈ 10.0"],
+        "correctAnswer": "Delta E* ≈ 1.0",
+        "boilerplate": "",
+        "tags": ["color", "cielab", "delta-e"],
+        "hint": "A Delta E under 1 is generally imperceptible to unassisted human eyes.",
+        "timeLimit": 30,
+        "xpReward": 1000,
+        "pointsReward": 2000
+      },
+      {
+        "title": "CIE Standard Illuminant D65",
+        "description": "What is the Correlated Color Temperature (CCT) of the CIE Standard Illuminant D65 representing average European daylight?",
+        "options": ["6504 K", "5000 K", "2856 K", "9300 K"],
+        "correctAnswer": "6504 K",
+        "boilerplate": "",
+        "tags": ["color", "d65", "illuminant"],
+        "hint": "D50 is 5003 K, D55 is 5500 K, and D65 is roughly 6500 Kelvin.",
+        "timeLimit": 30,
+        "xpReward": 1000,
+        "pointsReward": 2000
+      },
+      {
+        "title": "CIELAB Coordinate Axes: b* Axis",
+        "description": "In the three-dimensional CIE L*a*b* color space, what chromatic attribute does the positive b* (+b*) axis represent?",
+        "options": ["Yellow (vs negative b* for Blue)", "Red (vs negative a* for Green)", "Green (vs negative a* for Red)", "Lightness (vs 0 for Black)"],
+        "correctAnswer": "Yellow (vs negative b* for Blue)",
+        "boilerplate": "",
+        "tags": ["color", "cielab", "axes"],
+        "hint": "L* is lightness, a* is green-to-red, b* is blue-to-yellow.",
+        "timeLimit": 30,
+        "xpReward": 1000,
+        "pointsReward": 2000
+      },
+      {
+        "title": "Photopic Luminous Efficiency Peak V(lambda)",
+        "description": "At which exact wavelength does the standard human photopic spectral luminous efficiency curve V(lambda) reach its maximum peak of 1.0?",
+        "options": ["555 nm", "507 nm (scotopic peak)", "480 nm", "610 nm"],
+        "correctAnswer": "555 nm",
+        "boilerplate": "",
+        "tags": ["color", "photometry", "luminosity-curve"],
+        "hint": "Peak human daytime vision sensitivity lies in the yellow-green band at 555 nm.",
+        "timeLimit": 30,
+        "xpReward": 1000,
+        "pointsReward": 2000
+      }
+    ]
   }
 };
 
@@ -10112,7 +10486,7 @@ export function getStaticQuestions(
   let pool: StaticArenaQuestion[] = [];
 
   if (mode === 'mixed') {
-    const modes: ArenaCategory[] = ['coding', 'puzzle', 'math', 'gk', 'prediction', 'topicdoc', 'mixed'];
+    const modes: ArenaCategory[] = ['coding', 'puzzle', 'math', 'gk', 'prediction', 'topicdoc', 'color', 'mixed'];
     for (const m of modes) {
       const modeQs = ARENA_QUESTION_BANK[m]?.[diff] || [];
       pool.push(...modeQs);

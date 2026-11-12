@@ -8,6 +8,10 @@ export interface IUser extends Document {
   photoUrl?: string;
   branch?: string;
   bio?: string;
+  country?: string;
+  countryCode?: string;
+  city?: string;
+  ip?: string;
   stream?: StreamType | "";
   course?: string;
   department?: string;
@@ -61,6 +65,7 @@ export interface IUser extends Document {
   accuracy: number;
 
   badges: string[];
+  achievements?: any[];
 
   gameStats: Record<string, any>;
 
@@ -109,6 +114,10 @@ const UserSchema = new Schema<IUser>(
     photoUrl: { type: String, default: "" },
     branch: { type: String, default: "" },
     bio: { type: String, default: "" },
+    country: { type: String, default: "" },
+    countryCode: { type: String, default: "" },
+    city: { type: String, default: "" },
+    ip: { type: String, default: "" },
 
     stream: {
       type: String,
@@ -302,6 +311,11 @@ const UserSchema = new Schema<IUser>(
 
     badges: {
       type: [String],
+      default: [],
+    },
+
+    achievements: {
+      type: Array,
       default: [],
     },
 

@@ -5,7 +5,7 @@ import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { motion } from 'framer-motion';
-import { Menu, X, LogOut, LayoutDashboard, Users, Settings } from 'lucide-react';
+import { Menu, X, LogOut, LayoutDashboard, Users, Settings, Activity } from 'lucide-react';
 
 export default function AdminLayout({
   children,
@@ -103,6 +103,11 @@ export default function AdminLayout({
           <Link href="/admin/arena-approvals" className={`flex items-center gap-3 px-4 py-3 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors ${!sidebarOpen && 'justify-center'}`}>
             <Users size={20} className="text-blue-600" />
             {sidebarOpen && <span>Arena Approvals</span>}
+          </Link>
+
+          <Link href="/admin/services" className={`flex items-center gap-3 px-4 py-3 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors ${!sidebarOpen && 'justify-center'}`}>
+            <Activity size={20} className="text-purple-500" />
+            {sidebarOpen && <span>Services & Engine Monitor</span>}
           </Link>
 
           <Link href="/admin/settings" className={`flex items-center gap-3 px-4 py-3 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors ${!sidebarOpen && 'justify-center'}`}>

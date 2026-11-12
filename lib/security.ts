@@ -6,6 +6,7 @@
  */
 
 import { NextResponse } from "next/server";
+import { createHmac, timingSafeEqual as cryptoTimingSafeEqual } from "crypto";
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 
@@ -376,3 +377,101 @@ export function secureJson(
   const res = NextResponse.json(body, init);
   return addSecurityHeaders(res);
 }
+
+// ─── Cryptographic Admin Session Verification ───────────────────────────────
+
+const ADMIN_SESSION_SECRET = process.env.ADMIN_SESSION_SECRET || "aura-admin-session-secret-2026-key";
+
+/**
+ * Validates cryptographic HMAC signature and expiration of an admin session token.
+ * Prevents client-spoofed authentication headers and counterfeit cookies.
+ */
+export function verifyAdminSessionToken(token: string | null | undefined): { valid: boolean; reason?: string } {
+  if (!token || typeof token !== "string") {
+    return { valid: false, reason: "Missing admin session token." };
+  }
+
+  const parts = token.trim().split(".");
+  if (parts.length !== 2) {
+    return { valid: false, reason: "Malformed session token structure." };
+  }
+
+  const [payload, signature] = parts;
+  const expiresAt = Number(payload);
+
+  if (isNaN(expiresAt) || expiresAt <= 0) {
+    return { valid: false, reason: "Invalid token expiration timestamp." };
+  }
+
+  if (Date.now() > expiresAt) {
+    return { valid: false, reason: "Admin session has expired. Please log in again." };
+  }
+
+  const expectedSignature = createHmac("sha256", ADMIN_SESSION_SECRET).update(payload).digest("hex");
+
+  try {
+    const sigBuf = Buffer.from(signature, "utf8");
+    const expBuf = Buffer.from(expectedSignature, "utf8");
+
+    if (sigBuf.length !== expBuf.length || !cryptoTimingSafeEqual(sigBuf, expBuf)) {
+      return { valid: false, reason: "Invalid cryptographic signature. Tampering detected." };
+    }
+  } catch {
+    return { valid: false, reason: "Signature verification failed." };
+  }
+
+  return { valid: true };
+}
+
+/**
+ * Validates incoming admin request:
+ * 1. Checks HttpOnly signed cookie `admin-session`
+ * 2. Checks `Authorization: Bearer <token>`
+ * 3. Rejects forged or unverified x-session-user headers.
+ */
+export function verifyAdminRequest(req: Request): { authorized: boolean; reason?: string } {
+  // Check HttpOnly cookie
+  const cookieHeader = req.headers.get("cookie") || "";
+  const match = cookieHeader.match(/admin-session=([^;]+)/);
+  if (match && match[1]) {
+    const verified = verifyAdminSessionToken(decodeURIComponent(match[1]));
+    if (verified.valid) return { authorized: true };
+  }
+
+  // Check Authorization Bearer header
+  const authHeader = req.headers.get("authorization") || "";
+  if (authHeader.startsWith("Bearer ")) {
+    const token = authHeader.slice(7).trim();
+    const verified = verifyAdminSessionToken(token);
+    if (verified.valid) return { authorized: true };
+  }
+
+  // Fallback for NextAuth admin session if present
+  const sessionUserHeader = req.headers.get("x-session-user");
+  if (sessionUserHeader) {
+    try {
+      const parsed = JSON.parse(decodeURIComponent(sessionUserHeader));
+      const user = parsed?.user || parsed;
+      // If user object carries admin role, ensure it also provides a verified admin-token
+      if ((user?.role === "admin" || user?.isAdmin === true) && user?.adminToken) {
+        const verified = verifyAdminSessionToken(user.adminToken);
+        if (verified.valid) return { authorized: true };
+      }
+    } catch {}
+  }
+
+  return {
+    authorized: false,
+    reason: "Unauthorized: Valid admin cryptographic session required.",
+  };
+}
+
+/**
+ * Sanitize query parameters to prevent NoSQL operator injection ($where, $ne, $regex objects).
+ */
+export function sanitizeNoSqlInput(value: unknown): string {
+  if (typeof value !== "string") return "";
+  // Strip MongoDB operator characters if used at the start
+  return value.replace(/^\$/g, "").trim();
+}
+

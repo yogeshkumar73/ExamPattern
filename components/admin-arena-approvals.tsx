@@ -70,13 +70,16 @@ export default function AdminArenaApprovals() {
       setErrorMessage('');
 
       const user = getSessionUser();
+      const headers: Record<string, string> = {
+        'x-session-user': encodeURIComponent(JSON.stringify(user)),
+      };
+      if (user?.adminToken) {
+        headers['Authorization'] = `Bearer ${user.adminToken}`;
+      }
+
       const response = await fetch(
         `/api/admin/arena-approvals?status=${filterStatus}&page=${page}&limit=${pagination.limit}`,
-        {
-          headers: {
-            'x-session-user': encodeURIComponent(JSON.stringify(user)),
-          },
-        }
+        { headers }
       );
 
       if (!response.ok) {
@@ -105,12 +108,17 @@ export default function AdminArenaApprovals() {
     try {
       setLoading(true);
       const user = getSessionUser();
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/json',
+        'x-session-user': encodeURIComponent(JSON.stringify(user)),
+      };
+      if (user?.adminToken) {
+        headers['Authorization'] = `Bearer ${user.adminToken}`;
+      }
+
       const response = await fetch('/api/admin/arena-approvals', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-session-user': encodeURIComponent(JSON.stringify(user)),
-        },
+        headers,
         body: JSON.stringify({
           userId,
           action,
@@ -148,12 +156,17 @@ export default function AdminArenaApprovals() {
     try {
       setLoading(true);
       const user = getSessionUser();
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/json',
+        'x-session-user': encodeURIComponent(JSON.stringify(user)),
+      };
+      if (user?.adminToken) {
+        headers['Authorization'] = `Bearer ${user.adminToken}`;
+      }
+
       const response = await fetch('/api/admin/arena-approvals', {
         method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-session-user': encodeURIComponent(JSON.stringify(user)),
-        },
+        headers,
         body: JSON.stringify({
           userIds: selectedUsers,
           action,

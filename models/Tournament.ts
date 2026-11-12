@@ -2,10 +2,21 @@ import mongoose from 'mongoose';
 
 const TournamentSchema = new mongoose.Schema({
   name: { type: String, required: true },
-  mode: { type: String, enum: ['coding', 'puzzle', 'math', 'gk', 'prediction', 'mixed'], required: true },
+  mode: { type: String, enum: ['coding', 'puzzle', 'math', 'gk', 'prediction', 'color', 'custom', 'mixed'], required: true },
   difficulty: { type: String, enum: ['beginner', 'intermediate', 'advanced', 'expert', 'master', 'grandmaster'], default: 'intermediate' },
   status: { type: String, enum: ['open', 'active', 'finished'], default: 'open' },
   maxParticipants: { type: Number, default: 8 },
+  matchDuration: { type: Number, default: 300 },
+  expiryHours: { type: Number, default: 24 },
+  expiresAt: { type: Date, default: null },
+  questionsPerMatch: { type: Number, default: 10 },
+  rules: {
+    timePerQuestion: { type: Number, default: 30 },
+    pointsPerCorrect: { type: Number, default: 100 },
+    penaltyPerWrong: { type: Number, default: 0 },
+    allowBots: { type: Boolean, default: true },
+    customRules: { type: String, default: '' },
+  },
   participants: [{
     userId: String,
     name: String,

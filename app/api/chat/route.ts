@@ -10,8 +10,10 @@ export async function GET(req: NextRequest) {
   const limit = Math.min(parseInt(searchParams.get('limit') || '50'), 100);
 
   try {
-    // Only fetch messages stored within the last 1 day (24 hours)
+    // Only fetch messages stored within the last 1 day (24 hours = 86400s)
     const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
+    // Actively delete any expired messages older than 24 hours
+    ChatMessage.deleteMany({ timestamp: { $lt: oneDayAgo } }).catch(() => {});
     const query: any = { roomId };
 
     if (since) {
@@ -91,15 +93,18 @@ export async function POST(req: NextRequest) {
     if (io) {
       try {
         io.to(`chat-${roomId}`).emit('new-message', formattedMessage);
-        io.emit('chat-notification', {
-          id: formattedMessage.id,
-          roomId: formattedMessage.roomId,
-          senderId: formattedMessage.senderId,
-          senderName: formattedMessage.senderName,
-          senderAvatar: formattedMessage.senderAvatar,
-          message: formattedMessage.message.slice(0, 100),
-          timestamp: formattedMessage.timestamp,
-        });
+        // Only emit public chat notifications for public arena rooms, NEVER for personal DMs
+        if (!roomId.startsWith('dm-')) {
+          io.emit('chat-notification', {
+            id: formattedMessage.id,
+            roomId: formattedMessage.roomId,
+            senderId: formattedMessage.senderId,
+            senderName: formattedMessage.senderName,
+            senderAvatar: formattedMessage.senderAvatar,
+            message: formattedMessage.message.slice(0, 100),
+            timestamp: formattedMessage.timestamp,
+          });
+        }
       } catch (e) {
         console.warn('[Chat] Socket multicast error:', e);
       }

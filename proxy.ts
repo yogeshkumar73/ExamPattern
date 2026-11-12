@@ -146,9 +146,9 @@ function applySecurityHeaders(res: NextResponse): NextResponse {
   return res;
 }
 
-// ─── Middleware entry point ───────────────────────────────────────────────────
+// ─── Proxy / Middleware entry point ──────────────────────────────────────────
 
-export function middleware(req: NextRequest) {
+export function proxy(req: NextRequest) {
   const { pathname } = req.nextUrl;
   const method = req.method?.toUpperCase() ?? "GET";
 
@@ -205,6 +205,8 @@ export function middleware(req: NextRequest) {
   const res = NextResponse.next();
   return applySecurityHeaders(res);
 }
+
+export { proxy as middleware };
 
 // ─── Matcher config — run on all routes except Next.js internals ──────────────
 

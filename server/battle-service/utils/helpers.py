@@ -69,6 +69,9 @@ def calculate_xp(difficulty: str) -> int:
         "beginner": 50,
         "intermediate": 100,
         "advanced": 200,
+        "expert": 400,
+        "master": 700,
+        "grandmaster": 1000,
     }
     return xp_map.get(difficulty, 50)
 
@@ -79,6 +82,9 @@ def calculate_coins(difficulty: str) -> int:
         "beginner": 10,
         "intermediate": 25,
         "advanced": 50,
+        "expert": 80,
+        "master": 140,
+        "grandmaster": 200,
     }
     return coin_map.get(difficulty, 10)
 
@@ -89,6 +95,9 @@ def calculate_time_limit(difficulty: str) -> int:
         "beginner": 30,
         "intermediate": 45,
         "advanced": 60,
+        "expert": 25,
+        "master": 25,
+        "grandmaster": 30,
     }
     return time_map.get(difficulty, 60)
 

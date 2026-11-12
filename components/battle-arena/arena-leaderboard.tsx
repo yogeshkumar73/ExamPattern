@@ -1,7 +1,8 @@
 "use client"
 
 import { useState, useEffect, useCallback } from "react"
-import { Trophy, TrendingUp, TrendingDown, Minus, Crown, Star, Zap, Target, Activity, RefreshCw, Clock } from "lucide-react"
+import { Trophy, TrendingUp, TrendingDown, Minus, Crown, Star, Zap, Target, Activity, RefreshCw, Clock, Eye, UserCheck, ExternalLink } from "lucide-react"
+import { VisitProfileModal } from "./visit-profile-modal"
 
 const CATEGORIES = [
   { id: 'global',     label: 'Global',     icon: '🌍', color: '#6366f1' },
@@ -104,6 +105,7 @@ interface ArenaLeaderboardProps {
   currentUserId?: string
   currentUserName?: string
   currentUserEmail?: string
+  currentUser?: any
   refreshTrigger?: number
 }
 
@@ -111,6 +113,7 @@ export function ArenaLeaderboard({
   currentUserId, 
   currentUserName, 
   currentUserEmail, 
+  currentUser,
   refreshTrigger = 0 
 }: ArenaLeaderboardProps) {
   const [activeCategory, setActiveCategory] = useState('global')
@@ -120,6 +123,15 @@ export function ArenaLeaderboard({
   const [animate, setAnimate] = useState(false)
   const [secondsUntilUpdate, setSecondsUntilUpdate] = useState(120)
   const [lastUpdatedText, setLastUpdatedText] = useState('Just now')
+
+  // Visit user profile modal state
+  const [selectedProfileUser, setSelectedProfileUser] = useState<any | null>(null)
+  const [isProfileModalOpen, setIsProfileModalOpen] = useState(false)
+
+  const handleVisitProfile = (player: any) => {
+    setSelectedProfileUser(player)
+    setIsProfileModalOpen(true)
+  }
 
   const fetchLeaderboard = useCallback(async (isAuto = false) => {
     if (isAuto) {
@@ -228,21 +240,29 @@ export function ArenaLeaderboard({
                 (player.name && player.name.toLowerCase() === 'yogesh')
 
               return (
-                <div key={pos} className={`flex flex-col items-center ${z} transition-all duration-300`}>
+                <div 
+                  key={pos} 
+                  onClick={() => handleVisitProfile(player)}
+                  className={`flex flex-col items-center ${z} transition-all duration-300 cursor-pointer group hover:scale-105 active:scale-95`}
+                  title={`Click to visit ${player.name}'s profile`}
+                >
                   <div className="relative mb-3">
                     <img
                       src={player.avatar}
                       alt={player.name}
-                      className={`w-16 h-16 rounded-2xl border-2 object-cover shadow-lg ${
+                      className={`w-16 h-16 rounded-2xl border-2 object-cover shadow-lg transition-transform group-hover:ring-4 group-hover:ring-indigo-500/50 ${
                         isCurrentUser ? 'border-indigo-400 ring-2 ring-indigo-500/50' : 'border-white/20'
                       }`}
                     />
+                    <div className="absolute inset-0 bg-black/50 rounded-2xl opacity-0 group-hover:opacity-100 flex items-center justify-center text-[9px] font-black text-white transition-opacity">
+                      VISIT
+                    </div>
                     <div className="absolute -top-3 left-1/2 -translate-x-1/2 text-2xl">{medal}</div>
                     <div className="absolute -bottom-1 -right-1 text-xs bg-black/60 rounded-full px-1">
                       {RANK_ICONS[player.arenaRank] || '⬜'}
                     </div>
                   </div>
-                  <div className="text-white font-black text-sm text-center mb-1 max-w-[120px] truncate flex items-center justify-center gap-1">
+                  <div className="text-white font-black text-sm text-center mb-1 max-w-[120px] truncate flex items-center justify-center gap-1 group-hover:text-indigo-300 transition-colors">
                     <span className={isCurrentUser ? 'text-indigo-300' : 'text-white'}>{player.name}</span>
                     {isCurrentUser && (
                       <span className="bg-indigo-500/20 text-indigo-300 px-1 py-0.5 rounded text-[9px] font-bold border border-indigo-500/30">
@@ -330,17 +350,19 @@ export function ArenaLeaderboard({
               return (
                 <div
                   key={player.userId || `rank-${rank}`}
-                  className={`flex items-center gap-4 p-4 transition-all ${animate ? 'arena-leaderboard-row' : 'opacity-0'} ${
+                  onClick={() => handleVisitProfile(player)}
+                  className={`flex items-center gap-4 p-4 transition-all cursor-pointer group hover:bg-white/10 active:bg-white/15 ${animate ? 'arena-leaderboard-row' : 'opacity-0'} ${
                     isCurrentUser ? 'bg-indigo-500/10 border-l-2 border-indigo-500' : 'hover:bg-white/5'
                   }`}
                   style={{ animationDelay: `${idx * 40}ms` }}
+                  title={`Click to visit ${player.name}'s profile`}
                 >
                   {/* Rank number (4 to 10) */}
                   <div className="w-8 text-center font-black text-white/70 text-sm">#{rank}</div>
 
                   {/* Avatar */}
                   <div className="relative flex-shrink-0">
-                    <img src={player.avatar} alt={player.name} className="w-10 h-10 rounded-xl object-cover" />
+                    <img src={player.avatar} alt={player.name} className="w-10 h-10 rounded-xl object-cover transition-transform group-hover:scale-105" />
                     <div className="absolute -bottom-1 -right-1 text-xs">
                       {RANK_ICONS[player.arenaRank] || ''}
                     </div>
@@ -349,7 +371,7 @@ export function ArenaLeaderboard({
                   {/* Name & info */}
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2">
-                      <span className={`font-black text-sm truncate ${isCurrentUser ? 'text-indigo-300' : 'text-white'}`}>
+                      <span className={`font-black text-sm truncate group-hover:text-indigo-300 transition-colors ${isCurrentUser ? 'text-indigo-300' : 'text-white'}`}>
                         {player.name}
                       </span>
                       {isCurrentUser && (
@@ -400,12 +422,35 @@ export function ArenaLeaderboard({
                     </div>
                     <div className="text-[10px] text-white/30 uppercase font-mono">pts</div>
                   </div>
+
+                  {/* Interactive Visit Profile Action Pill */}
+                  <div className="flex items-center">
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        handleVisitProfile(player)
+                      }}
+                      className="px-2.5 py-1 rounded-lg bg-indigo-600/20 hover:bg-indigo-600 text-indigo-300 hover:text-white border border-indigo-500/30 text-xs font-bold transition-all whitespace-nowrap flex items-center gap-1 group-hover:bg-indigo-600 group-hover:text-white shadow-sm"
+                    >
+                      <Eye className="w-3.5 h-3.5" />
+                      <span className="hidden sm:inline">Visit</span>
+                    </button>
+                  </div>
                 </div>
               )
             })}
           </div>
         )}
       </div>
+
+      {/* Visit Student Profile Modal */}
+      <VisitProfileModal
+        user={selectedProfileUser}
+        currentUser={currentUser || { id: currentUserId, name: currentUserName, email: currentUserEmail }}
+        isOpen={isProfileModalOpen}
+        onClose={() => setIsProfileModalOpen(false)}
+      />
     </div>
   )
 }

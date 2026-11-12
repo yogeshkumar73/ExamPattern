@@ -121,6 +121,10 @@ interface FullProfile extends SessionUser {
   arenaRank?: string
   leaderboardRank?: number
   arenaLeaderboardRank?: number
+  country?: string
+  countryCode?: string
+  city?: string
+  ip?: string
 }
 
 export function StudentProfile({ initialTab }: { initialTab?: ProfileTab } = {}) {
@@ -145,6 +149,32 @@ export function StudentProfile({ initialTab }: { initialTab?: ProfileTab } = {})
   const [battleStats, setBattleStats] = useState<{ wins: number; losses: number; total: number }>({ wins: 0, losses: 0, total: 0 })
   const [achievements, setAchievements] = useState<Achievement[]>([])
   const [toast, setToast] = useState<string | null>(null)
+  const [userLocation, setUserLocation] = useState<{ country: string; countryCode: string; city: string; flag: string; ip: string } | null>(null)
+
+  // ── Fetch user country & location from IP ──────────────────────────────────────
+  useEffect(() => {
+    fetch("/api/user/location")
+      .then(res => res.json())
+      .then(data => {
+        if (data && data.country) {
+          setUserLocation(data)
+          if (profile.id && (!profile.country || profile.country !== data.country)) {
+            fetch("/api/user/location", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                userId: profile.id,
+                country: data.country,
+                countryCode: data.countryCode,
+                city: data.city,
+                ip: data.ip,
+              })
+            }).catch(() => {})
+          }
+        }
+      })
+      .catch(() => {})
+  }, [profile.id, profile.country])
 
   // Password reset state inside profile settings
   const [passwordForm, setPasswordForm] = useState({ newPassword: "", confirmPassword: "" })
@@ -312,7 +342,7 @@ export function StudentProfile({ initialTab }: { initialTab?: ProfileTab } = {})
       .catch(err => console.warn("Unable to load battle activity:", err))
   }, [profile.id])
 
-  // ── Fetch achievements when tab opens ─────────────────────────────────────────
+  // ── Fetch achievements when tab opens or on mount ────────────────────────────
   const loadAchievements = useCallback(async () => {
     if (!profile.id) return
     setIsLoadingAchievements(true)
@@ -330,8 +360,62 @@ export function StudentProfile({ initialTab }: { initialTab?: ProfileTab } = {})
   }, [profile.id])
 
   useEffect(() => {
-    if (activeTab === "achievements") loadAchievements()
-  }, [activeTab, loadAchievements])
+    loadAchievements()
+    const handleUpdate = () => loadAchievements()
+    window.addEventListener("aura_profile_updated", handleUpdate)
+    window.addEventListener("aura_achievement_claimed", handleUpdate)
+    return () => {
+      window.removeEventListener("aura_profile_updated", handleUpdate)
+      window.removeEventListener("aura_achievement_claimed", handleUpdate)
+    }
+  }, [loadAchievements])
+
+  const [claimingAchId, setClaimingAchId] = useState<string | null>(null)
+
+  const handleClaimAchievement = async (achId: string, achName: string, achIcon: string) => {
+    if (!profile.id) return
+    setClaimingAchId(achId)
+    try {
+      const res = await fetch("/api/arena/achievements", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ userId: profile.id, achievementId: achId })
+      })
+      const data = await res.json()
+      if (data.success) {
+        try {
+          const raw = localStorage.getItem("aura_session")
+          if (raw) {
+            const parsed = JSON.parse(raw)
+            if (parsed?.user) {
+              parsed.user.badges = data.badges || [...(parsed.user.badges || []), achIcon]
+              parsed.user.achievements = data.achievements || parsed.user.achievements
+              if (data.xp) parsed.user.xp = data.xp
+              if (data.coins) parsed.user.coins = data.coins
+              localStorage.setItem("aura_session", JSON.stringify(parsed))
+              sessionStorage.setItem("aura_session", JSON.stringify(parsed))
+            }
+          }
+        } catch (_) {}
+
+        setProfile((prev: any) => ({
+          ...prev,
+          badges: data.badges || [...(prev.badges || []), achIcon],
+          xp: data.xp || prev.xp,
+          coins: data.coins || prev.coins
+        }))
+
+        await loadAchievements()
+        alert(`🎉 Badge Claimed! "${achName}" ${achIcon} has been added to your Profile!`)
+      } else {
+        alert(data.error || "Failed to claim badge.")
+      }
+    } catch (err: any) {
+      alert("Error claiming badge: " + err.message)
+    } finally {
+      setClaimingAchId(null)
+    }
+  }
 
   // ── Save profile ──────────────────────────────────────────────────────────────
   const handleSave = async () => {
@@ -647,7 +731,31 @@ export function StudentProfile({ initialTab }: { initialTab?: ProfileTab } = {})
                   Level {profile.level}
                 </Badge>
               )}
+              {/* Country & Location from IP */}
+              <Badge className="bg-indigo-500/20 text-indigo-300 font-bold border border-indigo-500/30 gap-1.5 px-3">
+                <span>{userLocation?.flag || "🌍"}</span>
+                <span>{userLocation?.city ? `${userLocation.city}, ` : ""}{userLocation?.country || profile.country || "India"}</span>
+              </Badge>
             </div>
+
+            {/* Claimed Badges Row */}
+            {achievements.filter(a => a.unlocked).length > 0 && (
+              <div className="flex flex-wrap items-center gap-1.5 justify-center md:justify-start mb-4">
+                <span className="text-[10px] font-black uppercase tracking-wider text-muted-foreground flex items-center gap-1 mr-1">
+                  <Award className="w-3.5 h-3.5 text-yellow-500" /> Claimed Badges:
+                </span>
+                {achievements.filter(a => a.unlocked).map((ach) => (
+                  <Badge
+                    key={ach.id}
+                    className="bg-yellow-500/15 border border-yellow-500/40 text-yellow-500 text-xs font-black gap-1 shadow-sm px-2.5 py-0.5 hover:scale-105 transition-transform"
+                    title={ach.description}
+                  >
+                    <span>{ach.icon}</span>
+                    <span className="text-[11px] text-foreground font-bold">{ach.name}</span>
+                  </Badge>
+                ))}
+              </div>
+            )}
 
             {/* Dynamic Rank + XP */}
             <div className="bg-white/10 rounded-2xl p-4 max-w-xs mx-auto md:mx-0 border border-white/10 shadow-lg">
@@ -788,6 +896,48 @@ export function StudentProfile({ initialTab }: { initialTab?: ProfileTab } = {})
                   <span className="font-black text-sm text-foreground">{stat.value}</span>
                 </div>
               ))}
+            </CardContent>
+          </Card>
+
+          {/* Claimed Arena Badges Showcase in Overview */}
+          <Card className="border-2 shadow-xl md:col-span-2">
+            <CardHeader className="border-b bg-muted/20 flex flex-row items-center justify-between">
+              <div>
+                <CardTitle className="flex items-center gap-2 text-base">
+                  <Award className="w-5 h-5 text-yellow-500" /> Claimed Arena Badges
+                </CardTitle>
+                <CardDescription className="text-xs">
+                  Badges claimed from scoring milestones and battle victories
+                </CardDescription>
+              </div>
+              <Badge className="bg-yellow-500 text-black font-black text-xs">
+                {achievements.filter(a => a.unlocked).length} / {achievements.length || 14} Badges
+              </Badge>
+            </CardHeader>
+            <CardContent className="pt-6">
+              {achievements.filter(a => a.unlocked).length > 0 ? (
+                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3">
+                  {achievements.filter(a => a.unlocked).map((ach) => (
+                    <div
+                      key={ach.id}
+                      className="p-3.5 rounded-2xl bg-gradient-to-br from-yellow-500/10 via-background to-muted/20 border-2 border-yellow-500/30 flex flex-col items-center text-center gap-1.5 shadow-sm hover:scale-[1.02] transition-transform"
+                    >
+                      <span className="text-3xl p-2 rounded-xl bg-yellow-500/15">{ach.icon}</span>
+                      <span className="font-black text-xs text-foreground truncate w-full">{ach.name}</span>
+                      <span className="text-[10px] text-muted-foreground font-semibold line-clamp-1">{ach.description}</span>
+                      <Badge className="bg-green-500 text-white text-[9px] font-black mt-1">✓ Claimed</Badge>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="text-center py-8 border-2 border-dashed rounded-2xl bg-muted/10 space-y-2">
+                  <Award className="w-10 h-10 text-muted-foreground mx-auto opacity-50" />
+                  <p className="font-black text-sm text-muted-foreground">No Badges Claimed Yet</p>
+                  <p className="text-xs text-muted-foreground/80 max-w-sm mx-auto">
+                    Complete your score requirements in the Battle Arena to claim badges and display them on your profile!
+                  </p>
+                </div>
+              )}
             </CardContent>
           </Card>
         </div>
@@ -1052,10 +1202,18 @@ export function StudentProfile({ initialTab }: { initialTab?: ProfileTab } = {})
                       <div className="flex items-center gap-2 flex-wrap">
                         <p className="font-black text-sm">{ach.name}</p>
                         {ach.unlocked && (
-                          <Badge className="bg-yellow-500 text-white text-[9px] font-black px-1.5">UNLOCKED</Badge>
+                          <Badge className="bg-green-500 text-white text-[9px] font-black px-2 py-0.5">✓ CLAIMED</Badge>
                         )}
                         {!ach.unlocked && ach.eligible && (
-                          <Badge className="bg-blue-500 text-white text-[9px] font-black px-1.5">CLAIM NOW</Badge>
+                          <Button
+                            size="sm"
+                            onClick={() => handleClaimAchievement(ach.id, ach.name, ach.icon)}
+                            disabled={claimingAchId === ach.id}
+                            className="h-7 px-3 bg-gradient-to-r from-yellow-500 to-amber-500 hover:from-yellow-400 hover:to-amber-400 text-black text-[10px] font-black uppercase rounded-lg shadow-md gap-1"
+                          >
+                            {claimingAchId === ach.id ? <RefreshCw className="w-3 h-3 animate-spin" /> : <Award className="w-3 h-3" />}
+                            Claim Badge
+                          </Button>
                         )}
                       </div>
                       <p className="text-xs text-muted-foreground mt-0.5">{ach.description}</p>

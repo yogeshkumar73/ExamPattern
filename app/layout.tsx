@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import { Analytics } from "@vercel/analytics/next";
+import { PurgeNetlify } from "@/components/purge-netlify";
 
 import "./globals.css";
 
@@ -117,6 +118,9 @@ export default function RootLayout({
             </main>
           </div>
         </Providers>
+
+        {/* Client-side Netlify badge & drawer remover */}
+        <PurgeNetlify />
 
         {Boolean(process.env.VERCEL) && <Analytics />}
       </body>

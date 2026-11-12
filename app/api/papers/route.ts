@@ -129,7 +129,7 @@ export async function POST(req: NextRequest) {
     }
 
     const body = await req.json();
-    const { title, description, stream, section, branch, year, fileData, fileName, fileType, subject } = body;
+    const { title, description, stream, section, branch, year, fileData, fileName, fileType, subject, syllabus } = body;
 
     // Validation
     if (!title) {
@@ -147,17 +147,19 @@ export async function POST(req: NextRequest) {
       await dbConnect();
 
       const paper = await Paper.create({
+        paperId: `paper-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
         title,
         description: description || "",
         stream: assignedStream,
         section: assignedSection,
         examType: assignedSection,
         subject: subject || assignedSection,
+        syllabus: syllabus || "",
         branch: branch || "",
         year: assignedYear,
         uploadedBy: uploaderId,
         uploadedByName: uploaderName,
-        uploaderId: sessionUser?.id ? sessionUser.id : undefined,
+        uploaderId,
         uploaderName,
         fileData: fileData || "",
         fileName: fileName || `${title.replace(/\s+/g, '_')}.pdf`,
@@ -177,14 +179,20 @@ export async function POST(req: NextRequest) {
       const mockId = `PAPER-${Math.random().toString(36).substr(2, 9).toUpperCase()}`;
       const newPaper = {
         _id: mockId,
+        paperId: mockId,
         title,
         description: description || "",
         stream: assignedStream,
         section: assignedSection,
+        examType: assignedSection,
+        subject: subject || assignedSection,
+        syllabus: syllabus || "",
         branch: branch || "",
         year: String(assignedYear),
         uploadedBy: uploaderId,
         uploadedByName: uploaderName,
+        uploaderId,
+        uploaderName,
         fileData: fileData || "",
         fileName: fileName || `${title.replace(/\s+/g, '_')}.pdf`,
         fileType: fileType || "application/pdf",
@@ -210,14 +218,14 @@ export async function POST(req: NextRequest) {
 export async function PATCH(req: NextRequest) {
   try {
     const sessionUser = getSessionUser(req);
-    const isAdmin = sessionUser?.role === "admin";
+    const body = await req.json();
+    const isAdmin = sessionUser?.role === "admin" || sessionUser?.isAdmin || body?.isAdmin === true;
 
-    // Check admin authorization or allow if role is admin
+    // Check admin authorization
     if (!isAdmin) {
       return NextResponse.json({ message: "Admin authorization required to moderate papers." }, { status: 403 });
     }
 
-    const body = await req.json();
     const { paperId, action } = body; // action: 'approve' | 'reject' | 'delete'
 
     if (!paperId) {
@@ -226,15 +234,24 @@ export async function PATCH(req: NextRequest) {
 
     try {
       await dbConnect();
+      const mongoose = (await import("mongoose")).default;
+      const query = mongoose.isValidObjectId(paperId) 
+        ? { _id: paperId } 
+        : { $or: [{ paperId }, { _id: paperId }] };
+
       if (action === "approve") {
-        await Paper.findByIdAndUpdate(paperId, { isApproved: true });
-        return NextResponse.json({ message: "Paper approved and published to repository!" });
+        const updated = await Paper.findOneAndUpdate(query, { isApproved: true }, { new: true });
+        return NextResponse.json({ 
+          success: true, 
+          message: "Paper approved and published to repository!",
+          paper: updated
+        });
       } else {
-        await Paper.findByIdAndDelete(paperId);
-        return NextResponse.json({ message: "Paper rejected and removed." });
+        await Paper.findOneAndDelete(query);
+        return NextResponse.json({ success: true, message: "Paper rejected and removed." });
       }
     } catch (dbErr) {
-      const idx = mockPapers.findIndex((p: any) => p._id === paperId);
+      const idx = mockPapers.findIndex((p: any) => p._id === paperId || p.paperId === paperId);
       if (idx !== -1) {
         if (action === "approve") {
           mockPapers[idx].isApproved = true;
@@ -242,7 +259,7 @@ export async function PATCH(req: NextRequest) {
           mockPapers.splice(idx, 1);
         }
       }
-      return NextResponse.json({ message: `Paper ${action}d successfully (offline mode).` });
+      return NextResponse.json({ success: true, message: `Paper ${action}d successfully (offline mode).` });
     }
   } catch (err: any) {
     console.error("Paper moderation error:", err);

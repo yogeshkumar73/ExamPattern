@@ -7,7 +7,7 @@ import { Input } from "@/components/ui/input"
 import { 
   Trophy, Users, Plus, Loader2, Play, Clock, Target, User,
   ChevronRight, Lock, Unlock, Calendar, Zap, Award, Copy, Check,
-  Share2, Shield, AlertCircle, X, Sparkles, Key
+  Share2, Shield, AlertCircle, X, Sparkles, Key, Bot, Sliders
 } from "lucide-react"
 import { TournamentGame } from "./tournament-game"
 import { TournamentResult } from "./tournament-result"
@@ -19,6 +19,7 @@ interface StudentTournamentsProps {
 const GAME_MODES = [
   { id: 'coding', label: 'Coding Battle', icon: '💻', desc: 'Algorithm challenges', color: 'from-blue-600 to-cyan-500' },
   { id: 'math', label: 'Math Battle', icon: '🔢', desc: 'Speed arithmetic & algebra', color: 'from-green-600 to-teal-500' },
+  { id: 'color', label: 'Color Battle', icon: '🎨', desc: 'RGB, Chroma & Ball Hit', color: 'from-rose-600 via-pink-600 to-indigo-600' },
   { id: 'puzzle', label: 'Puzzle Battle', icon: '🧩', desc: 'Logic & IQ teasers', color: 'from-purple-600 to-pink-500' },
   { id: 'gk', label: 'GK Battle', icon: '🧠', desc: 'General science & tech', color: 'from-yellow-600 to-orange-500' },
   { id: 'prediction', label: 'Prediction Game', icon: '📈', desc: 'Market & trend estimation', color: 'from-pink-600 to-rose-500' },
@@ -69,6 +70,12 @@ export function StudentTournaments({ user }: StudentTournamentsProps) {
     scheduledTime: '',
     isPrivate: false,
     password: '',
+    matchDuration: 300, // in seconds (120, 180, 300, 600)
+    expiryHours: 24, // 1, 6, 12, 24, 48
+    questionsPerMatch: 10, // 5, 10, 15
+    pointsPerCorrect: 100,
+    allowBots: true,
+    customRules: '',
   })
 
   const fetchTournaments = async () => {
@@ -98,7 +105,21 @@ export function StudentTournaments({ user }: StudentTournamentsProps) {
         const params = new URLSearchParams(window.location.search)
         const invite = detail?.invite || params.get('invite')
         const tId = detail?.tournamentId || params.get('tournamentId')
-        if (invite) {
+
+        if (tId && tournaments.length > 0) {
+          const found = tournaments.find(t => t._id === tId || t.inviteCode === invite)
+          if (found) {
+            const isParticipant = found.participants?.some((p: any) => p.userId === user?.id)
+            if (isParticipant && found.status === 'active') {
+              setSelectedTournament(found)
+              setShowGameMode(true)
+              setActiveTab('playing')
+              return
+            }
+          }
+        }
+
+        if (invite && !showGameMode) {
           setJoinInviteCode(invite)
           setShowCodeJoinModal(true)
         } else if (tId && tournaments.length > 0) {
@@ -117,7 +138,7 @@ export function StudentTournaments({ user }: StudentTournamentsProps) {
       window.addEventListener('arena-navigate', handleArenaNav)
       return () => window.removeEventListener('arena-navigate', handleArenaNav)
     }
-  }, [tournaments.length])
+  }, [tournaments.length, user?.id])
 
   const handleCopyInviteLink = (tournament: any) => {
     const inviteLink = `${window.location.origin}/?step=arena&tab=tournament&tournamentId=${tournament._id}&invite=${tournament.inviteCode || ''}`
@@ -162,6 +183,16 @@ export function StudentTournaments({ user }: StudentTournamentsProps) {
           userId: user?.id,
           userName: user?.name,
           avatar: user?.avatar || user?.photoUrl,
+          matchDuration: formData.matchDuration,
+          expiryHours: formData.expiryHours,
+          questionsPerMatch: formData.questionsPerMatch,
+          rules: {
+            timePerQuestion: 30,
+            pointsPerCorrect: formData.pointsPerCorrect,
+            penaltyPerWrong: 0,
+            allowBots: formData.allowBots,
+            customRules: formData.customRules,
+          },
         })
       })
       const data = await res.json()
@@ -176,6 +207,12 @@ export function StudentTournaments({ user }: StudentTournamentsProps) {
           scheduledTime: '',
           isPrivate: false,
           password: '',
+          matchDuration: 300,
+          expiryHours: 24,
+          questionsPerMatch: 10,
+          pointsPerCorrect: 100,
+          allowBots: true,
+          customRules: '',
         })
         setShowCreateForm(false)
         await fetchTournaments()
@@ -188,6 +225,34 @@ export function StudentTournaments({ user }: StudentTournamentsProps) {
       alert('Error creating tournament. Please check connection.')
     } finally {
       setCreating(false)
+    }
+  }
+
+  const handleHostFillBotsAndStart = async (tournamentId: string) => {
+    setActionLoading(tournamentId)
+    try {
+      const res = await fetch('/api/arena/tournaments', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'fill_bots',
+          tournamentId,
+          userId: user?.id,
+        })
+      })
+      const data = await res.json()
+      if (data.success) {
+        await fetchTournaments()
+        setSelectedTournament(data.tournament)
+        setShowGameMode(true)
+        setActiveTab('playing')
+      } else {
+        alert(data.error || 'Failed to fill bots & start')
+      }
+    } catch (e) {
+      alert('Error starting tournament with AI bots')
+    } finally {
+      setActionLoading(null)
     }
   }
 
@@ -531,7 +596,104 @@ export function StudentTournaments({ user }: StudentTournamentsProps) {
               )}
             </div>
 
-            {/* 4. Host Access & Password Protection Control */}
+            {/* 4. Host Match Timing & Expiry Settings */}
+            <div className="p-3.5 bg-white/5 border border-purple-500/20 rounded-xl space-y-3">
+              <div className="flex items-center gap-2">
+                <Clock className="w-4 h-4 text-purple-400" />
+                <label className="text-xs font-black uppercase tracking-wider text-purple-300">
+                  Host Match Timing & Expiry Rules
+                </label>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                {/* Match Duration */}
+                <div>
+                  <label className="text-[11px] font-bold text-white/70 block mb-1">
+                    Match Time Limit
+                  </label>
+                  <select
+                    value={formData.matchDuration}
+                    onChange={(e) => setFormData({ ...formData, matchDuration: parseInt(e.target.value) })}
+                    className="w-full bg-slate-900 border border-white/10 text-white rounded-xl px-3 py-2 text-xs focus:outline-none focus:border-purple-500"
+                  >
+                    <option value={120}>⚡ 2 Minutes (Blitz Match)</option>
+                    <option value={180}>⏱️ 3 Minutes (Standard Match)</option>
+                    <option value={300}>⚔️ 5 Minutes (Competitive)</option>
+                    <option value={600}>🛡️ 10 Minutes (Endurance)</option>
+                  </select>
+                </div>
+
+                {/* Expiry Window */}
+                <div>
+                  <label className="text-[11px] font-bold text-white/70 block mb-1">
+                    Registration Expiry Window
+                  </label>
+                  <select
+                    value={formData.expiryHours}
+                    onChange={(e) => setFormData({ ...formData, expiryHours: parseInt(e.target.value) })}
+                    className="w-full bg-slate-900 border border-white/10 text-white rounded-xl px-3 py-2 text-xs focus:outline-none focus:border-purple-500"
+                  >
+                    <option value={1}>⌛ 1 Hour Window</option>
+                    <option value={6}>⌛ 6 Hours Window</option>
+                    <option value={12}>⌛ 12 Hours Window</option>
+                    <option value={24}>⌛ 24 Hours Window</option>
+                    <option value={48}>⌛ 48 Hours Window</option>
+                  </select>
+                </div>
+
+                {/* Questions Per Match */}
+                <div>
+                  <label className="text-[11px] font-bold text-white/70 block mb-1">
+                    Questions Per Match
+                  </label>
+                  <select
+                    value={formData.questionsPerMatch}
+                    onChange={(e) => setFormData({ ...formData, questionsPerMatch: parseInt(e.target.value) })}
+                    className="w-full bg-slate-900 border border-white/10 text-white rounded-xl px-3 py-2 text-xs focus:outline-none focus:border-purple-500"
+                  >
+                    <option value={5}>5 Questions / Match</option>
+                    <option value={10}>10 Questions / Match</option>
+                    <option value={15}>15 Questions / Match</option>
+                    <option value={20}>20 Questions / Match</option>
+                  </select>
+                </div>
+              </div>
+
+              {/* Host Custom Rules & Bot Settings */}
+              <div className="pt-2 border-t border-white/5 space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-[11px] font-bold text-white/70 flex items-center gap-1.5">
+                    <Bot className="w-3.5 h-3.5 text-indigo-400" /> AI Bot Auto-Fill & Instant Matchmaking
+                  </span>
+                  <label className="relative inline-flex items-center cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={formData.allowBots}
+                      onChange={(e) => setFormData({ ...formData, allowBots: e.target.checked })}
+                      className="sr-only peer"
+                    />
+                    <div className="w-8 h-4 bg-white/20 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[1px] after:left-[1px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-3.5 after:w-3.5 after:transition-all peer-checked:bg-purple-600"></div>
+                  </label>
+                </div>
+                <p className="text-[10px] text-white/40">
+                  Allow intelligent AI bots to fill empty bracket slots so tournament games start immediately without waiting.
+                </p>
+
+                <div className="pt-1">
+                  <label className="text-[11px] font-bold text-white/70 block mb-1">
+                    Host Rules & Gameplay Notes (Optional)
+                  </label>
+                  <Input
+                    placeholder="e.g. Speed bonus active, strike matching balls/answers quickly to build streaks!"
+                    value={formData.customRules}
+                    onChange={(e) => setFormData({ ...formData, customRules: e.target.value })}
+                    className="bg-slate-900 border-white/10 text-white rounded-xl text-xs"
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* 5. Host Access & Password Protection Control */}
             <div className="p-3.5 bg-white/5 border border-white/10 rounded-xl space-y-3">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
@@ -812,6 +974,15 @@ export function StudentTournaments({ user }: StudentTournamentsProps) {
                           )}
 
                           <div className="flex items-center gap-2 ml-auto">
+                            <Button
+                              size="sm"
+                              onClick={() => handleHostFillBotsAndStart(tournament._id)}
+                              disabled={actionLoading === tournament._id}
+                              className="bg-purple-600 hover:bg-purple-700 text-white text-xs font-bold h-7 px-2.5 shadow-md shadow-purple-600/20"
+                            >
+                              <Bot className="w-3 h-3 mr-1" /> Fill AI Bots & Start
+                            </Button>
+
                             {tournament.participants?.length >= 2 && (
                               <Button
                                 size="sm"
@@ -843,12 +1014,34 @@ export function StudentTournaments({ user }: StudentTournamentsProps) {
           )
         ) : activeTab === 'playing' ? (
           // Playing Now Tab
-          selectedTournament && showGameMode ? (
-            <TournamentGame
-              tournament={selectedTournament}
-              user={user}
-              onMatchComplete={handleMatchComplete}
-            />
+          (selectedTournament || (activePlaying.length === 1 && showGameMode)) ? (
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => {
+                    setShowGameMode(false)
+                    setSelectedTournament(null)
+                  }}
+                  className="text-white/60 hover:text-white text-xs"
+                >
+                  ← Back to Active Tournaments
+                </Button>
+                <Badge className="bg-amber-500/20 text-amber-300 border-amber-500/40 text-xs font-black">
+                  LIVE MATCH ARENA
+                </Badge>
+              </div>
+              <TournamentGame
+                tournament={selectedTournament || activePlaying[0]}
+                user={user}
+                onMatchComplete={handleMatchComplete}
+                onLeave={() => {
+                  setShowGameMode(false)
+                  setSelectedTournament(null)
+                }}
+              />
+            </div>
           ) : activePlaying.length === 0 ? (
             <div className="arena-card p-10 text-center text-white/50">
               No live active games in progress right now.

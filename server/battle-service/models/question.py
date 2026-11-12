@@ -22,6 +22,7 @@ class GameMode(str, Enum):
     MIXED = "mixed"
     DOCUMENT = "document"
     CUSTOM = "custom"
+    COLOR = "color"
 
 
 class Difficulty(str, Enum):
@@ -29,6 +30,9 @@ class Difficulty(str, Enum):
     BEGINNER = "beginner"
     INTERMEDIATE = "intermediate"
     ADVANCED = "advanced"
+    EXPERT = "expert"
+    MASTER = "master"
+    GRANDMASTER = "grandmaster"
 
 
 class QuestionType(str, Enum):

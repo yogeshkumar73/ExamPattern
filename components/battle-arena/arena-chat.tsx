@@ -1,7 +1,20 @@
 "use client"
 import Image from "next/image";
 import { useState, useEffect, useRef } from "react"
-import { Send, Hash, MessageSquare, Users, Swords, Bot, Menu, X, ShieldCheck, Bell, Clock, ChevronRight } from "lucide-react"
+import { Send, Hash, MessageSquare, Users, Swords, Bot, Menu, X, ShieldCheck, Bell, Clock, ChevronRight, Lock } from "lucide-react"
+
+function getCountryFlag(code?: string): string {
+  if (!code || code.length !== 2) return "🌍";
+  try {
+    const codePoints = code
+      .toUpperCase()
+      .split("")
+      .map((char) => 127397 + char.charCodeAt(0));
+    return String.fromCodePoint(...codePoints);
+  } catch {
+    return "🌍";
+  }
+}
 import type { LucideIcon } from "lucide-react"
 import { io, Socket } from "socket.io-client"
 
@@ -123,6 +136,7 @@ export function ArenaChat({ user }: ArenaChatProps) {
   const [online, setOnline] = useState<string[]>([])
   const [isSidebarFolded, setIsSidebarFolded] = useState(true)
   const [unreadRooms, setUnreadRooms] = useState<Record<string, boolean>>({})
+  const [friends, setFriends] = useState<any[]>([])
   const [latestNotification, setLatestNotification] = useState<{
     id: string
     roomId: string
@@ -133,8 +147,30 @@ export function ArenaChat({ user }: ArenaChatProps) {
   } | null>(null)
   const bottomRef = useRef<HTMLDivElement>(null)
   const lastTimestampRef = useRef<string>('')
+
+  // Fetch connected friends for direct 1-on-1 unicast messaging
+  useEffect(() => {
+    if (!user?.id) return
+    fetch(`/api/arena/friends?userId=${user.id}`)
+      .then(res => res.json())
+      .then(data => {
+        if (Array.isArray(data.friends)) setFriends(data.friends)
+      })
+      .catch(() => {})
+  }, [user?.id])
+
+  // Active friend for DM room
+  const activeFriend = activeRoom.startsWith('dm-')
+    ? friends.find(f => activeRoom.includes(String(f._id)))
+    : null
+
   const currentRoom =
-    ROOMS.find((room) => room.id === activeRoom) ?? ROOMS[0];
+    ROOMS.find((room) => room.id === activeRoom) ?? {
+      id: activeRoom,
+      label: activeFriend ? `${activeFriend.name}` : (activeRoom.startsWith('dm-') ? 'Direct Message' : 'Chat Hub'),
+      icon: activeRoom.startsWith('dm-') ? Lock : Hash,
+      color: activeRoom.startsWith('dm-') ? '#10b981' : '#6366f1',
+    };
 
   const getAvatar = (avatar?: string, name?: string) => {
     if (avatar?.trim()) return avatar;
@@ -157,9 +193,14 @@ export function ArenaChat({ user }: ArenaChatProps) {
     let isMounted = true;
     lastTimestampRef.current = '';
 
+    const isUnicast = activeRoom.startsWith('dm-') && activeFriend?._id;
+
     const loadHistory = async () => {
       try {
-        const res = await fetch(`/api/chat?roomId=${activeRoom}`);
+        const url = isUnicast
+          ? `/api/arena/unicast-chat?userId=${encodeURIComponent(user.id)}&friendId=${encodeURIComponent(activeFriend._id)}`
+          : `/api/chat?roomId=${activeRoom}`;
+        const res = await fetch(url);
         const data = await res.json();
         if (!isMounted) return;
 
@@ -179,32 +220,43 @@ export function ArenaChat({ user }: ArenaChatProps) {
     loadHistory();
     setOnline(['AlgoMaster', 'CodeNinja', 'MathGenius']);
 
-    // Real-time incremental polling for serverless (Netlify) & multi-tab sync
+    // Real-time polling
     const pollInterval = setInterval(async () => {
-      if (!lastTimestampRef.current) return;
       try {
-        const res = await fetch(
-          `/api/chat?roomId=${activeRoom}&since=${encodeURIComponent(lastTimestampRef.current)}`
-        );
-        if (!isMounted || !res.ok) return;
-        const data = await res.json();
-        if (Array.isArray(data.messages) && data.messages.length > 0) {
-          setMessages(prev => {
-            const existingIds = new Set(prev.map(m => m.id));
-            const newOnes = data.messages.filter((m: Message) => !existingIds.has(m.id));
-            if (newOnes.length === 0) return prev;
-            return [...prev, ...newOnes];
-          });
-          lastTimestampRef.current = data.messages[data.messages.length - 1].timestamp;
+        if (isUnicast) {
+          const res = await fetch(
+            `/api/arena/unicast-chat?userId=${encodeURIComponent(user.id)}&friendId=${encodeURIComponent(activeFriend._id)}`
+          );
+          if (!isMounted || !res.ok) return;
+          const data = await res.json();
+          if (Array.isArray(data.messages)) {
+            setMessages(data.messages);
+          }
+        } else {
+          if (!lastTimestampRef.current) return;
+          const res = await fetch(
+            `/api/chat?roomId=${activeRoom}&since=${encodeURIComponent(lastTimestampRef.current)}`
+          );
+          if (!isMounted || !res.ok) return;
+          const data = await res.json();
+          if (Array.isArray(data.messages) && data.messages.length > 0) {
+            setMessages(prev => {
+              const existingIds = new Set(prev.map(m => m.id));
+              const newOnes = data.messages.filter((m: Message) => !existingIds.has(m.id));
+              if (newOnes.length === 0) return prev;
+              return [...prev, ...newOnes];
+            });
+            lastTimestampRef.current = data.messages[data.messages.length - 1].timestamp;
+          }
         }
       } catch {}
-    }, 1200);
+    }, isUnicast ? 2500 : 1200);
 
     return () => {
       isMounted = false;
       clearInterval(pollInterval);
     };
-  }, [activeRoom]);
+  }, [activeRoom, activeFriend, user?.id]);
 
   // ── Socket.io Listener (when available on custom servers/dev) ───────────────
   useEffect(() => {
@@ -286,7 +338,7 @@ export function ArenaChat({ user }: ArenaChatProps) {
       senderAvatar: getAvatar(user.avatar, user.name),
       message: trimmed,
       timestamp: new Date().toISOString(),
-      type: 'arena',
+      type: activeRoom.startsWith('dm-') ? 'dm' : 'arena',
     };
 
     // Instant local rendering (0ms lag)
@@ -305,26 +357,48 @@ export function ArenaChat({ user }: ArenaChatProps) {
 
     // Multicast to Database API & Serverless Sync
     try {
-      const res = await fetch('/api/chat', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          roomId: activeRoom,
-          senderId: user.id,
-          senderName: user.name,
-          senderAvatar: user.avatar,
-          message: trimmed,
-          type: 'arena',
-        }),
-      });
+      if (activeFriend) {
+        // Dedicated 1-on-1 Personal Unicast Endpoint
+        const res = await fetch('/api/arena/unicast-chat', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            senderId: user.id,
+            recipientId: activeFriend._id,
+            senderName: user.name,
+            senderAvatar: user.avatar,
+            recipientName: activeFriend.name,
+            message: trimmed,
+          }),
+        });
+        const data = await res.json();
+        if (data.success && data.message) {
+          setMessages(prev =>
+            prev.map(m => (m.id === tempId ? data.message : m))
+          );
+        }
+      } else {
+        // Public Community Arena Chat
+        const res = await fetch('/api/chat', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            roomId: activeRoom,
+            senderId: user.id,
+            senderName: user.name,
+            senderAvatar: user.avatar,
+            message: trimmed,
+            type: 'arena',
+          }),
+        });
 
-      const data = await res.json();
-      if (data.success && data.message) {
-        // Upgrade temporary message with confirmed database message
-        setMessages(prev =>
-          prev.map(m => (m.id === tempId ? data.message : m))
-        );
-        lastTimestampRef.current = data.message.timestamp;
+        const data = await res.json();
+        if (data.success && data.message) {
+          setMessages(prev =>
+            prev.map(m => (m.id === tempId ? data.message : m))
+          );
+          lastTimestampRef.current = data.message.timestamp;
+        }
       }
     } catch (err) {
       console.warn('[Chat] Message persistence failed:', err);
@@ -424,6 +498,50 @@ export function ArenaChat({ user }: ArenaChatProps) {
             );
           })}
 
+          {/* Direct Messages (Friends) */}
+          <div className="text-white/60 text-xs font-black uppercase tracking-widest px-2 py-1 mt-2 border-t border-white/10 pt-3 flex items-center justify-between">
+            <span>Direct Messages</span>
+            <span className="text-[10px] text-emerald-400 font-bold">{friends.length} Friends</span>
+          </div>
+
+          {friends.length === 0 ? (
+            <div className="px-3 py-1.5 text-[11px] text-white/30 italic">No friends connected yet</div>
+          ) : (
+            friends.map(friend => {
+              const dmRoomId = `dm-${[user.id, friend._id].sort().join('-')}`
+              const isSelected = activeRoom === dmRoomId
+              return (
+                <button
+                  key={friend._id}
+                  onClick={() => handleSelectRoom(dmRoomId)}
+                  className={`flex items-center justify-between gap-2 px-3 py-2 rounded-xl text-left transition-all ${
+                    isSelected
+                      ? 'bg-emerald-600/30 border border-emerald-500/40 text-white shadow-md'
+                      : 'text-white/60 hover:bg-white/5 hover:text-white/90'
+                  }`}
+                >
+                  <div className="flex items-center gap-2 min-w-0">
+                    <div className="relative flex-shrink-0">
+                      <img
+                        src={friend.photoUrl || getAvatar(undefined, friend.name)}
+                        alt={friend.name}
+                        className="w-6 h-6 rounded-lg object-cover"
+                      />
+                      <span className={`absolute -bottom-0.5 -right-0.5 w-2 h-2 rounded-full border border-black ${friend.isOnline || true ? 'bg-emerald-500' : 'bg-white/20'}`} />
+                    </div>
+                    <div className="min-w-0">
+                      <span className="text-xs font-bold truncate block">{friend.name}</span>
+                      <span className="text-[9px] text-white/40 block leading-tight">
+                        {getCountryFlag(friend.countryCode)} {friend.city ? `${friend.city}, ` : ''}{friend.country || 'Global'}
+                      </span>
+                    </div>
+                  </div>
+                  <Lock className="w-3 h-3 text-emerald-400/80 flex-shrink-0" />
+                </button>
+              )
+            })
+          )}
+
           <div className="text-white/60 text-xs font-black uppercase tracking-widest px-2 py-1 mt-2 border-t border-white/10 pt-3 flex items-center justify-between">
             <span>Online Now</span>
             <span className="text-[10px] text-emerald-400 font-bold">Live</span>
@@ -438,7 +556,7 @@ export function ArenaChat({ user }: ArenaChatProps) {
           {/* Retention notice on sidebar */}
           <div className="mt-auto pt-3 border-t border-white/10 px-2 text-[10px] text-white/40 flex items-center gap-1.5">
             <Clock className="w-3 h-3 text-indigo-400" />
-            <span>12h Auto-Store • 1 AM Reset</span>
+            <span>24h Auto-Expiry Active</span>
           </div>
         </div>
 
@@ -459,25 +577,67 @@ export function ArenaChat({ user }: ArenaChatProps) {
               )}
             </button>
 
-            <Hash className="w-4 h-4 text-indigo-400 ml-1" />
-            <span className="text-white font-black text-sm tracking-wide">
-              {currentRoom.label}
-            </span>
+            {activeRoom.startsWith('dm-') ? (
+              <div className="flex items-center gap-2.5 ml-1 flex-1 min-w-0">
+                <div className="relative flex-shrink-0">
+                  <img
+                    src={activeFriend?.photoUrl || getAvatar(undefined, activeFriend?.name)}
+                    alt={activeFriend?.name || "Friend"}
+                    className="w-7 h-7 rounded-lg object-cover border border-emerald-500/40"
+                  />
+                  <span className="absolute -bottom-0.5 -right-0.5 w-2 h-2 rounded-full bg-emerald-500 border border-black" />
+                </div>
+                <div className="min-w-0">
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-white font-black text-sm tracking-wide truncate">
+                      {activeFriend?.name || 'Friend Unicast Chat'}
+                    </span>
+                    <span className="text-[10px] text-indigo-300 font-semibold hidden sm:inline-flex items-center gap-1">
+                      {getCountryFlag(activeFriend?.countryCode)} {activeFriend?.country || 'Global'}
+                    </span>
+                  </div>
+                </div>
+                <div className="flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-emerald-500/10 border border-emerald-500/25 text-[10px] font-bold text-emerald-300 ml-auto">
+                  <Lock className="w-3 h-3 text-emerald-400" />
+                  <span>Unicast • 24h Auto-Expiry</span>
+                </div>
+              </div>
+            ) : (
+              <>
+                <Hash className="w-4 h-4 text-indigo-400 ml-1" />
+                <span className="text-white font-black text-sm tracking-wide">
+                  {currentRoom.label}
+                </span>
 
-            {/* Security & 12h Retention Badge */}
-            <div className="hidden sm:flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-[10px] font-bold text-emerald-300 ml-2">
-              <ShieldCheck className="w-3 h-3 text-emerald-400" />
-              <span>12h Auto-Wipe • 1 AM Nightly</span>
-            </div>
+                <div className="hidden sm:flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-[10px] font-bold text-emerald-300 ml-2">
+                  <ShieldCheck className="w-3 h-3 text-emerald-400" />
+                  <span>24h Auto-Delete • Ephemeral</span>
+                </div>
 
-            <div className="ml-auto flex items-center gap-1.5 text-green-400 text-xs font-semibold">
-              <div className="w-1.5 h-1.5 bg-green-400 rounded-full animate-pulse" />
-              <span>{online.length + 18} online</span>
-            </div>
+                <div className="ml-auto flex items-center gap-1.5 text-green-400 text-xs font-semibold">
+                  <div className="w-1.5 h-1.5 bg-green-400 rounded-full animate-pulse" />
+                  <span>{online.length + 18} online</span>
+                </div>
+              </>
+            )}
           </div>
 
           {/* Messages Container */}
           <div className="flex-1 overflow-y-auto p-3 sm:p-4 space-y-3.5">
+            {activeRoom.startsWith('dm-') && (
+              <div className="p-3 mb-2 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 text-xs text-emerald-300 flex items-center justify-between gap-3">
+                <div className="flex items-center gap-2">
+                  <Lock className="w-4 h-4 text-emerald-400 flex-shrink-0" />
+                  <span>
+                    <strong>1-on-1 Unicast Chat:</strong> End-to-end messages strictly between you and {activeFriend?.name || 'your friend'}.
+                  </span>
+                </div>
+                <div className="flex items-center gap-1 px-2 py-0.5 bg-amber-500/20 border border-amber-500/30 text-amber-300 rounded-lg text-[10px] font-black uppercase tracking-wider flex-shrink-0">
+                  <Clock className="w-3 h-3" />
+                  <span>Deletes in 1 Day</span>
+                </div>
+              </div>
+            )}
             {messages.length === 0 ? (
               <div className="flex h-full items-center justify-center">
                 <div className="text-center p-6">
@@ -552,7 +712,7 @@ export function ArenaChat({ user }: ArenaChatProps) {
                   sendMessage();
                 }
               }}
-              placeholder={user ? `Message #${currentRoom.label}...` : "Sign in to chat"}
+              placeholder={user ? (activeRoom.startsWith('dm-') ? `Direct message @${activeFriend?.name || 'Friend'} (auto-deletes in 24h)...` : `Message #${currentRoom.label}...`) : "Sign in to chat"}
               disabled={!user || sending}
               className="flex-1 rounded-xl border border-white/10 bg-white/5 px-3.5 sm:px-4 py-2 sm:py-2.5 text-xs sm:text-sm text-white placeholder-white/30 outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 disabled:cursor-not-allowed disabled:opacity-60"
             />

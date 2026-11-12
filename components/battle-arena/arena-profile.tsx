@@ -60,6 +60,14 @@ interface ArenaProfileProps {
 
 export function ArenaProfile({ user, onRefresh }: ArenaProfileProps) {
   const [achievements, setAchievements] = useState<any[]>([])
+  const [location, setLocation] = useState<any>(null)
+
+  useEffect(() => {
+    fetch("/api/user/location")
+      .then(r => r.json())
+      .then(d => { if (d && d.country) setLocation(d) })
+      .catch(() => {})
+  }, [])
 
   useEffect(() => {
     if (!user?.id) return
@@ -108,6 +116,12 @@ export function ArenaProfile({ user, onRefresh }: ArenaProfileProps) {
 
           <div className="text-white font-black text-xl mt-3">{user.name}</div>
           <div className="text-white/50 text-sm">{user.email}</div>
+
+          {/* Location / Country via IP */}
+          <div className="mt-2 inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-white/5 border border-white/10 text-white/80">
+            <span>{location?.flag || "🌍"}</span>
+            <span>{location?.city ? `${location.city}, ` : ""}{location?.country || user.country || "India"}</span>
+          </div>
 
           <div className={`inline-block mt-3 px-4 py-1.5 rounded-full text-sm font-black bg-gradient-to-r ${rankGradient} text-white`}>
             {user.arenaRank}

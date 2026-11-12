@@ -11,6 +11,7 @@ const ACHIEVEMENTS_CATALOG = [
   { id: 'puzzle_10', name: 'Puzzle Master', description: 'Win 10 puzzle battles', icon: '🧩', condition: (u: any) => u.gameStats?.puzzle?.wins >= 10, xpReward: 500, coinsReward: 200 },
   { id: 'gk_10', name: 'GK Genius', description: 'Win 10 GK battles', icon: '🌍', condition: (u: any) => u.gameStats?.gk?.wins >= 10, xpReward: 500, coinsReward: 200 },
   { id: 'prediction_10', name: 'Prediction Expert', description: 'Win 10 prediction battles', icon: '🔮', condition: (u: any) => u.gameStats?.prediction?.wins >= 10, xpReward: 500, coinsReward: 200 },
+  { id: 'color_10', name: 'Chroma Maestro', description: 'Win 10 color battles', icon: '🎨', condition: (u: any) => u.gameStats?.color?.wins >= 10, xpReward: 500, coinsReward: 200 },
   { id: 'streak_5', name: 'On Fire!', description: 'Win 5 battles in a row', icon: '🔥', condition: (u: any) => u.currentStreak >= 5, xpReward: 300, coinsReward: 150 },
   { id: 'streak_10', name: 'Unstoppable', description: 'Win 10 battles in a row', icon: '⚡', condition: (u: any) => u.currentStreak >= 10, xpReward: 1000, coinsReward: 500 },
   { id: 'xp_1000', name: 'XP Hunter', description: 'Earn 1000 XP', icon: '✨', condition: (u: any) => u.xp >= 1000, xpReward: 100, coinsReward: 50 },
@@ -45,7 +46,11 @@ export async function GET(req: NextRequest) {
       eligible: ach.condition(user),
     }));
 
-    return NextResponse.json({ achievements: result });
+    return NextResponse.json({ 
+      achievements: result,
+      badges: user.badges || [],
+      unlockedCount: userAchievementIds.length
+    });
   } catch (err: any) {
     return NextResponse.json({ error: err.message }, { status: 500 });
   }
@@ -80,18 +85,22 @@ export async function POST(req: NextRequest) {
             user.achievements.map((a: any) => a.id)
         );
 
+        const targetAchievementId = body.achievementId;
         const newlyUnlocked: any[] = [];
 
         for (const ach of ACHIEVEMENTS_CATALOG) {
+            if (targetAchievementId && ach.id !== targetAchievementId) continue;
             if (!userAchievementIds.has(ach.id) && ach.condition(user)) {
-                user.achievements.push({
+                const achItem = {
                     id: ach.id,
                     name: ach.name,
                     description: ach.description,
                     icon: ach.icon,
                     unlockedAt: new Date(),
                     xpReward: ach.xpReward,
-                });
+                    coinsReward: ach.coinsReward,
+                };
+                user.achievements.push(achItem);
 
                 user.xp = (user.xp ?? 0) + ach.xpReward;
                 user.coins = (user.coins ?? 0) + ach.coinsReward;
@@ -100,7 +109,7 @@ export async function POST(req: NextRequest) {
                     user.badges.push(ach.icon);
                 }
 
-                newlyUnlocked.push(ach);
+                newlyUnlocked.push(achItem);
             }
         }
 
@@ -112,6 +121,10 @@ export async function POST(req: NextRequest) {
             success: true,
             newlyUnlocked,
             total: user.achievements.length,
+            achievements: user.achievements,
+            badges: user.badges,
+            xp: user.xp,
+            coins: user.coins,
         });
 
     } catch (err) {

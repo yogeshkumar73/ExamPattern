@@ -1,38 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { failureLogger } from '@/lib/services/failure-logger';
+import { lazyServiceManager } from '@/lib/services/lazy-service-manager';
+import { verifyAdminRequest } from '@/lib/security';
 
 const BATTLE_SERVICE_URL = process.env.BATTLE_SERVICE_URL || 'http://localhost:8001';
 
-function getSessionUser(req: NextRequest) {
-  try {
-    const header = req.headers.get('x-session-user');
-    if (!header) return null;
-    const parsed = JSON.parse(decodeURIComponent(header));
-    const user = parsed?.user || parsed;
-    if (!user) return null;
-    return {
-      ...user,
-      role: user?.role || 'admin',
-      isAdmin: user?.isAdmin !== false,
-    };
-  } catch (err) {
-    return null;
-  }
-}
-
-function checkAdminAuth(user: any, req?: NextRequest) {
-  if (req) {
-    const cookieHeader = req.headers.get('cookie') || '';
-    if (cookieHeader.includes('admin-session=')) return true;
-  }
-  if (!user) return false;
-  return user.role === 'admin' || user.isAdmin === true;
-}
-
 export async function GET(request: NextRequest) {
-  const sessionUser = getSessionUser(request);
-  if (!checkAdminAuth(sessionUser, request)) {
+  const auth = verifyAdminRequest(request);
+  if (!auth.authorized) {
     return NextResponse.json(
-      { error: 'Unauthorized: Game Engine queries can only be executed by administrators.' },
+      { error: auth.reason || 'Unauthorized: Game Engine queries can only be executed by administrators.' },
       { status: 401 }
     );
   }
@@ -65,10 +42,10 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
-  const sessionUser = getSessionUser(request);
-  if (!checkAdminAuth(sessionUser, request)) {
+  const auth = verifyAdminRequest(request);
+  if (!auth.authorized) {
     return NextResponse.json(
-      { error: 'Unauthorized: Game Engine queries and benchmarks can only be executed inside the Admin Panel by an Admin.' },
+      { error: auth.reason || 'Unauthorized: Game Engine queries and benchmarks can only be executed inside the Admin Panel by an Admin.' },
       { status: 401 }
     );
   }
@@ -217,8 +194,24 @@ export async function POST(request: NextRequest) {
       });
     }
 
+    failureLogger.recordFailure({
+      endpoint: '/api/admin/game-engine',
+      method: 'POST',
+      statusCode: 400,
+      errorMessage: `Unknown engine action: ${action}`,
+      latencyMs: 15,
+      service: 'game-engine'
+    });
     return NextResponse.json({ error: `Unknown engine action: ${action}` }, { status: 400 });
   } catch (err: any) {
+    failureLogger.recordFailure({
+      endpoint: '/api/admin/game-engine',
+      method: 'POST',
+      statusCode: 500,
+      errorMessage: err.message || 'Internal error in Game Engine API',
+      latencyMs: 25,
+      service: 'game-engine'
+    });
     return NextResponse.json({ error: err.message || 'Internal error' }, { status: 500 });
   }
 }

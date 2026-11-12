@@ -45,6 +45,7 @@ from routes.questions import router as questions_router
 from routes.matchmaking import router as matchmaking_router
 from routes.leaderboard import router as leaderboard_router
 from routes.exam_analyzer import router as exam_analyzer_router
+from routes.exam_evaluator import router as exam_evaluator_router
 from utils.logger import get_logger
 
 logger = get_logger("battle-service")
@@ -206,6 +207,7 @@ app.include_router(questions_router)
 app.include_router(matchmaking_router)
 app.include_router(leaderboard_router)
 app.include_router(exam_analyzer_router)
+app.include_router(exam_evaluator_router)
 
 
 # ── Metrics (Prometheus / Grafana) ────────────────────────────

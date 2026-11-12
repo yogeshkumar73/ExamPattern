@@ -3,7 +3,7 @@
 import React from 'react';
 import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
-import { Users, CheckCircle, Clock, XCircle, TrendingUp } from 'lucide-react';
+import { Users, CheckCircle, Clock, XCircle, TrendingUp, Activity, Server } from 'lucide-react';
 
 export default function AdminDashboard() {
   const [stats, setStats] = useState({
@@ -20,36 +20,31 @@ export default function AdminDashboard() {
         const rawSession = JSON.parse(localStorage.getItem('aura_session') || '{}');
         const user = rawSession.user || rawSession;
         
+        const headers: Record<string, string> = {
+          'x-session-user': encodeURIComponent(JSON.stringify(user)),
+        };
+        if (user?.adminToken) {
+          headers['Authorization'] = `Bearer ${user.adminToken}`;
+        }
+
         // Fetch pending count
         const pendingRes = await fetch(
           `/api/admin/arena-approvals?status=pending&limit=1`,
-          {
-            headers: {
-              'x-session-user': encodeURIComponent(JSON.stringify(user)),
-            },
-          }
+          { headers }
         );
         const pendingData = await pendingRes.json();
 
         // Fetch approved count
         const approvedRes = await fetch(
           `/api/admin/arena-approvals?status=approved&limit=1`,
-          {
-            headers: {
-              'x-session-user': encodeURIComponent(JSON.stringify(user)),
-            },
-          }
+          { headers }
         );
         const approvedData = await approvedRes.json();
 
         // Fetch rejected count
         const rejectedRes = await fetch(
           `/api/admin/arena-approvals?status=rejected&limit=1`,
-          {
-            headers: {
-              'x-session-user': encodeURIComponent(JSON.stringify(user)),
-            },
-          }
+          { headers }
         );
         const rejectedData = await rejectedRes.json();
 
@@ -156,7 +151,22 @@ export default function AdminDashboard() {
           <TrendingUp className="text-orange-600" />
           Quick Actions
         </h2>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <a
+            href="/admin/services"
+            className="p-4 bg-purple-50 dark:bg-purple-900/20 border border-purple-200 dark:border-purple-700/50 rounded-lg hover:bg-purple-100 dark:hover:bg-purple-900/40 transition-colors"
+          >
+            <div className="flex items-center gap-2 mb-1">
+              <Activity className="w-5 h-5 text-purple-600 dark:text-purple-400" />
+              <h3 className="font-bold text-purple-900 dark:text-purple-100">
+                Services & Engine Monitor
+              </h3>
+            </div>
+            <p className="text-sm text-purple-700 dark:text-purple-300">
+              Real-time NumPy & Pandas traffic telemetry, lazy loading, and failure requests feed
+            </p>
+          </a>
+
           <a
             href="/admin/arena-approvals?status=pending"
             className="p-4 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-700 rounded-lg hover:bg-yellow-100 dark:hover:bg-yellow-900/40 transition-colors"

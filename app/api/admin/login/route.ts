@@ -123,6 +123,7 @@ export async function POST(req: NextRequest) {
         user: {
           role: "admin",
           isAdmin: true,
+          adminToken: token,
         }
       },
       { status: 200, headers: { "Cache-Control": "no-store" } }

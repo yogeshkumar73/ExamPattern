@@ -7,7 +7,7 @@ const BattleSchema = new mongoose.Schema({
   isPrivate: { type: Boolean, default: false },
   teamSize: { type: Number, default: 1 },
   type: { type: String, enum: ['pve', '1v1', 'team', 'ranked', 'private', 'tournament'], default: '1v1' },
-  mode: { type: String, enum: ['coding', 'puzzle', 'math', 'gk', 'prediction', 'mixed', 'topicdoc', 'custom'], required: true },
+  mode: { type: String, enum: ['coding', 'puzzle', 'math', 'gk', 'prediction', 'mixed', 'topicdoc', 'custom', 'color'], required: true },
   difficulty: { type: String, enum: ['beginner', 'intermediate', 'advanced', 'expert', 'master', 'grandmaster'], default: 'beginner' },
   status: { type: String, enum: ['waiting', 'active', 'finished', 'cancelled'], default: 'waiting' },
   participants: [{

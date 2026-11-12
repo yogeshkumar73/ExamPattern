@@ -389,3 +389,35 @@
   box-shadow: 0 0 20px rgba(var(--mode-color), 0.2);
   transform: translateY(-4px) scale(1.02);
 }
+
+/* ==========================================================================
+   Hide & Remove Netlify Injected Badges, Iframes, Drawers & Floating Logos
+   ========================================================================== */
+iframe#netlify-badge,
+iframe[src*="netlify"],
+iframe[title*="Netlify" i],
+iframe[id*="netlify" i],
+iframe[class*="netlify" i],
+netlify-badge,
+div[id*="netlify-badge" i],
+div[class*="netlify-badge" i],
+div[data-netlify-badge],
+div[data-netlify-deploy-id],
+#netlify-feedback-drawer,
+[data-netlify-feedback-drawer],
+[id*="netlify-feedback"],
+[class*="netlify-feedback"] {
+  display: none !important;
+  visibility: hidden !important;
+  opacity: 0 !important;
+  pointer-events: none !important;
+  width: 0 !important;
+  height: 0 !important;
+  max-width: 0 !important;
+  max-height: 0 !important;
+  position: absolute !important;
+  left: -99999px !important;
+  bottom: -99999px !important;
+  clip: rect(0, 0, 0, 0) !important;
+  z-index: -99999 !important;
+}

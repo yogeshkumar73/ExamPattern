@@ -35,26 +35,33 @@ const PaperSchema = new mongoose.Schema(
     // Exam/Course information
     examType: {
       type: String,
-      enum: ['JEE', 'NEET', 'UPSC', 'GATE', 'SSC', 'CBSE', 'Board', 'University', 'Other'],
+      default: 'General',
       index: true,
     },
     subject: {
       type: String,
+      default: 'General',
       index: true,
+    },
+    syllabus: {
+      type: String,
+      default: '',
     },
     year: {
       type: Number,
       index: true,
     },
 
-    // Legacy fields (kept for backward compatibility)
+    // Flexible stream & section
     stream: {
       type: String,
-      enum: ['class10', 'class11', 'class12', 'ssc', 'upsc', 'gate', 'jee', 'neet', 'university', 'other'],
+      default: 'general',
+      index: true,
     },
     section: {
       type: String,
-      enum: ['SSC', 'UPSC', 'CBSE', 'GATE', 'JEE', 'NEET', 'University', 'Board', 'Custom', 'Other'],
+      default: 'Standard',
+      index: true,
     },
     branch: {
       type: String,
@@ -76,7 +83,6 @@ const PaperSchema = new mongoose.Schema(
     },
     fileHash: {
       type: String,
-      unique: true,
       sparse: true,
       index: true, // For duplicate detection
     },
@@ -90,9 +96,8 @@ const PaperSchema = new mongoose.Schema(
 
     // Uploader information
     uploaderId: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: 'User',
-      required: true,
+      type: mongoose.Schema.Types.Mixed,
+      default: '',
       index: true,
     },
     uploaderName: {

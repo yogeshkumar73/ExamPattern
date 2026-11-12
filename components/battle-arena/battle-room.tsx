@@ -3,11 +3,15 @@
 import { useState, useEffect, useRef, useCallback } from "react"
 import { Button } from "@/components/ui/button"
 import { Progress } from "@/components/ui/progress"
+import { Badge } from "@/components/ui/badge"
 import {
   Clock, Flag, CheckCircle, XCircle, Loader2, Code2, Brain,
-  Calculator, BookOpen, TrendingUp, Shuffle, Zap, Trophy, AlertTriangle
+  Calculator, BookOpen, TrendingUp, Shuffle, Zap, Trophy, AlertTriangle,
+  Palette
 } from "lucide-react"
 import Editor from "@monaco-editor/react"
+import { ColorBallArena } from "./color-ball-arena"
+import { DuelVoiceChat } from "./duel-voice-chat"
 
 interface Question {
   _id: string
@@ -32,6 +36,7 @@ interface BattleRoomProps {
     mode: string
     difficulty: string
     battleType: string
+    duelId?: string
     topic?: string
     document?: string
     opponent?: any
@@ -51,6 +56,7 @@ const MODE_CONFIG: Record<string, { label: string; icon: any; color: string; gra
   math:       { label: 'Math Battle',      icon: Calculator,  color: '#10b981', gradient: 'from-emerald-600 to-teal-500' },
   gk:         { label: 'GK Battle',        icon: BookOpen,    color: '#f59e0b', gradient: 'from-amber-600 to-orange-500' },
   prediction: { label: 'Prediction Game',  icon: TrendingUp,  color: '#ec4899', gradient: 'from-pink-600 to-rose-500' },
+  color:      { label: 'Color Match Battle', icon: Palette,   color: '#f43f5e', gradient: 'from-rose-500 via-purple-500 to-indigo-500' },
   mixed:      { label: 'Mixed Mode',       icon: Shuffle,     color: '#f97316', gradient: 'from-orange-600 to-red-500' },
   topicdoc:   { label: 'Topic & Doc AI',   icon: BookOpen,    color: '#06b6d4', gradient: 'from-cyan-600 to-blue-500' },
   custom:     { label: 'Topic & Document AI', icon: TrendingUp, color: '#06b6d4', gradient: 'from-cyan-600 to-blue-500' },
@@ -99,6 +105,15 @@ export function BattleRoom({ config, user, onBattleEnd }: BattleRoomProps) {
   const [totalAnswered, setTotalAnswered] = useState(0)
   const [opponentProgress, setOpponentProgress] = useState(0)
   const [teammateScore, setTeammateScore] = useState(0)
+  const [colorGameView, setColorGameView] = useState<'ball' | 'grid'>('ball')
+
+  // Duel real-time synchronization state
+  const [opponentLiveScore, setOpponentLiveScore] = useState<number>(0)
+  const [opponentLiveAnswered, setOpponentLiveAnswered] = useState<number>(0)
+  const [opponentLiveCorrect, setOpponentLiveCorrect] = useState<number>(0)
+  const [opponentStatus, setOpponentStatus] = useState<'playing' | 'finished' | 'waiting'>('waiting')
+  const [rematchLoading, setRematchLoading] = useState(false)
+  const [duelRound, setDuelRound] = useState(1)
 
   const timerRef = useRef<any>(null)
   const totalTimerRef = useRef<any>(null)
@@ -120,12 +135,67 @@ export function BattleRoom({ config, user, onBattleEnd }: BattleRoomProps) {
     } catch(e) {}
   }, [user?.id]);
 
+  // Real-time Duel State Sync & Opponent Score Polling
+  useEffect(() => {
+    if (!config.duelId || !user?.id) return
+
+    const syncDuelState = async () => {
+      try {
+        const res = await fetch('/api/arena/duel', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            action: 'sync',
+            duelId: config.duelId,
+            userId: user.id,
+            name: user.name || 'Student',
+            avatar: user.avatar || user.photoUrl || '',
+            score: playerScore,
+            answered: totalAnswered,
+            correct: playerCorrect,
+            status: phase === 'finished' ? 'finished' : 'playing',
+            mode: config.mode,
+            difficulty: config.difficulty,
+          }),
+        })
+        const data = await res.json()
+        if (data.success && data.opponent) {
+          setOpponentLiveScore(data.opponent.score || 0)
+          setOpponentLiveAnswered(data.opponent.answered || 0)
+          setOpponentLiveCorrect(data.opponent.correct || 0)
+          setOpponentStatus(data.opponent.status || 'playing')
+          setOpponentScore(data.opponent.score || 0)
+          const oppTotal = questions.length || 15
+          setOpponentProgress(Math.min(100, Math.round(((data.opponent.answered || 0) / oppTotal) * 100)))
+        }
+        if (data.round && data.round > duelRound) {
+          setDuelRound(data.round)
+          setPlayerScore(0)
+          setPlayerCorrect(0)
+          setTotalAnswered(0)
+          setCurrentQ(0)
+          setOpponentScore(0)
+          setOpponentLiveScore(0)
+          setOpponentLiveAnswered(0)
+          setOpponentLiveCorrect(0)
+          setOpponentStatus('playing')
+          setFinalResult(null)
+          setPhase('playing')
+        }
+      } catch (_) {}
+    }
+
+    syncDuelState()
+    const syncInterval = setInterval(syncDuelState, 2500)
+    return () => clearInterval(syncInterval)
+  }, [config.duelId, user?.id, playerScore, totalAnswered, playerCorrect, phase, config.mode, config.difficulty, questions.length, duelRound])
+
   // Load questions — unified hybrid engine handles all fallback internally
   useEffect(() => {
     const load = async () => {
       try {
-        // Determine actual mode (mixed picks random from all modes including topicdoc)
-        const modes = ['coding', 'puzzle', 'math', 'gk', 'prediction', 'topicdoc']
+        // Determine actual mode (mixed picks random from all modes including topicdoc and color)
+        const modes = ['coding', 'puzzle', 'math', 'gk', 'prediction', 'topicdoc', 'color']
         const mode = config.mode === 'mixed'
           ? modes[Math.floor(Math.random() * modes.length)]
           : config.mode
@@ -235,9 +305,10 @@ export function BattleRoom({ config, user, onBattleEnd }: BattleRoomProps) {
     return () => clearInterval(totalTimerRef.current)
   }, [phase, questions, config.difficulty])
 
-  // Opponent & Team simulation
+  // Opponent & Team simulation (skipped when in real 1v1 duel with duelId)
   useEffect(() => {
     if (phase !== 'playing') return
+    if (config.duelId) return // Live opponent scores are synced in real-time
     const speedMs = config.battleType === 'pve'
       ? { beginner: 12000, intermediate: 9000, advanced: 7000, expert: 5000, master: 4000, grandmaster: 3000 }[config.difficulty] || 8000
       : config.battleType === 'team' ? 10000 : 13000
@@ -327,14 +398,36 @@ export function BattleRoom({ config, user, onBattleEnd }: BattleRoomProps) {
     clearInterval(opponentTimerRef.current)
     clearInterval(teammateTimerRef.current)
 
+    const effectiveOppScore = config.duelId ? opponentLiveScore : opponentScore
     const mySideScore = config.battleType === 'team' ? (playerScore + teammateScore) : playerScore
-    const result = mySideScore > opponentScore ? 'win' : mySideScore < opponentScore ? 'loss' : 'draw'
+    const result = mySideScore > effectiveOppScore ? 'win' : mySideScore < effectiveOppScore ? 'loss' : 'draw'
     const xpGained = result === 'win'
       ? DIFF_XP[config.difficulty] * 5
       : result === 'draw' ? DIFF_XP[config.difficulty] * 2
       : DIFF_XP[config.difficulty]
     setFinalResult(result)
     setPhase('finished')
+
+    // Sync finished state to duel room
+    if (config.duelId && user?.id) {
+      fetch('/api/arena/duel', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'sync',
+          duelId: config.duelId,
+          userId: user.id,
+          name: user.name,
+          avatar: user.avatar || user.photoUrl,
+          score: mySideScore,
+          answered: totalAnswered,
+          correct: playerCorrect,
+          status: 'finished',
+          mode: config.mode,
+          difficulty: config.difficulty,
+        }),
+      }).catch(() => {})
+    }
 
     // Record to API
     if (user?.id) {
@@ -359,10 +452,38 @@ export function BattleRoom({ config, user, onBattleEnd }: BattleRoomProps) {
           xpGained,
           pointsGained: result === 'win' ? 200 : result === 'draw' ? 50 : 0,
           opponentName: oppName,
-          battleId: `battle-${Date.now()}`,
+          battleId: config.duelId || `battle-${Date.now()}`,
         }),
       }).catch(() => {})
     }
+  }
+
+  const handleRematch = async () => {
+    if (!config.duelId) return
+    setRematchLoading(true)
+    try {
+      await fetch('/api/arena/duel', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'rematch',
+          duelId: config.duelId,
+          userId: user?.id,
+        }),
+      })
+      setPlayerScore(0)
+      setPlayerCorrect(0)
+      setTotalAnswered(0)
+      setCurrentQ(0)
+      setOpponentScore(0)
+      setOpponentLiveScore(0)
+      setOpponentLiveAnswered(0)
+      setOpponentLiveCorrect(0)
+      setOpponentStatus('playing')
+      setFinalResult(null)
+      setPhase('playing')
+    } catch (_) {}
+    setRematchLoading(false)
   }
 
   const formatTime = (s: number) => `${Math.floor(s / 60)}:${(s % 60).toString().padStart(2, '0')}`
@@ -395,77 +516,222 @@ export function BattleRoom({ config, user, onBattleEnd }: BattleRoomProps) {
 
   // ---- FINISHED SCREEN ----
   if (phase === 'finished') {
+    const oppFinalScore = config.duelId ? opponentLiveScore : opponentScore
     const xpGained = finalResult === 'win'
       ? DIFF_XP[config.difficulty] * 5
       : finalResult === 'draw' ? DIFF_XP[config.difficulty] * 2
       : DIFF_XP[config.difficulty]
     const accuracy = totalAnswered > 0 ? Math.round((playerCorrect / totalAnswered) * 100) : 0
+    const oppAccuracy = opponentLiveAnswered > 0 ? Math.round((opponentLiveCorrect / opponentLiveAnswered) * 100) : 75
 
+    // In a live duel: if you finished earlier, do NOT kick anyone out!
+    // Display the live opponent progress and comparative scoreboard while they finish
+    if (config.duelId && opponentStatus !== 'finished') {
+      return (
+        <div className="min-h-[70vh] arena-bg rounded-2xl flex items-center justify-center p-4">
+          <div className="arena-card max-w-xl w-full p-6 sm:p-8 space-y-6 border border-indigo-500/30 bg-[#0c0d14]">
+            {/* Duel Voice Bar at Top */}
+            <div className="flex justify-center">
+              <DuelVoiceChat
+                roomId={config.duelId || 'duel-voice'}
+                user={user}
+                opponentName={config.opponent?.name || 'Opponent'}
+                opponentAvatar={config.opponent?.photoUrl || config.opponent?.avatar}
+              />
+            </div>
+
+            <div className="text-center space-y-2">
+              <div className="inline-flex p-3 rounded-2xl bg-indigo-500/10 border border-indigo-500/30 text-indigo-400 animate-pulse">
+                <Clock className="w-8 h-8" />
+              </div>
+              <h2 className="text-2xl font-black text-white tracking-wide">WAITING FOR OPPONENT</h2>
+              <p className="text-xs sm:text-sm text-white/60">
+                You completed your questions! <span className="text-rose-400 font-bold">{config.opponent?.name || 'Opponent'}</span> is still playing.
+              </p>
+              <div className="text-[11px] text-emerald-400 font-bold bg-emerald-500/10 border border-emerald-500/20 rounded-full px-3 py-1 inline-block">
+                🛡️ You will not be kicked out! Speak with your opponent via voice chat.
+              </div>
+            </div>
+
+            {/* Live Head-to-Head Comparison */}
+            <div className="grid grid-cols-2 gap-4">
+              <div className="bg-emerald-500/10 border border-emerald-500/30 rounded-xl p-4 text-center">
+                <div className="text-[11px] text-emerald-300 font-black uppercase flex items-center justify-center gap-1">
+                  <CheckCircle className="w-3.5 h-3.5" /> YOU (DONE)
+                </div>
+                <div className="text-3xl font-black text-white mt-1">{playerScore}</div>
+                <div className="text-xs text-white/50 mt-1 font-semibold">{playerCorrect}/{totalAnswered} Correct ({accuracy}%)</div>
+              </div>
+
+              <div className="bg-rose-500/10 border border-rose-500/30 rounded-xl p-4 text-center">
+                <div className="text-[11px] text-rose-300 font-black uppercase flex items-center justify-center gap-1">
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" /> {config.opponent?.name || 'OPPONENT'} (PLAYING)
+                </div>
+                <div className="text-3xl font-black text-white mt-1">{opponentLiveScore}</div>
+                <div className="text-xs text-white/50 mt-1 font-semibold">Q {opponentLiveAnswered}/{questions.length} answered</div>
+              </div>
+            </div>
+
+            {/* Opponent Progress Bar */}
+            <div className="space-y-1.5">
+              <div className="flex justify-between text-xs font-bold text-white/60">
+                <span>{config.opponent?.name || 'Opponent'} Progress</span>
+                <span>{opponentProgress}%</span>
+              </div>
+              <div className="h-2.5 bg-white/5 rounded-full overflow-hidden">
+                <div
+                  className="h-full bg-gradient-to-r from-rose-500 to-indigo-500 rounded-full transition-all duration-500"
+                  style={{ width: `${opponentProgress}%` }}
+                />
+              </div>
+            </div>
+
+            <Button
+              variant="outline"
+              size="sm"
+              className="w-full border-white/10 text-white/50 hover:text-white hover:bg-white/5"
+              onClick={() => onBattleEnd({ result: finalResult || 'draw', xpGained, pointsGained: 0 })}
+            >
+              Leave Duel Early
+            </Button>
+          </div>
+        </div>
+      )
+    }
+
+    // Both players finished: Full Head-to-Head Scoreboard Comparison Card
     return (
-      <div className="min-h-[60vh] arena-bg rounded-2xl flex items-center justify-center p-6">
-        <div className="arena-victory max-w-md w-full">
-          <div className="arena-card p-8 text-center space-y-6">
-            {/* Result Icon */}
-            <div className="relative inline-block">
-              {finalResult === 'win' ? (
-                <div className="w-24 h-24 rounded-full bg-yellow-500/20 border-2 border-yellow-500 flex items-center justify-center mx-auto">
-                  <Trophy className="w-14 h-14 text-yellow-400" />
+      <div className="min-h-[70vh] arena-bg rounded-2xl flex items-center justify-center p-4 sm:p-6">
+        <div className="arena-victory max-w-xl w-full">
+          <div className="arena-card p-6 sm:p-8 space-y-6 bg-[#0c0d14] border border-white/10">
+            {/* Voice Widget */}
+            {(config.duelId || config.battleType === '1v1') && (
+              <div className="flex justify-center">
+                <DuelVoiceChat
+                  roomId={config.duelId || 'duel-voice'}
+                  user={user}
+                  opponentName={config.opponent?.name || 'Opponent'}
+                  opponentAvatar={config.opponent?.photoUrl || config.opponent?.avatar}
+                />
+              </div>
+            )}
+
+            {/* Result Header */}
+            <div className="text-center space-y-2">
+              <div className="relative inline-block">
+                {finalResult === 'win' ? (
+                  <div className="w-20 h-20 rounded-2xl bg-yellow-500/20 border-2 border-yellow-500 flex items-center justify-center mx-auto shadow-lg shadow-yellow-500/20">
+                    <Trophy className="w-10 h-10 text-yellow-400" />
+                  </div>
+                ) : finalResult === 'loss' ? (
+                  <div className="w-20 h-20 rounded-2xl bg-rose-500/20 border-2 border-rose-500 flex items-center justify-center mx-auto shadow-lg shadow-rose-500/20">
+                    <XCircle className="w-10 h-10 text-rose-400" />
+                  </div>
+                ) : (
+                  <div className="w-20 h-20 rounded-2xl bg-blue-500/20 border-2 border-blue-500 flex items-center justify-center mx-auto shadow-lg shadow-blue-500/20">
+                    <CheckCircle className="w-10 h-10 text-blue-400" />
+                  </div>
+                )}
+              </div>
+
+              <div>
+                <h1 className="text-3xl sm:text-4xl font-black text-white">
+                  {finalResult === 'win' ? '🏆 VICTORY!' : finalResult === 'loss' ? '💔 DEFEAT' : '🤝 TIED DUEL!'}
+                </h1>
+                <div className="text-white/50 text-xs font-bold uppercase tracking-wider mt-1">
+                  {config.mode.toUpperCase()} • {config.difficulty.toUpperCase()} • 1v1 DUEL
                 </div>
-              ) : finalResult === 'loss' ? (
-                <div className="w-24 h-24 rounded-full bg-red-500/20 border-2 border-red-500 flex items-center justify-center mx-auto">
-                  <XCircle className="w-14 h-14 text-red-400" />
+              </div>
+            </div>
+
+            {/* Side-by-Side Head-to-Head Score Comparison */}
+            <div className="grid grid-cols-2 gap-3 sm:gap-4 p-4 rounded-2xl bg-white/[0.03] border border-white/5">
+              {/* Left: You */}
+              <div className="text-center space-y-2 border-r border-white/10 pr-2">
+                <div className="flex items-center justify-center gap-2">
+                  <img
+                    src={user?.avatar || user?.photoUrl || `https://ui-avatars.com/api/?name=${encodeURIComponent(user?.name || 'You')}&background=6366f1&color=fff`}
+                    alt="You"
+                    className="w-10 h-10 rounded-xl object-cover border border-indigo-500"
+                  />
+                  <div className="text-left">
+                    <div className="text-xs font-bold text-white truncate max-w-[100px]">{user?.name || 'You'}</div>
+                    <Badge className="bg-indigo-500/20 text-indigo-300 text-[9px] px-1 py-0 font-bold">Player</Badge>
+                  </div>
                 </div>
+
+                <div className="text-3xl sm:text-4xl font-black text-emerald-400">{playerScore}</div>
+                <div className="space-y-1 text-xs text-white/60">
+                  <div>Accuracy: <span className="font-bold text-white">{accuracy}%</span></div>
+                  <div>Correct: <span className="font-bold text-white">{playerCorrect}/{totalAnswered}</span></div>
+                </div>
+              </div>
+
+              {/* Right: Opponent */}
+              <div className="text-center space-y-2 pl-2">
+                <div className="flex items-center justify-center gap-2">
+                  <img
+                    src={config.opponent?.photoUrl || config.opponent?.avatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(config.opponent?.name || 'Opponent')}&background=f43f5e&color=fff`}
+                    alt="Opponent"
+                    className="w-10 h-10 rounded-xl object-cover border border-rose-500"
+                  />
+                  <div className="text-left">
+                    <div className="text-xs font-bold text-white truncate max-w-[100px]">{config.opponent?.name || 'Opponent'}</div>
+                    <Badge className="bg-rose-500/20 text-rose-300 text-[9px] px-1 py-0 font-bold">Rival</Badge>
+                  </div>
+                </div>
+
+                <div className="text-3xl sm:text-4xl font-black text-rose-400">{oppFinalScore}</div>
+                <div className="space-y-1 text-xs text-white/60">
+                  <div>Accuracy: <span className="font-bold text-white">{oppAccuracy}%</span></div>
+                  <div>Correct: <span className="font-bold text-white">{opponentLiveCorrect || Math.round(oppFinalScore / 60)}/{questions.length}</span></div>
+                </div>
+              </div>
+            </div>
+
+            {/* Score Comparison Delta Banner */}
+            <div className="text-center py-2 px-3 rounded-xl bg-white/5 border border-white/10 text-xs font-bold text-white">
+              {playerScore > oppFinalScore ? (
+                <span className="text-emerald-400">🔥 You outperformed your opponent by +{playerScore - oppFinalScore} points!</span>
+              ) : playerScore < oppFinalScore ? (
+                <span className="text-rose-400">⚔️ Opponent took the lead by +{oppFinalScore - playerScore} points. Demand a rematch!</span>
               ) : (
-                <div className="w-24 h-24 rounded-full bg-blue-500/20 border-2 border-blue-500 flex items-center justify-center mx-auto">
-                  <CheckCircle className="w-14 h-14 text-blue-400" />
-                </div>
+                <span className="text-blue-400">🤝 Perfectly matched! Both scored {playerScore} points.</span>
               )}
             </div>
 
-            <div>
-              <div className="text-4xl font-black text-white mb-1">
-                {finalResult === 'win' ? '🏆 VICTORY!' : finalResult === 'loss' ? '💔 DEFEAT' : '🤝 DRAW'}
-              </div>
-              <div className="text-white/50 text-sm">
-                {config.mode.toUpperCase()} • {config.difficulty.toUpperCase()}
-              </div>
-            </div>
-
-            {/* Stats */}
-            <div className="grid grid-cols-2 gap-3">
-              {[
-                { label: 'Your Score', value: playerScore, color: '#22c55e' },
-                { label: 'Opp. Score', value: opponentScore, color: '#ef4444' },
-                { label: 'Accuracy', value: `${accuracy}%`, color: '#f59e0b' },
-                { label: 'Correct', value: `${playerCorrect}/${totalAnswered}`, color: '#3b82f6' },
-              ].map(s => (
-                <div key={s.label} className="bg-white/5 rounded-xl p-3 text-center">
-                  <div className="text-xl font-black" style={{ color: s.color }}>{s.value}</div>
-                  <div className="text-xs text-white/40 mt-0.5">{s.label}</div>
-                </div>
-              ))}
-            </div>
-
             {/* Rewards */}
-            <div className="flex flex-col gap-2 max-w-xs mx-auto">
-              <div className="flex items-center justify-center gap-2 p-3 bg-indigo-500/10 border border-indigo-500/30 rounded-xl">
-                <Zap className="w-5 h-5 text-indigo-400" />
-                <span className="text-indigo-400 font-black">+{xpGained} XP Earned</span>
+            <div className="grid grid-cols-2 gap-2 max-w-sm mx-auto">
+              <div className="flex items-center justify-center gap-2 p-2.5 bg-indigo-500/10 border border-indigo-500/30 rounded-xl">
+                <Zap className="w-4 h-4 text-indigo-400" />
+                <span className="text-indigo-400 font-black text-xs">+{xpGained} XP</span>
               </div>
-              <div className={`flex items-center justify-center gap-2 p-3 border rounded-xl ${
+              <div className={`flex items-center justify-center gap-2 p-2.5 border rounded-xl ${
                 finalResult === 'win' ? 'bg-amber-500/10 border-amber-500/30 text-amber-400' :
                 finalResult === 'draw' ? 'bg-blue-500/10 border-blue-500/30 text-blue-400' :
                 'bg-red-500/10 border-red-500/30 text-red-400'
               }`}>
-                <Trophy className="w-5 h-5" />
-                <span className="font-black">
-                  {finalResult === 'win' ? '+200' : finalResult === 'draw' ? '+50' : '0'} Rank Points
+                <Trophy className="w-4 h-4" />
+                <span className="font-black text-xs">
+                  {finalResult === 'win' ? '+200' : finalResult === 'draw' ? '+50' : '0'} Rank Pts
                 </span>
               </div>
             </div>
 
-            <div className="flex gap-3">
+            {/* Action Buttons */}
+            <div className="flex flex-col sm:flex-row gap-3 pt-2">
+              {config.duelId && (
+                <Button
+                  className="flex-1 bg-gradient-to-r from-indigo-600 to-rose-600 hover:from-indigo-500 hover:to-rose-500 text-white font-black gap-2 shadow-lg"
+                  disabled={rematchLoading}
+                  onClick={handleRematch}
+                >
+                  {rematchLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Shuffle className="w-4 h-4" />}
+                  Play Rematch
+                </Button>
+              )}
               <Button
+                variant="outline"
                 className="flex-1 bg-white/10 hover:bg-white/20 text-white border-white/20 border font-bold"
                 onClick={() => onBattleEnd({ result: finalResult, xpGained, pointsGained: finalResult === 'win' ? 200 : 0 })}
               >
@@ -480,18 +746,24 @@ export function BattleRoom({ config, user, onBattleEnd }: BattleRoomProps) {
 
   // ---- PLAYING STATE ----
   const isCodingMode = q?.boilerplate !== undefined && q?.boilerplate !== '' && config.mode === 'coding'
+  const isColorMode = config.mode === 'color' || q?.category === 'color'
 
   return (
     <div className="arena-bg rounded-2xl min-h-screen p-4 space-y-4">
       {/* Battle Header */}
-      <div className="arena-card p-3 flex items-center justify-between">
+      <div className="arena-card p-3 flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-3">
-          <div className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ background: `${modeConfig.color}20` }}>
+          <div className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0" style={{ background: `${modeConfig.color}20` }}>
             <ModeIcon className="w-4 h-4" style={{ color: modeConfig.color }} />
           </div>
           <div>
             <div className="text-white font-black text-sm flex items-center gap-2">
               {modeConfig.label}
+              {config.duelId && (
+                <span className="bg-gradient-to-r from-rose-500/20 to-indigo-500/20 text-rose-300 border border-rose-500/30 text-[10px] px-2 py-0.5 rounded font-black tracking-wider uppercase">
+                  1v1 DUEL
+                </span>
+              )}
               {config.battleType === 'private' && (
                 <span className="bg-amber-500/20 text-amber-300 border border-amber-500/30 text-[10px] px-1.5 py-0.2 rounded font-mono">
                   {config.roomCode || 'PRIVATE'}
@@ -502,7 +774,7 @@ export function BattleRoom({ config, user, onBattleEnd }: BattleRoomProps) {
                   {config.teamSize || 2}v{config.teamSize || 2} TEAM
                 </span>
               )}
-              {config.battleType === '1v1' && (
+              {config.battleType === '1v1' && !config.duelId && (
                 <span className="bg-violet-500/20 text-violet-300 border border-violet-500/30 text-[10px] px-1.5 py-0.2 rounded font-bold">
                   1v1 RANKED
                 </span>
@@ -517,25 +789,67 @@ export function BattleRoom({ config, user, onBattleEnd }: BattleRoomProps) {
           </div>
         </div>
 
-        {/* Timer */}
-        <div className={`flex items-center gap-2 px-4 py-2 rounded-xl border font-mono font-black text-lg ${totalTimeLeft < 60 ? 'text-red-400 border-red-500/40 bg-red-500/10 animate-pulse' : 'text-white border-white/10 bg-white/5'}`}>
-          <Clock className="w-4 h-4" />
-          {formatTime(totalTimeLeft)}
-        </div>
+        {/* In-Game Duel Voice Chat Bar */}
+        {(config.duelId || config.battleType === '1v1' || config.battleType === 'private') && (
+          <div className="flex-1 max-w-md mx-auto">
+            <DuelVoiceChat
+              roomId={config.duelId || config.roomCode || 'duel-voice'}
+              user={user}
+              opponentName={config.opponent?.name || 'Opponent'}
+              opponentAvatar={config.opponent?.photoUrl || config.opponent?.avatar}
+            />
+          </div>
+        )}
 
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={() => endBattle()}
-          className="text-red-400 hover:text-red-300 hover:bg-red-500/10 text-xs font-bold"
-        >
-          <Flag className="w-3 h-3 mr-1" /> Surrender
-        </Button>
+        {/* Timer & Surrender */}
+        <div className="flex items-center gap-2">
+          <div className={`flex items-center gap-2 px-3 sm:px-4 py-1.5 sm:py-2 rounded-xl border font-mono font-black text-base sm:text-lg ${totalTimeLeft < 60 ? 'text-red-400 border-red-500/40 bg-red-500/10 animate-pulse' : 'text-white border-white/10 bg-white/5'}`}>
+            <Clock className="w-4 h-4" />
+            {formatTime(totalTimeLeft)}
+          </div>
+
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => endBattle()}
+            className="text-red-400 hover:text-red-300 hover:bg-red-500/10 text-xs font-bold"
+          >
+            <Flag className="w-3 h-3 mr-1" /> Surrender
+          </Button>
+        </div>
       </div>
 
       {/* Progress Bars */}
       <div className="arena-card p-4 space-y-3">
-        {config.battleType === 'team' ? (
+        {config.duelId ? (
+          <div className="space-y-3">
+            <div>
+              <div className="flex justify-between text-xs font-bold mb-1.5">
+                <span className="text-emerald-400">YOU — {playerScore} pts</span>
+                <span className="text-emerald-400">{playerProgress}%</span>
+              </div>
+              <div className="h-3 bg-emerald-500/20 rounded-full overflow-hidden battle-progress">
+                <div
+                  className="h-full bg-gradient-to-r from-emerald-500 to-teal-600 rounded-full transition-all duration-500"
+                  style={{ width: `${playerProgress}%` }}
+                />
+              </div>
+            </div>
+
+            <div>
+              <div className="flex justify-between text-xs font-bold mb-1.5">
+                <span className="text-rose-400">{config.opponent?.name || 'OPPONENT'} — {opponentLiveScore} pts</span>
+                <span className="text-rose-400">{opponentProgress}%</span>
+              </div>
+              <div className="h-3 bg-rose-500/20 rounded-full overflow-hidden battle-progress">
+                <div
+                  className="h-full bg-gradient-to-r from-rose-500 to-red-600 rounded-full transition-all duration-500"
+                  style={{ width: `${opponentProgress}%` }}
+                />
+              </div>
+            </div>
+          </div>
+        ) : config.battleType === 'team' ? (
           <div className="space-y-3">
             <div>
               <div className="flex justify-between text-xs font-bold mb-1.5">
@@ -626,8 +940,54 @@ export function BattleRoom({ config, user, onBattleEnd }: BattleRoomProps) {
               <span className="text-yellow-400 text-xs font-bold">+{q.xpReward} XP for correct answer</span>
             </div>
 
-            {/* MCQ Options */}
-            {!isCodingMode && q.options && q.options.length > 0 && (
+            {/* Color Battle View Toggle */}
+            {!isCodingMode && isColorMode && (
+              <div className="flex items-center justify-between pb-1 border-b border-white/5">
+                <span className="text-xs font-bold text-rose-300 flex items-center gap-1.5">
+                  <Palette className="w-4 h-4 text-rose-400" />
+                  {colorGameView === 'ball' ? '🎯 Interactive Hit-the-Ball Arena' : '📋 Option List View'}
+                </span>
+                <div className="flex items-center gap-1">
+                  <button
+                    type="button"
+                    onClick={() => setColorGameView('ball')}
+                    className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all ${
+                      colorGameView === 'ball'
+                        ? 'bg-rose-500 text-white shadow-lg shadow-rose-500/30'
+                        : 'bg-white/5 text-white/50 hover:text-white'
+                    }`}
+                  >
+                    🎯 Hit the Ball
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setColorGameView('grid')}
+                    className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all ${
+                      colorGameView === 'grid'
+                        ? 'bg-rose-500 text-white shadow-lg shadow-rose-500/30'
+                        : 'bg-white/5 text-white/50 hover:text-white'
+                    }`}
+                  >
+                    📋 List View
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* Interactive Hit the Ball Arena */}
+            {!isCodingMode && isColorMode && colorGameView === 'ball' && q.options && q.options.length > 0 && (
+              <ColorBallArena
+                options={q.options}
+                correctAnswer={q.correctAnswer || ''}
+                onHitAnswer={(opt) => !showResult && handleAnswer(opt)}
+                disabled={showResult}
+                difficulty={config.difficulty}
+                questionTitle={q.title}
+              />
+            )}
+
+            {/* Standard MCQ Options (Grid / List view) */}
+            {!isCodingMode && (!isColorMode || colorGameView === 'grid') && q.options && q.options.length > 0 && (
               <div className="grid grid-cols-1 gap-2">
                 {q.options.map((opt, i) => {
                   let optStyle = 'border-white/10 text-white/80 hover:border-white/30 hover:bg-white/5'
@@ -648,6 +1008,15 @@ export function BattleRoom({ config, user, onBattleEnd }: BattleRoomProps) {
                       <span className="w-6 h-6 rounded-full border border-current flex items-center justify-center text-xs font-black flex-shrink-0">
                         {String.fromCharCode(65 + i)}
                       </span>
+                      {(() => {
+                        const hex = opt.match(/#([0-9A-Fa-f]{6})\b/)?.[0]
+                        return hex ? (
+                          <span
+                            className="w-4 h-4 rounded-full border border-white/30 flex-shrink-0 shadow-sm"
+                            style={{ backgroundColor: hex }}
+                          />
+                        ) : null
+                      })()}
                       <span className="flex-1 break-words">{opt}</span>
                       {showResult && opt === q.correctAnswer && <CheckCircle className="w-4 h-4 text-green-400 ml-auto flex-shrink-0" />}
                       {showResult && selectedAnswer === opt && !isCorrect && <XCircle className="w-4 h-4 text-red-400 ml-auto flex-shrink-0" />}

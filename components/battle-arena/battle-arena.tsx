@@ -10,7 +10,7 @@ import {
   Star, Shield, Globe, Code2, Brain, Calculator, BookOpen, TrendingUp,
   Shuffle, ChevronRight, Lock, Play, Loader2, Flame, Award, Activity,
   FileText, Gauge, Server, BarChart3, Database, Sparkles, Check, Clock, ShieldCheck,
-  Copy, Key, Share2
+  Copy, Key, Share2, Palette, GraduationCap
 } from "lucide-react"
 import { useNav } from "@/hooks/use-nav"
 import { BattleRoom } from "./battle-room"
@@ -22,6 +22,7 @@ import { AchievementsPanel } from "./achievements-panel"
 import { TournamentBracket } from "./tournament-bracket"
 import { StudentTournaments } from "./student-tournaments"
 import { FriendsPanel } from "./friends-panel"
+import { CustomExamArena } from "./custom-exam-arena"
 
 interface ArenaUser {
   id: string
@@ -52,13 +53,15 @@ interface BattleArenaProps {
 }
 
 const GAME_MODES = [
-  { id: 'coding',     label: 'Coding Battle',   icon: Code2,       color: '#3b82f6', desc: 'Solve coding challenges', gradient: 'from-blue-600 to-cyan-500' },
-  { id: 'puzzle',     label: 'Puzzle Battle',   icon: Brain,       color: '#8b5cf6', desc: 'Logic & algorithm puzzles', gradient: 'from-violet-600 to-purple-500' },
-  { id: 'math',       label: 'Math Battle',     icon: Calculator,  color: '#10b981', desc: 'Arithmetic, algebra, geometry', gradient: 'from-emerald-600 to-teal-500' },
-  { id: 'gk',         label: 'GK Battle',       icon: BookOpen,    color: '#f59e0b', desc: 'General knowledge quiz', gradient: 'from-amber-600 to-orange-500' },
-  { id: 'prediction', label: 'Prediction Game', icon: TrendingUp,  color: '#ec4899', desc: 'Predict sequences & patterns', gradient: 'from-pink-600 to-rose-500' },
-  { id: 'custom',     label: 'Topic & Doc AI',  icon: FileText,    color: '#06b6d4', desc: 'NumPy & Pandas pattern generation', gradient: 'from-cyan-600 to-blue-500' },
-  { id: 'mixed',      label: 'Mixed Mode',      icon: Shuffle,     color: '#f97316', desc: 'Random mix of all modes', gradient: 'from-orange-600 to-red-500' },
+  { id: 'coding',      label: 'Coding Battle',    icon: Code2,        color: '#3b82f6', desc: 'Solve coding challenges', gradient: 'from-blue-600 to-cyan-500' },
+  { id: 'puzzle',      label: 'Puzzle Battle',    icon: Brain,        color: '#8b5cf6', desc: 'Logic & algorithm puzzles', gradient: 'from-violet-600 to-purple-500' },
+  { id: 'math',        label: 'Math Battle',      icon: Calculator,   color: '#10b981', desc: 'Arithmetic, algebra, geometry', gradient: 'from-emerald-600 to-teal-500' },
+  { id: 'gk',          label: 'GK Battle',        icon: BookOpen,     color: '#f59e0b', desc: 'General knowledge quiz', gradient: 'from-amber-600 to-orange-500' },
+  { id: 'prediction',  label: 'Prediction Game',  icon: TrendingUp,   color: '#ec4899', desc: 'Predict sequences & patterns', gradient: 'from-pink-600 to-rose-500' },
+  { id: 'color',       label: 'Color Battle',     icon: Palette,      color: '#f43f5e', desc: 'RGB, Chroma & Harmony Match', gradient: 'from-rose-500 via-purple-500 to-indigo-500' },
+  { id: 'study_clash', label: 'Study Clash Room', icon: GraduationCap,color: '#a855f7', desc: 'Custom syllabus & doc team clash', gradient: 'from-purple-600 to-pink-500' },
+  { id: 'custom',      label: 'Topic & Doc AI',   icon: FileText,     color: '#06b6d4', desc: 'NumPy & Pandas pattern generation', gradient: 'from-cyan-600 to-blue-500' },
+  { id: 'mixed',       label: 'Mixed Mode',       icon: Shuffle,      color: '#f97316', desc: 'Random mix of all modes', gradient: 'from-orange-600 to-red-500' },
 ]
 
 const DIFFICULTIES = [
@@ -122,11 +125,18 @@ export function BattleArena({ userId, userEmail, isAdmin = false }: BattleArenaP
         const inv = detail?.invite || params.get('invite')
         const rCode = detail?.roomCode || params.get('roomCode')
         const duel = params.get('duel')
+        const duelId = params.get('duelId')
+        const duelMode = params.get('mode')
+        const duelDiff = params.get('difficulty')
 
         if (tId || inv || tab === 'events' || tab === 'tournament') {
           setActiveTab('tournament')
         } else if (tab === 'friends' || duel) {
           setActiveTab('friends')
+          if (duelMode) setSelectedMode(duelMode)
+          if (duelDiff) setSelectedDifficulty(duelDiff)
+        } else if (tab === 'study-clash' || tab === 'clash' || tab === 'custom-room') {
+          setActiveTab('study-clash')
         } else if (rCode) {
           setActiveTab('lobby')
           setSelectedBattleType('private')
@@ -765,9 +775,10 @@ export function BattleArena({ userId, userEmail, isAdmin = false }: BattleArenaP
       {/* ---- MAIN CONTENT ---- */}
       <div className="p-3 sm:p-4 md:p-6">
         <Tabs value={activeTab} onValueChange={setActiveTab}>
-          <TabsList className={`grid grid-cols-4 sm:grid-cols-4 ${isEffectiveAdmin ? 'md:grid-cols-9' : 'md:grid-cols-8'} h-auto gap-1 p-1 bg-black/40 border border-white/10 rounded-2xl mb-6`}>
+          <TabsList className={`grid grid-cols-4 sm:grid-cols-5 ${isEffectiveAdmin ? 'md:grid-cols-10' : 'md:grid-cols-9'} h-auto gap-1 p-1 bg-black/40 border border-white/10 rounded-2xl mb-6`}>
             {[
               { value: 'lobby',       icon: Swords,       label: 'Battle' },
+              { value: 'study-clash', icon: GraduationCap,label: 'Study Clash' },
               ...(isEffectiveAdmin ? [{ value: 'telemetry',   icon: Activity,     label: 'Engine' }] : []),
               { value: 'leaderboard', icon: Trophy,       label: 'Ranks' },
               { value: 'profile',     icon: Crown,        label: 'Profile' },
@@ -806,7 +817,13 @@ export function BattleArena({ userId, userEmail, isAdmin = false }: BattleArenaP
                       return (
                         <button
                           key={mode.id}
-                          onClick={() => setSelectedMode(mode.id)}
+                          onClick={() => {
+                            if (mode.id === 'study_clash') {
+                              setActiveTab('study-clash')
+                            } else {
+                              setSelectedMode(mode.id)
+                            }
+                          }}
                           className={`relative p-4 rounded-xl border transition-all text-left group overflow-hidden ${
                             isSelected
                               ? 'border-white/30 bg-white/10 scale-[1.02]'
@@ -880,6 +897,122 @@ export function BattleArena({ userId, userEmail, isAdmin = false }: BattleArenaP
                   </div>
                 )}
 
+                {/* Color Match Battle Engine Rules & Concept Guide */}
+                {selectedMode === 'color' && (
+                  <div className="arena-card p-5 border-rose-500/40 bg-rose-950/20 space-y-4 animate-in fade-in">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <h3 className="text-white font-black text-sm flex items-center gap-2">
+                        <Palette className="w-4 h-4 text-rose-400" />
+                        COLOR MATCH BATTLE ENGINE: RULES & CONCEPT GUIDE
+                      </h3>
+                      <div className="flex items-center gap-2">
+                        <Badge className="bg-rose-500/20 text-rose-300 border-rose-500/40 text-[10px]">
+                          Python Procedural Engine
+                        </Badge>
+                        <Badge className="bg-indigo-500/20 text-indigo-300 border-indigo-500/40 text-[10px]">
+                          6-Tier Progression
+                        </Badge>
+                      </div>
+                    </div>
+
+                    {/* Rules Banner */}
+                    <div className="p-3.5 rounded-xl bg-black/40 border border-white/10 text-xs text-white/80 space-y-1.5">
+                      <div className="flex items-center gap-2 font-bold text-white text-xs">
+                        <Sparkles className="w-3.5 h-3.5 text-yellow-400" /> Battle Rules:
+                      </div>
+                      <p>
+                        ⚡ <strong className="text-rose-300">Fast Match Multiplier:</strong> Submit correct answers within early seconds for bonus combo points.
+                      </p>
+                      <p>
+                        🎯 <strong className="text-cyan-300">Hit the Ball Gameplay:</strong> Dynamic real-time ball arena! Aim and strike the floating colored balls to smash matches and build hit streaks.
+                      </p>
+                      <p>
+                        🎨 <strong className="text-purple-300">Dual Optics:</strong> Solve challenges across additive RGB screens, subtractive CMYK inks, HSL wheels, and spectral wavelengths.
+                      </p>
+                      <p>
+                        🏆 <strong className="text-amber-300">Badge Unlock:</strong> Win 10 Color Battles to unlock & claim the <span className="font-semibold text-rose-300">Chroma Maestro 🎨</span> badge in your Profile!
+                      </p>
+                    </div>
+
+                    {/* Level Concepts */}
+                    <div className="space-y-2">
+                      <div className="text-xs font-black text-white/70 uppercase tracking-wider">
+                        Difficulty Tiers & Theoretical Concepts
+                      </div>
+                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2.5 text-xs">
+                        <div className="p-2.5 rounded-xl bg-white/5 border border-green-500/30 space-y-1">
+                          <div className="font-black text-green-400 flex items-center gap-1.5">
+                            <span>🟢</span> Beginner
+                          </div>
+                          <div className="text-white/60 text-[11px] leading-relaxed">
+                            Primary pigment mixing (Red + Yellow = Orange, Blue + Yellow = Green) & standard Web Hex (#FF0000, #FFFFFF).
+                          </div>
+                        </div>
+
+                        <div className="p-2.5 rounded-xl bg-white/5 border border-blue-500/30 space-y-1">
+                          <div className="font-black text-blue-400 flex items-center gap-1.5">
+                            <span>🔵</span> Intermediate
+                          </div>
+                          <div className="text-white/60 text-[11px] leading-relaxed">
+                            Additive RGB light (Red + Green = Yellow), complementary wheel pairs (Blue ↔ Orange), CMYK subtractive theory.
+                          </div>
+                        </div>
+
+                        <div className="p-2.5 rounded-xl bg-white/5 border border-purple-500/30 space-y-1">
+                          <div className="font-black text-purple-400 flex items-center gap-1.5">
+                            <span>🟣</span> Advanced
+                          </div>
+                          <div className="text-white/60 text-[11px] leading-relaxed">
+                            Hex channel decomposition (#3A78C4 green byte = 120), split-complements, Tint (+White) vs Shade (+Black).
+                          </div>
+                        </div>
+
+                        <div className="p-2.5 rounded-xl bg-white/5 border border-amber-500/30 space-y-1">
+                          <div className="font-black text-amber-400 flex items-center gap-1.5">
+                            <span>🟡</span> Expert
+                          </div>
+                          <div className="text-white/60 text-[11px] leading-relaxed">
+                            360° HSL hue circle geometry (180° = Cyan), triadic harmony (120°), bitwise NOT hex inversion (#112233 ↔ #EEDDCC).
+                          </div>
+                        </div>
+
+                        <div className="p-2.5 rounded-xl bg-white/5 border border-orange-500/30 space-y-1">
+                          <div className="font-black text-orange-400 flex items-center gap-1.5">
+                            <span>🟠</span> Master
+                          </div>
+                          <div className="text-white/60 text-[11px] leading-relaxed">
+                            Spectral wavelengths (495–570nm green, 620–750nm red), retinal cone receptors (S, M, L), metamerism & Hering theory.
+                          </div>
+                        </div>
+
+                        <div className="p-2.5 rounded-xl bg-white/5 border border-red-500/30 space-y-1">
+                          <div className="font-black text-red-400 flex items-center gap-1.5">
+                            <span>🔴</span> Grandmaster
+                          </div>
+                          <div className="text-white/60 text-[11px] leading-relaxed">
+                            CIE 1931 xy chromaticity (Illuminant E = 0.3333, 0.3333), CIELAB Delta-E (JND ≈ 1.0), Standard Illuminant D65 (6504 K).
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Visual Color Spectrum Bar */}
+                    <div className="pt-1 flex items-center justify-between gap-2 p-2 rounded-xl bg-black/30 border border-white/5">
+                      <span className="text-[10px] text-white/50 font-bold uppercase tracking-wider">Chroma Spectrum Preview:</span>
+                      <div className="flex items-center gap-1.5">
+                        <span className="w-5 h-5 rounded-md shadow-sm border border-white/20" style={{ backgroundColor: '#EF4444' }} title="#EF4444 Red" />
+                        <span className="w-5 h-5 rounded-md shadow-sm border border-white/20" style={{ backgroundColor: '#F97316' }} title="#F97316 Orange" />
+                        <span className="w-5 h-5 rounded-md shadow-sm border border-white/20" style={{ backgroundColor: '#EAB308' }} title="#EAB308 Yellow" />
+                        <span className="w-5 h-5 rounded-md shadow-sm border border-white/20" style={{ backgroundColor: '#22C55E' }} title="#22C55E Green" />
+                        <span className="w-5 h-5 rounded-md shadow-sm border border-white/20" style={{ backgroundColor: '#06B6D4' }} title="#06B6D4 Cyan" />
+                        <span className="w-5 h-5 rounded-md shadow-sm border border-white/20" style={{ backgroundColor: '#3B82F6' }} title="#3B82F6 Blue" />
+                        <span className="w-5 h-5 rounded-md shadow-sm border border-white/20" style={{ backgroundColor: '#A855F7' }} title="#A855F7 Violet" />
+                        <span className="w-5 h-5 rounded-md shadow-sm border border-white/20" style={{ backgroundColor: '#EC4899' }} title="#EC4899 Magenta" />
+                      </div>
+                    </div>
+                  </div>
+                )}
+
                 {/* Battle Type */}
                 <div className="arena-card p-5">
                   <h2 className="text-white font-black text-lg mb-4 flex items-center gap-2">
@@ -945,25 +1078,34 @@ export function BattleArena({ userId, userEmail, isAdmin = false }: BattleArenaP
                       <div className="flex items-center gap-2 text-sm font-bold text-white">
                         <Lock className="w-4 h-4 text-amber-400" /> Private Room (Friends Only)
                       </div>
-                      <div className="flex gap-1.5">
+                      <div className="flex items-center gap-2">
                         <button
                           type="button"
-                          onClick={() => setPrivateSubTab('create')}
-                          className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all ${
-                            privateSubTab === 'create' ? 'bg-amber-600 text-white' : 'text-white/60 hover:text-white'
-                          }`}
+                          onClick={() => setActiveTab('study-clash')}
+                          className="px-2.5 py-1 rounded-lg text-xs font-bold bg-purple-600/30 hover:bg-purple-600/50 text-purple-300 border border-purple-500/40 transition-all flex items-center gap-1"
                         >
-                          Create Room
+                          <GraduationCap className="w-3.5 h-3.5" /> Study Clash Room ⚡
                         </button>
-                        <button
-                          type="button"
-                          onClick={() => setPrivateSubTab('join')}
-                          className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all ${
-                            privateSubTab === 'join' ? 'bg-amber-600 text-white' : 'text-white/60 hover:text-white'
-                          }`}
-                        >
-                          Join Room
-                        </button>
+                        <div className="flex gap-1.5">
+                          <button
+                            type="button"
+                            onClick={() => setPrivateSubTab('create')}
+                            className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all ${
+                              privateSubTab === 'create' ? 'bg-amber-600 text-white' : 'text-white/60 hover:text-white'
+                            }`}
+                          >
+                            Create Room
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setPrivateSubTab('join')}
+                            className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all ${
+                              privateSubTab === 'join' ? 'bg-amber-600 text-white' : 'text-white/60 hover:text-white'
+                            }`}
+                          >
+                            Join Room
+                          </button>
+                        </div>
                       </div>
                     </div>
 
@@ -1253,6 +1395,7 @@ export function BattleArena({ userId, userEmail, isAdmin = false }: BattleArenaP
               currentUserId={arenaUser?.id} 
               currentUserName={arenaUser?.name}
               currentUserEmail={arenaUser?.email}
+              currentUser={arenaUser}
               refreshTrigger={arenaUser?.totalBattles || 0} 
             />
           </TabsContent>
@@ -1268,11 +1411,15 @@ export function BattleArena({ userId, userEmail, isAdmin = false }: BattleArenaP
               <FriendsPanel
                 currentUser={arenaUser}
                 onStartDuel={(friend: any) => {
+                  const duelMode = friend.mode || selectedMode || 'math'
+                  const duelDifficulty = friend.difficulty || selectedDifficulty || 'intermediate'
+                  const duelId = friend.duelId || `duel-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`
                   setBattleConfig({
-                    mode: selectedMode || 'math',
-                    difficulty: selectedDifficulty || 'intermediate',
+                    mode: duelMode,
+                    difficulty: duelDifficulty,
                     battleType: '1v1',
                     opponent: friend,
+                    duelId,
                   })
                   setInBattle(true)
                 }}
@@ -1487,6 +1634,14 @@ export function BattleArena({ userId, userEmail, isAdmin = false }: BattleArenaP
           </>
         )}
       </TabsContent>
+
+          {/* ===== STUDY CLASH (CUSTOM EXAM ARENA) ===== */}
+          <TabsContent value="study-clash" className="space-y-6 animate-in fade-in duration-300">
+            <CustomExamArena
+              currentUser={arenaUser}
+              onBackToLobby={() => setActiveTab('lobby')}
+            />
+          </TabsContent>
         </Tabs>
       </div>
 

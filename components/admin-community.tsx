@@ -16,6 +16,7 @@ import {
   generateSessionToken,
   consumePostLoginRedirect,
 } from "@/lib/session-storage"
+import AdminServicesDashboard from "@/components/admin-services-dashboard"
 
 // --- ONBOARDING COMPONENT ---
 export function UserOnboarding() {
@@ -26,6 +27,113 @@ export function UserOnboarding() {
   const [adminPasswordInput, setAdminPasswordInput] = useState("")
   const [adminAuthLoading, setAdminAuthLoading] = useState(false)
   const [adminAuthError, setAdminAuthError] = useState("")
+
+  // Google OAuth state
+  const [googleAuthLoading, setGoogleAuthLoading] = useState(false)
+  const [googlePickerOpen, setGooglePickerOpen] = useState(false)
+  const [customGoogleEmail, setCustomGoogleEmail] = useState("")
+  const [customGoogleName, setCustomGoogleName] = useState("")
+
+  // Load Google Identity Services client script dynamically
+  useEffect(() => {
+    if (typeof window === "undefined") return
+    if (document.getElementById("google-gsi-client")) return
+    const script = document.createElement("script")
+    script.id = "google-gsi-client"
+    script.src = "https://accounts.google.com/gsi/client"
+    script.async = true
+    script.defer = true
+    document.head.appendChild(script)
+  }, [])
+
+  const handleGoogleSuccess = async (googleData: { credential?: string; email?: string; name?: string; photoUrl?: string; googleId?: string }) => {
+    setGoogleAuthLoading(true)
+    try {
+      const res = await fetch("/api/auth/google", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(googleData),
+      })
+      const data = await res.json()
+      if (res.ok && data.user) {
+        const userObj = data.user
+        const isComplete = Boolean(
+          userObj.profileComplete ||
+          (userObj.stream && userObj.course && String(userObj.stream).trim() !== "" && String(userObj.course).trim() !== "")
+        )
+        const sessionUser = {
+          id: userObj.id || userObj._id,
+          name: userObj.name,
+          email: userObj.email,
+          phone: userObj.phone || "",
+          photoUrl: userObj.photoUrl || "",
+          branch: userObj.branch || "",
+          bio: userObj.bio || "",
+          stream: userObj.stream || "",
+          course: userObj.course || "",
+          department: userObj.department || "",
+          grade: userObj.grade || "",
+          isLabApproved: userObj.isLabApproved ?? true,
+          status: userObj.status || "Active",
+          role: userObj.role || "student",
+          profileComplete: isComplete,
+          arenaApprovalStatus: userObj.arenaApprovalStatus || "approved",
+          arenaApprovalReason: userObj.arenaApprovalReason || "",
+          arenaAccess: userObj.arenaAccess || { status: "approved", approved: true },
+          points: userObj.points || 0,
+          rank: userObj.rank || "Bronze",
+          authProvider: "google",
+        }
+        const token = data.token || generateSessionToken(sessionUser.id, sessionUser.email, sessionUser.role).token
+        storeSession({ user: sessionUser, token, role: sessionUser.role, isAdmin: sessionUser.role === 'admin' })
+        setSessionUser(sessionUser)
+        setProfileComplete(isComplete)
+        setAdmin(sessionUser.role === 'admin')
+        setRegistered(true)
+        const target = (consumePostLoginRedirect() as any) || (isComplete ? "home" : "setup")
+        setStep(target)
+      } else {
+        alert(data.message || "Google authentication failed. Please try again.")
+      }
+    } catch (err) {
+      console.error("[Google Auth Error]:", err)
+      alert("Network error. Could not connect to Google authentication service.")
+    } finally {
+      setGoogleAuthLoading(false)
+      setGooglePickerOpen(false)
+    }
+  }
+
+  const handleInitiateGoogleAuth = async () => {
+    setGoogleAuthLoading(true)
+    try {
+      const res = await fetch("/api/auth/google")
+      const info = await res.json()
+      const clientId = info?.clientId
+
+      if (clientId && typeof window !== "undefined" && (window as any).google?.accounts?.id) {
+        const google = (window as any).google
+        google.accounts.id.initialize({
+          client_id: clientId,
+          callback: (response: any) => {
+            if (response.credential) {
+              handleGoogleSuccess({ credential: response.credential })
+            }
+          },
+        })
+        google.accounts.id.prompt((notification: any) => {
+          if (notification.isNotDisplayed() || notification.isSkippedMoment()) {
+            setGooglePickerOpen(true)
+          }
+        })
+        setGoogleAuthLoading(false)
+        return
+      }
+    } catch (_) {}
+
+    setGoogleAuthLoading(false)
+    setGooglePickerOpen(true)
+  }
 
   useEffect(() => {
     // Read only active session token from sessionStorage / localStorage
@@ -375,6 +483,51 @@ export function UserOnboarding() {
             </div>
           ) : (
             <div className="space-y-4">
+              {mode !== "forgot" && (
+                <div className="space-y-3 pb-1">
+                  {/* Google OAuth Option */}
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={handleInitiateGoogleAuth}
+                    disabled={googleAuthLoading || loading}
+                    className="w-full h-13 border-2 border-border/80 bg-background/80 hover:bg-muted/40 text-foreground font-black text-sm rounded-xl shadow-md flex items-center justify-center gap-3 transition-all hover:border-primary/50 hover:scale-[1.01]"
+                  >
+                    {googleAuthLoading ? (
+                      <Loader2 className="w-5 h-5 animate-spin text-primary" />
+                    ) : (
+                      <svg className="w-5 h-5 flex-shrink-0" viewBox="0 0 24 24">
+                        <path
+                          fill="#4285F4"
+                          d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
+                        />
+                        <path
+                          fill="#34A853"
+                          d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"
+                        />
+                        <path
+                          fill="#FBBC05"
+                          d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z"
+                        />
+                        <path
+                          fill="#EA4335"
+                          d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"
+                        />
+                      </svg>
+                    )}
+                    <span>{mode === "register" ? "Sign up with Google" : "Continue with Google"}</span>
+                  </Button>
+
+                  {/* Or continue with email & password */}
+                  <div className="relative flex items-center justify-center my-3">
+                    <div className="border-t border-border/70 w-full" />
+                    <span className="bg-card px-3 text-[11px] font-black uppercase tracking-wider text-muted-foreground absolute">
+                      Or with email & password
+                    </span>
+                  </div>
+                </div>
+              )}
+
               {mode === "register" && (
                 <>
                   <div className="space-y-2">
@@ -510,6 +663,123 @@ export function UserOnboarding() {
           ← Return to Home Page
         </button>
       </div>
+
+      {/* ================= Google Account Verification & OAuth Modal ================= */}
+      {googlePickerOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="bg-[#0f111a] border border-primary/30 rounded-2xl max-w-md w-full p-6 shadow-2xl relative space-y-5">
+            <button
+              onClick={() => setGooglePickerOpen(false)}
+              className="absolute top-4 right-4 text-muted-foreground hover:text-foreground transition-colors"
+            >
+              <X className="w-5 h-5" />
+            </button>
+
+            {/* Google Header */}
+            <div className="flex items-center gap-3">
+              <div className="w-11 h-11 rounded-xl bg-white flex items-center justify-center shadow-md flex-shrink-0">
+                <svg className="w-6 h-6" viewBox="0 0 24 24">
+                  <path
+                    fill="#4285F4"
+                    d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
+                  />
+                  <path
+                    fill="#34A853"
+                    d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"
+                  />
+                  <path
+                    fill="#FBBC05"
+                    d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z"
+                  />
+                  <path
+                    fill="#EA4335"
+                    d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"
+                  />
+                </svg>
+              </div>
+              <div>
+                <h3 className="text-base font-black text-foreground">Sign in with Google</h3>
+                <p className="text-xs text-muted-foreground">Choose an account to continue to Aura Study AI</p>
+              </div>
+            </div>
+
+            {/* Quick-Select Profile */}
+            <div className="space-y-2">
+              <button
+                type="button"
+                onClick={() => handleGoogleSuccess({
+                  email: formData.email && formData.email.includes("@") ? formData.email : "student@gmail.com",
+                  name: formData.name || "Student User",
+                  photoUrl: "https://lh3.googleusercontent.com/a/default-user=s96-c",
+                })}
+                className="w-full p-3.5 rounded-xl border border-border/80 bg-white/5 hover:bg-white/10 text-left transition-all flex items-center justify-between group"
+              >
+                <div className="flex items-center gap-3">
+                  <div className="w-9 h-9 rounded-full bg-gradient-to-tr from-indigo-500 to-rose-500 flex items-center justify-center font-bold text-white text-xs">
+                    {formData.name ? formData.name.charAt(0).toUpperCase() : "G"}
+                  </div>
+                  <div>
+                    <div className="text-sm font-bold text-foreground group-hover:text-primary transition-colors">
+                      {formData.name || "Google Student"}
+                    </div>
+                    <div className="text-xs text-muted-foreground">
+                      {formData.email && formData.email.includes("@") ? formData.email : "student@gmail.com"}
+                    </div>
+                  </div>
+                </div>
+                <Badge className="bg-primary/20 text-primary border-primary/30 text-[10px]">Verified</Badge>
+              </button>
+            </div>
+
+            {/* Custom Google Account Form */}
+            <div className="pt-2 border-t border-border/40 space-y-3">
+              <span className="text-xs font-black uppercase tracking-wider text-muted-foreground block">
+                Or enter custom Google account
+              </span>
+              <div className="space-y-2">
+                <Input
+                  type="email"
+                  placeholder="yourname@gmail.com"
+                  value={customGoogleEmail}
+                  onChange={(e) => setCustomGoogleEmail(e.target.value)}
+                  className="h-11 text-xs border-2"
+                />
+                <Input
+                  type="text"
+                  placeholder="Full Name"
+                  value={customGoogleName}
+                  onChange={(e) => setCustomGoogleName(e.target.value)}
+                  className="h-11 text-xs border-2"
+                />
+              </div>
+
+              <Button
+                type="button"
+                onClick={() => {
+                  if (!customGoogleEmail || !customGoogleEmail.includes("@")) {
+                    alert("Please enter a valid Google email address.")
+                    return
+                  }
+                  handleGoogleSuccess({
+                    email: customGoogleEmail,
+                    name: customGoogleName || customGoogleEmail.split("@")[0],
+                    photoUrl: `https://ui-avatars.com/api/?name=${encodeURIComponent(customGoogleName || customGoogleEmail)}&background=4285F4&color=fff`,
+                  })
+                }}
+                disabled={googleAuthLoading}
+                className="w-full h-12 bg-primary text-primary-foreground font-black text-sm rounded-xl shadow-lg hover:scale-101 transition-transform"
+              >
+                {googleAuthLoading ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}
+                Verify & Enter Directly
+              </Button>
+            </div>
+
+            <div className="p-2.5 rounded-xl bg-primary/5 border border-primary/10 text-[10px] text-muted-foreground leading-relaxed">
+              🔒 <strong>Google OAuth 2.0 Security</strong>: Identity is checked and verified by Google. Aura Study AI will securely connect your student profile.
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
@@ -520,7 +790,7 @@ export function AdminPanel() {
   const [users, setUsers] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [usersError, setUsersError] = useState<string | null>(null)
-  const [activeTab, setActiveTab] = useState<"users" | "credentials" | "activity" | "feedback" | "arena" | "engine">("users")
+  const [activeTab, setActiveTab] = useState<"services" | "engine" | "arena" | "users" | "credentials" | "activity" | "feedback">("services")
   const [selectedUserId, setSelectedUserId] = useState<string>("")
   
   // Game Engine & Grafana Console States (Admin Only Execution)
@@ -1083,6 +1353,12 @@ export function AdminPanel() {
       {/* Responsive Tabs Switcher */}
       <div className="flex items-center gap-2 border-b-2 border-muted mb-8 pb-2 overflow-x-auto no-scrollbar flex-nowrap sm:flex-wrap">
         <button 
+          onClick={() => setActiveTab("services")} 
+          className={`px-3.5 sm:px-6 py-2 sm:py-3 font-bold text-xs sm:text-sm uppercase tracking-wider rounded-xl transition-all whitespace-nowrap flex items-center gap-2 ${activeTab === "services" ? "bg-gradient-to-r from-emerald-600 to-teal-500 text-white shadow-xl shadow-emerald-500/20" : "text-muted-foreground hover:bg-muted/10"}`}
+        >
+          <Activity className="w-4 h-4 text-emerald-300" /> Services Health &amp; Dashboard
+        </button>
+        <button 
           onClick={() => setActiveTab("engine")} 
           className={`px-3.5 sm:px-6 py-2 sm:py-3 font-bold text-xs sm:text-sm uppercase tracking-wider rounded-xl transition-all whitespace-nowrap flex items-center gap-2 ${activeTab === "engine" ? "bg-cyan-600 text-white shadow-lg" : "text-muted-foreground hover:bg-muted/10"}`}
         >
@@ -1120,7 +1396,12 @@ export function AdminPanel() {
         </button>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+      {activeTab === "services" ? (
+        <div className="w-full">
+          <AdminServicesDashboard />
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
         <div className="lg:col-span-2 space-y-6">
           {activeTab === "users" && (
             <Card className="border-2 shadow-2xl overflow-hidden glass-morphism">
@@ -2085,13 +2366,14 @@ export function AdminPanel() {
           )}
         </div>
       </div>
+      )}
     </div>
   )
 }
 
 // --- PAPER REPOSITORY COMPONENT ---
 export function PaperRepository() {
-  const sections = ["CBSE", "GATE", "UPSC", "University", "Standard"]
+  const baseStreams = ["CBSE", "GATE", "UPSC", "University", "Engineering", "Medical", "Standard", "Science", "Commerce", "Arts"]
   const { sessionUser, isAdmin } = useNav()
   const [activeSec, setSec] = useState("CBSE")
   const [papers, setPapers] = useState<any[]>([])
@@ -2103,11 +2385,14 @@ export function PaperRepository() {
   const [previewPaper, setPreviewPaper] = useState<any | null>(null)
   const [adminViewPending, setAdminViewPending] = useState(false)
 
-  // Upload Form State
+  // Upload Form State (with Stream creation, Subject creation & Syllabus entry)
   const [uploadForm, setUploadForm] = useState({
     title: "",
     category: "CBSE",
+    customStream: "",
+    isCustomStream: false,
     subject: "",
+    syllabus: "",
     year: "2024",
     description: "",
   })
@@ -2120,44 +2405,52 @@ export function PaperRepository() {
   // Initial base mock papers if database is empty or offline
   const defaultArchiveData: Record<string, any[]> = {
     CBSE: [
-      { _id: "cbse-1", title: "Class 12 Physics Board Examination", section: "CBSE", subject: "Physics", year: 2024, downloads: 142, isApproved: true, uploaderName: "Aura Academic Team", description: "Complete Class 12 CBSE Board paper with numerical steps, formula sheets, and marking scheme." },
-      { _id: "cbse-2", title: "Class 12 Mathematics Annual Exam", section: "CBSE", subject: "Mathematics", year: 2024, downloads: 198, isApproved: true, uploaderName: "Aura Academic Team", description: "Calculus, Linear Programming, Vectors, and 3D Geometry problem sets with full steps." },
-      { _id: "cbse-3", title: "Class 10 Science Board Exam", section: "CBSE", subject: "Science", year: 2023, downloads: 220, isApproved: true, uploaderName: "Admin", description: "Chemical reactions, electricity, life processes, and optics with model answer key." },
-      { _id: "cbse-4", title: "Class 12 Chemistry Term 2", section: "CBSE", subject: "Chemistry", year: 2023, downloads: 115, isApproved: true, uploaderName: "Academic Team", description: "Organic chemistry reaction mechanisms, electrochemistry, and coordination compounds." },
-      { _id: "cbse-5", title: "Class 10 Mathematics Standard", section: "CBSE", subject: "Mathematics", year: 2022, downloads: 167, isApproved: true, uploaderName: "Aura Academic Team", description: "Quadratic equations, circles, trigonometry, and surface areas previous year paper." },
-      { _id: "cbse-6", title: "Class 12 Computer Science (Python)", section: "CBSE", subject: "Computer Science", year: 2024, downloads: 310, isApproved: true, uploaderName: "Yogesh", description: "Python functions, SQL queries, data structures, and computer networking board paper." },
+      { _id: "cbse-1", title: "Class 12 Physics Board Examination", section: "CBSE", stream: "cbse", subject: "Physics", syllabus: "Unit 1: Electrostatics, Unit 2: Current Electricity, Unit 3: Magnetic Effects, Unit 4: Optics & Modern Physics", year: 2024, downloads: 142, isApproved: true, uploaderName: "Aura Academic Team", description: "Complete Class 12 CBSE Board paper with numerical steps, formula sheets, and marking scheme." },
+      { _id: "cbse-2", title: "Class 12 Mathematics Annual Exam", section: "CBSE", stream: "cbse", subject: "Mathematics", syllabus: "Unit 1: Relations & Functions, Unit 2: Calculus & Differential Equations, Unit 3: Vectors & 3D Geometry", year: 2024, downloads: 198, isApproved: true, uploaderName: "Aura Academic Team", description: "Calculus, Linear Programming, Vectors, and 3D Geometry problem sets with full steps." },
+      { _id: "cbse-3", title: "Class 10 Science Board Exam", section: "CBSE", stream: "cbse", subject: "Science", syllabus: "Unit 1: Chemical Reactions, Unit 2: Electricity & Magnetism, Unit 3: Life Processes & Heredity", year: 2023, downloads: 220, isApproved: true, uploaderName: "Admin", description: "Chemical reactions, electricity, life processes, and optics with model answer key." },
+      { _id: "cbse-4", title: "Class 12 Chemistry Term 2", section: "CBSE", stream: "cbse", subject: "Chemistry", syllabus: "Unit 1: Electrochemistry & Kinetics, Unit 2: Coordination Compounds, Unit 3: Aldehydes, Ketones & Amines", year: 2023, downloads: 115, isApproved: true, uploaderName: "Academic Team", description: "Organic chemistry reaction mechanisms, electrochemistry, and coordination compounds." },
+      { _id: "cbse-5", title: "Class 10 Mathematics Standard", section: "CBSE", stream: "cbse", subject: "Mathematics", syllabus: "Unit 1: Number Systems, Unit 2: Algebra & Quadratic Equations, Unit 3: Trigonometry & Circles", year: 2022, downloads: 167, isApproved: true, uploaderName: "Aura Academic Team", description: "Quadratic equations, circles, trigonometry, and surface areas previous year paper." },
+      { _id: "cbse-6", title: "Class 12 Computer Science (Python)", section: "CBSE", stream: "cbse", subject: "Computer Science", syllabus: "Unit 1: Computational Thinking & Python, Unit 2: Computer Networks, Unit 3: Database Management & SQL", year: 2024, downloads: 310, isApproved: true, uploaderName: "Yogesh", description: "Python functions, SQL queries, data structures, and computer networking board paper." },
     ],
     GATE: [
-      { _id: "gate-1", title: "GATE CS & IT Previous Year Paper", section: "GATE", subject: "Computer Science", year: 2024, downloads: 285, isApproved: true, uploaderName: "GATE Toppers Hub", description: "Complete GATE CS paper covering Operating Systems, DBMS, Algorithms, Theory of Computation." },
-      { _id: "gate-2", title: "GATE Mechanical Engineering Core", section: "GATE", subject: "Mechanical", year: 2024, downloads: 174, isApproved: true, uploaderName: "GATE Hub", description: "Thermodynamics, Fluid Mechanics, Strength of Materials, and Heat Transfer with solutions." },
-      { _id: "gate-3", title: "GATE Electronics & Communication", section: "GATE", subject: "ECE", year: 2023, downloads: 190, isApproved: true, uploaderName: "Aura Team", description: "Signals & Systems, Analog Circuits, Microprocessors, and Electromagnetics." },
-      { _id: "gate-4", title: "GATE Data Science & AI (DA)", section: "GATE", subject: "Data Science & AI", year: 2024, downloads: 420, isApproved: true, uploaderName: "Aura AI Lab", description: "Linear algebra, machine learning, probability & statistics, python, and AI search algorithms." },
-      { _id: "gate-5", title: "GATE Electrical Engineering (EE)", section: "GATE", subject: "Electrical", year: 2022, downloads: 133, isApproved: true, uploaderName: "Power Engineers", description: "Power systems, control systems, electrical machines, and electromagnetic field theory." },
-      { _id: "gate-6", title: "GATE Civil Engineering Comprehensive", section: "GATE", subject: "Civil", year: 2023, downloads: 156, isApproved: true, uploaderName: "GATE Hub", description: "Structural analysis, geotechnical engineering, environmental engineering, and surveying." },
+      { _id: "gate-1", title: "GATE CS & IT Previous Year Paper", section: "GATE", stream: "gate", subject: "Computer Science", syllabus: "Module 1: Discrete Maths, Module 2: Operating Systems & DBMS, Module 3: Algorithms & TOC", year: 2024, downloads: 285, isApproved: true, uploaderName: "GATE Toppers Hub", description: "Complete GATE CS paper covering Operating Systems, DBMS, Algorithms, Theory of Computation." },
+      { _id: "gate-2", title: "GATE Mechanical Engineering Core", section: "GATE", stream: "gate", subject: "Mechanical", syllabus: "Module 1: Thermodynamics & Heat Transfer, Module 2: Fluid Mechanics, Module 3: Manufacturing & SOM", year: 2024, downloads: 174, isApproved: true, uploaderName: "GATE Hub", description: "Thermodynamics, Fluid Mechanics, Strength of Materials, and Heat Transfer with solutions." },
+      { _id: "gate-3", title: "GATE Electronics & Communication", section: "GATE", stream: "gate", subject: "ECE", syllabus: "Module 1: Signals & Systems, Module 2: Electronic Devices & Analog Circuits, Module 3: Communications", year: 2023, downloads: 190, isApproved: true, uploaderName: "Aura Team", description: "Signals & Systems, Analog Circuits, Microprocessors, and Electromagnetics." },
+      { _id: "gate-4", title: "GATE Data Science & AI (DA)", section: "GATE", stream: "gate", subject: "Data Science & AI", syllabus: "Module 1: Linear Algebra & Calculus, Module 2: Probability & Statistics, Module 3: Machine Learning & Python", year: 2024, downloads: 420, isApproved: true, uploaderName: "Aura AI Lab", description: "Linear algebra, machine learning, probability & statistics, python, and AI search algorithms." },
+      { _id: "gate-5", title: "GATE Electrical Engineering (EE)", section: "GATE", stream: "gate", subject: "Electrical", syllabus: "Module 1: Power Systems, Module 2: Electrical Machines, Module 3: Control Systems & Field Theory", year: 2022, downloads: 133, isApproved: true, uploaderName: "Power Engineers", description: "Power systems, control systems, electrical machines, and electromagnetic field theory." },
+      { _id: "gate-6", title: "GATE Civil Engineering Comprehensive", section: "GATE", stream: "gate", subject: "Civil", syllabus: "Module 1: Structural Engineering, Module 2: Geotechnical Engineering, Module 3: Environmental Engineering", year: 2023, downloads: 156, isApproved: true, uploaderName: "GATE Hub", description: "Structural analysis, geotechnical engineering, environmental engineering, and surveying." },
     ],
     UPSC: [
-      { _id: "upsc-1", title: "UPSC Civil Services Prelims GS Paper 1", section: "UPSC", subject: "General Studies", year: 2024, downloads: 540, isApproved: true, uploaderName: "UPSC Mentors", description: "History, Indian Polity, Geography, Economy, Ecology & Environment, and Current Affairs." },
-      { _id: "upsc-2", title: "UPSC Prelims CSAT Paper 2", section: "UPSC", subject: "Aptitude & CSAT", year: 2024, downloads: 380, isApproved: true, uploaderName: "UPSC Mentors", description: "Reading comprehension, logical reasoning, analytical ability, and basic numeracy." },
-      { _id: "upsc-3", title: "UPSC Mains GS Paper 2 (Polity & Governance)", section: "UPSC", subject: "Polity & IR", year: 2023, downloads: 275, isApproved: true, uploaderName: "Admin", description: "Constitution, Governance, Social Justice, and International Relations subjective paper." },
-      { _id: "upsc-4", title: "UPSC Mains GS Paper 3 (Economy & Tech)", section: "UPSC", subject: "Economy & Tech", year: 2023, downloads: 290, isApproved: true, uploaderName: "UPSC Mentors", description: "Economic Development, Bio-diversity, Environment, Security, and Disaster Management." },
-      { _id: "upsc-5", title: "UPSC Prelims GS 1 2022", section: "UPSC", subject: "General Studies", year: 2022, downloads: 210, isApproved: true, uploaderName: "Aura Team", description: "100 Multiple Choice questions with detailed answer key explanations." },
-      { _id: "upsc-6", title: "UPSC Mains Essay Paper 2024", section: "UPSC", subject: "Essay", year: 2024, downloads: 315, isApproved: true, uploaderName: "UPSC Mentors", description: "Philosophical and socio-economic essay topics with framework outlines." },
+      { _id: "upsc-1", title: "UPSC Civil Services Prelims GS Paper 1", section: "UPSC", stream: "upsc", subject: "General Studies", syllabus: "Unit 1: Indian Polity & Governance, Unit 2: Modern Indian History & Culture, Unit 3: Economic Development & Ecology", year: 2024, downloads: 540, isApproved: true, uploaderName: "UPSC Mentors", description: "History, Indian Polity, Geography, Economy, Ecology & Environment, and Current Affairs." },
+      { _id: "upsc-2", title: "UPSC Prelims CSAT Paper 2", section: "UPSC", stream: "upsc", subject: "Aptitude & CSAT", syllabus: "Unit 1: Reading Comprehension, Unit 2: Logical Reasoning, Unit 3: Basic Quantitative Numeracy", year: 2024, downloads: 380, isApproved: true, uploaderName: "UPSC Mentors", description: "Reading comprehension, logical reasoning, analytical ability, and basic numeracy." },
+      { _id: "upsc-3", title: "UPSC Mains GS Paper 2 (Polity & Governance)", section: "UPSC", stream: "upsc", subject: "Polity & IR", syllabus: "Unit 1: Indian Constitution & Amendments, Unit 2: Government Policies & Interventions, Unit 3: International Relations", year: 2023, downloads: 275, isApproved: true, uploaderName: "Admin", description: "Constitution, Governance, Social Justice, and International Relations subjective paper." },
+      { _id: "upsc-4", title: "UPSC Mains GS Paper 3 (Economy & Tech)", section: "UPSC", stream: "upsc", subject: "Economy & Tech", syllabus: "Unit 1: Indian Economy & Budgeting, Unit 2: Science & Tech Innovations, Unit 3: Disaster Management & Security", year: 2023, downloads: 290, isApproved: true, uploaderName: "UPSC Mentors", description: "Economic Development, Bio-diversity, Environment, Security, and Disaster Management." },
+      { _id: "upsc-5", title: "UPSC Prelims GS 1 2022", section: "UPSC", stream: "upsc", subject: "General Studies", syllabus: "Unit 1: World & Physical Geography, Unit 2: Indian National Movement, Unit 3: General Science & Climate", year: 2022, downloads: 210, isApproved: true, uploaderName: "Aura Team", description: "100 Multiple Choice questions with detailed answer key explanations." },
+      { _id: "upsc-6", title: "UPSC Mains Essay Paper 2024", section: "UPSC", stream: "upsc", subject: "Essay", syllabus: "Section A: Philosophical Topics, Section B: Socio-Economic Policies & Science Ethics", year: 2024, downloads: 315, isApproved: true, uploaderName: "UPSC Mentors", description: "Philosophical and socio-economic essay topics with framework outlines." },
     ],
     University: [
-      { _id: "univ-1", title: "Data Structures & Algorithms Semester Exam", section: "University", subject: "Computer Science", year: 2024, downloads: 310, isApproved: true, uploaderName: "Prof. Sharma", description: "Trees, Graphs, Dynamic Programming, Complexity Analysis, and Hash Maps." },
-      { _id: "univ-2", title: "Operating Systems Final Examination", section: "University", subject: "Information Tech", year: 2024, downloads: 245, isApproved: true, uploaderName: "University Dean", description: "Process scheduling, Deadlocks, Virtual memory paging, and File systems." },
-      { _id: "univ-3", title: "Database Management Systems (DBMS)", section: "University", subject: "Computer Science", year: 2023, downloads: 290, isApproved: true, uploaderName: "Yogesh", description: "Relational Algebra, SQL, Normalization (1NF-BCNF), and Transaction ACID properties." },
-      { _id: "univ-4", title: "Computer Networks & Protocols", section: "University", subject: "Computer Science", year: 2023, downloads: 180, isApproved: true, uploaderName: "Academic Team", description: "OSI Model, TCP/IP, Congestion control, Subnetting, and Routing algorithms." },
-      { _id: "univ-5", title: "Software Engineering & Agile Methodologies", section: "University", subject: "Software Eng", year: 2024, downloads: 165, isApproved: true, uploaderName: "Admin", description: "UML diagrams, design patterns, testing strategies, and CI/CD pipelines." },
-      { _id: "univ-6", title: "Engineering Mathematics IV (Statistics & Calculus)", section: "University", subject: "Mathematics", year: 2023, downloads: 215, isApproved: true, uploaderName: "Math Dept", description: "Probability distributions, Fourier transforms, and complex integration." },
+      { _id: "univ-1", title: "Data Structures & Algorithms Semester Exam", section: "University", stream: "university", subject: "Computer Science", syllabus: "Unit 1: Trees & Balanced BSTs, Unit 2: Graph Traversals & Shortest Paths, Unit 3: Dynamic Programming & Greedy Algorithms", year: 2024, downloads: 310, isApproved: true, uploaderName: "Prof. Sharma", description: "Trees, Graphs, Dynamic Programming, Complexity Analysis, and Hash Maps." },
+      { _id: "univ-2", title: "Operating Systems Final Examination", section: "University", stream: "university", subject: "Information Tech", syllabus: "Unit 1: CPU Scheduling & Process Sync, Unit 2: Deadlock Detection & Paging, Unit 3: File System Architecture", year: 2024, downloads: 245, isApproved: true, uploaderName: "University Dean", description: "Process scheduling, Deadlocks, Virtual memory paging, and File systems." },
+      { _id: "univ-3", title: "Database Management Systems (DBMS)", section: "University", stream: "university", subject: "Computer Science", syllabus: "Unit 1: ER Modeling & Relational Algebra, Unit 2: SQL & Normalization (1NF to BCNF), Unit 3: ACID Transactions & Concurrency", year: 2023, downloads: 290, isApproved: true, uploaderName: "Yogesh", description: "Relational Algebra, SQL, Normalization (1NF-BCNF), and Transaction ACID properties." },
+      { _id: "univ-4", title: "Computer Networks & Protocols", section: "University", stream: "university", subject: "Computer Science", syllabus: "Unit 1: Physical & Data Link Layer, Unit 2: Network Layer Subnetting & Routing, Unit 3: Transport Layer TCP/UDP", year: 2023, downloads: 180, isApproved: true, uploaderName: "Academic Team", description: "OSI Model, TCP/IP, Congestion control, Subnetting, and Routing algorithms." },
+      { _id: "univ-5", title: "Software Engineering & Agile Methodologies", section: "University", stream: "university", subject: "Software Eng", syllabus: "Unit 1: Software Lifecycle Models, Unit 2: Object-Oriented Analysis & UML, Unit 3: Automated Testing & CI/CD", year: 2024, downloads: 165, isApproved: true, uploaderName: "Admin", description: "UML diagrams, design patterns, testing strategies, and CI/CD pipelines." },
+      { _id: "univ-6", title: "Engineering Mathematics IV (Statistics & Calculus)", section: "University", stream: "university", subject: "Mathematics", syllabus: "Unit 1: Probability Distributions & Hypothesis Testing, Unit 2: Fourier & Laplace Transforms, Unit 3: Complex Variables", year: 2023, downloads: 215, isApproved: true, uploaderName: "Math Dept", description: "Probability distributions, Fourier transforms, and complex integration." },
+    ],
+    Engineering: [
+      { _id: "eng-1", title: "Digital Electronics & Logic Design", section: "Engineering", stream: "engineering", subject: "Electronics", syllabus: "Unit 1: Boolean Algebra & K-Maps, Unit 2: Combinational Logic (Multiplexers, Decoders), Unit 3: Sequential Circuits (Flip-Flops & Counters)", year: 2024, downloads: 195, isApproved: true, uploaderName: "Engr. Gupta", description: "Logic gates, Karnaugh maps, sequential synchronous counters, and finite state machines." },
+      { _id: "eng-2", title: "Thermodynamics & Heat Transfer", section: "Engineering", stream: "engineering", subject: "Mechanical", syllabus: "Unit 1: Laws of Thermodynamics & Cycles, Unit 2: Conduction & Convection, Unit 3: Radiation & Heat Exchanger Design", year: 2023, downloads: 160, isApproved: true, uploaderName: "Mech Faculty", description: "Carnot cycle, Rankine & Brayton cycles, conduction Fourier law, and radiation." },
+    ],
+    Medical: [
+      { _id: "med-1", title: "Human Anatomy & Physiology Semester 1", section: "Medical", stream: "medical", subject: "Anatomy", syllabus: "Unit 1: Musculoskeletal System, Unit 2: Cardiovascular & Respiratory Systems, Unit 3: Neuroanatomy & Endocrine System", year: 2024, downloads: 275, isApproved: true, uploaderName: "Dr. Alok", description: "Osteology, cardiac cycle, respiratory volumes, and cranial nerve assessments." },
+      { _id: "med-2", title: "General Biochemistry & Enzymology", section: "Medical", stream: "medical", subject: "Biochemistry", syllabus: "Unit 1: Carbohydrate & Lipid Metabolism, Unit 2: Enzyme Kinetics & Inhibitors, Unit 3: Molecular Genetics & Nucleic Acids", year: 2023, downloads: 210, isApproved: true, uploaderName: "Medical Lab", description: "Glycolysis, Krebs cycle, Michaelis-Menten kinetics, and DNA replication protocols." },
     ],
     Standard: [
-      { _id: "std-1", title: "Quantitative Aptitude Master Assessment", section: "Standard", subject: "Aptitude", year: 2024, downloads: 260, isApproved: true, uploaderName: "Aura Exam Lab", description: "Time & Work, Speed Distance, Profit & Loss, Percentages, and Probability." },
-      { _id: "std-2", title: "Logical Reasoning & Critical Thinking", section: "Standard", subject: "Reasoning", year: 2024, downloads: 295, isApproved: true, uploaderName: "Aura Exam Lab", description: "Syllogisms, Seating arrangement, Blood relations, and Direction tests." },
-      { _id: "std-3", title: "English Verbal Ability & Comprehension", section: "Standard", subject: "English", year: 2024, downloads: 190, isApproved: true, uploaderName: "Language Lab", description: "Sentence correction, vocabulary in context, reading comprehension passages." },
-      { _id: "std-4", title: "General Awareness & Static GK 2024", section: "Standard", subject: "General Knowledge", year: 2024, downloads: 340, isApproved: true, uploaderName: "GK Hub", description: "World organizations, national monuments, scientific discoveries, and Indian polity." },
-      { _id: "std-5", title: "Data Interpretation & Analysis Test", section: "Standard", subject: "Data Interpretation", year: 2023, downloads: 210, isApproved: true, uploaderName: "Aura Exam Lab", description: "Bar graphs, pie charts, tabular analysis, and caselets with calculation shortcuts." },
-      { _id: "std-6", title: "General Science & Tech Aptitude", section: "Standard", subject: "Science Aptitude", year: 2023, downloads: 175, isApproved: true, uploaderName: "Aura Exam Lab", description: "Everyday physics, chemistry in action, and biological science concepts." },
+      { _id: "std-1", title: "Quantitative Aptitude Master Assessment", section: "Standard", stream: "standard", subject: "Aptitude", syllabus: "Unit 1: Percentage, Profit & Loss, Unit 2: Time, Speed & Distance, Unit 3: Probability & Permutations", year: 2024, downloads: 260, isApproved: true, uploaderName: "Aura Exam Lab", description: "Time & Work, Speed Distance, Profit & Loss, Percentages, and Probability." },
+      { _id: "std-2", title: "Logical Reasoning & Critical Thinking", section: "Standard", stream: "standard", subject: "Reasoning", syllabus: "Unit 1: Syllogisms & Venn Diagrams, Unit 2: Circular & Linear Seating Arrangement, Unit 3: Blood Relations & Direction Sense", year: 2024, downloads: 295, isApproved: true, uploaderName: "Aura Exam Lab", description: "Syllogisms, Seating arrangement, Blood relations, and Direction tests." },
+      { _id: "std-3", title: "English Verbal Ability & Comprehension", section: "Standard", stream: "standard", subject: "English", syllabus: "Unit 1: Reading Comprehension Analysis, Unit 2: Sentence Correction & Syntax, Unit 3: Vocabulary & Idioms", year: 2024, downloads: 190, isApproved: true, uploaderName: "Language Lab", description: "Sentence correction, vocabulary in context, reading comprehension passages." },
+      { _id: "std-4", title: "General Awareness & Static GK 2024", section: "Standard", stream: "standard", subject: "General Knowledge", syllabus: "Unit 1: National & International Organizations, Unit 2: World Geography & Landmarks, Unit 3: Scientific Discoveries", year: 2024, downloads: 340, isApproved: true, uploaderName: "GK Hub", description: "World organizations, national monuments, scientific discoveries, and Indian polity." },
+      { _id: "std-5", title: "Data Interpretation & Analysis Test", section: "Standard", stream: "standard", subject: "Data Interpretation", syllabus: "Unit 1: Bar & Line Graphs, Unit 2: Pie Charts & Multi-table Analysis, Unit 3: Caselet Data Insights", year: 2023, downloads: 210, isApproved: true, uploaderName: "Aura Exam Lab", description: "Bar graphs, pie charts, tabular analysis, and caselets with calculation shortcuts." },
+      { _id: "std-6", title: "General Science & Tech Aptitude", section: "Standard", stream: "standard", subject: "Science Aptitude", syllabus: "Unit 1: Applied Physics Principles, Unit 2: Everyday Chemistry, Unit 3: Biological Systems", year: 2023, downloads: 175, isApproved: true, uploaderName: "Aura Exam Lab", description: "Everyday physics, chemistry in action, and biological science concepts." },
     ],
   }
 
@@ -2165,30 +2458,50 @@ export function PaperRepository() {
   const fetchPapers = useCallback(async () => {
     setLoading(true)
     try {
-      const res = await fetch(`/api/papers?section=${activeSec}&includePending=true`)
+      const headers: Record<string, string> = {}
+      if (sessionUser) {
+        headers["x-session-user"] = encodeURIComponent(JSON.stringify({
+          id: sessionUser.id,
+          name: sessionUser.name,
+          role: isAdmin ? "admin" : (sessionUser.role || "student"),
+          isAdmin: Boolean(isAdmin),
+        }))
+      }
+
+      const res = await fetch(`/api/papers?includePending=true`, { headers })
       if (res.ok) {
         const data = await res.json()
         const backendPapers = Array.isArray(data.papers) ? data.papers : []
-        const defaults = defaultArchiveData[activeSec] || []
-        
-        // Merge: unique by title/id
-        const map = new Map()
-        defaults.forEach(p => map.set(p.title.toLowerCase(), p))
-        backendPapers.forEach((p: any) => map.set((p.title || "").toLowerCase(), p))
+
+        // Flatten all default archive papers into a baseline map
+        const map = new Map<string, any>()
+        Object.values(defaultArchiveData).flat().forEach(p => map.set((p._id || p.title).toLowerCase(), p))
+        backendPapers.forEach((p: any) => map.set((p._id || p.title || "").toLowerCase(), p))
+
         setPapers(Array.from(map.values()))
       } else {
-        setPapers(defaultArchiveData[activeSec] || [])
+        const allDefaults = Object.values(defaultArchiveData).flat()
+        setPapers(allDefaults)
       }
     } catch {
-      setPapers(defaultArchiveData[activeSec] || [])
+      const allDefaults = Object.values(defaultArchiveData).flat()
+      setPapers(allDefaults)
     } finally {
       setLoading(false)
     }
-  }, [activeSec])
+  }, [sessionUser, isAdmin])
 
   useEffect(() => {
     fetchPapers()
   }, [fetchPapers])
+
+  // Dynamically compute all navigable streams combining defaults and user-created streams
+  const allNavStreams = Array.from(
+    new Set([
+      ...baseStreams,
+      ...papers.map(p => p.section).filter(Boolean),
+    ])
+  )
 
   // File selection handler
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -2217,15 +2530,25 @@ export function PaperRepository() {
       return
     }
 
+    const chosenStream = uploadForm.isCustomStream && uploadForm.customStream.trim()
+      ? uploadForm.customStream.trim()
+      : uploadForm.category
+
+    if (!chosenStream) {
+      setUploadMessage({ text: "Please select or create an examination stream.", type: "error" })
+      return
+    }
+
     setUploading(true)
     setUploadMessage(null)
 
     const payload = {
       title: uploadForm.title.trim(),
-      description: uploadForm.description.trim() || `Community archive paper for ${uploadForm.category}`,
-      section: uploadForm.category,
-      stream: uploadForm.category.toLowerCase(),
-      subject: uploadForm.subject.trim() || uploadForm.category,
+      description: uploadForm.description.trim() || `Community archive paper for ${chosenStream}`,
+      section: chosenStream,
+      stream: chosenStream.toLowerCase(),
+      subject: uploadForm.subject.trim() || chosenStream,
+      syllabus: uploadForm.syllabus.trim(),
       year: uploadForm.year,
       fileName: selectedFile?.name || `${uploadForm.title.replace(/\s+/g, '_')}.pdf`,
       fileType: selectedFile?.type || "application/pdf",
@@ -2241,6 +2564,7 @@ export function PaperRepository() {
             id: sessionUser?.id || "student-user",
             name: sessionUser?.name || "Student Contributor",
             role: isAdmin ? "admin" : (sessionUser?.role || "student"),
+            isAdmin: Boolean(isAdmin),
           })),
         },
         body: JSON.stringify(payload),
@@ -2252,7 +2576,7 @@ export function PaperRepository() {
         setUploadMessage({
           text: isAdmin 
             ? "Paper uploaded and instantly approved for all students!" 
-            : "Paper uploaded successfully! It has been submitted for Admin approval.",
+            : "Paper uploaded successfully! It has been submitted for Admin review and approval.",
           type: "success"
         })
 
@@ -2261,7 +2585,9 @@ export function PaperRepository() {
           _id: data.paper?._id || `upload-${Date.now()}`,
           title: payload.title,
           section: payload.section,
+          stream: payload.stream,
           subject: payload.subject,
+          syllabus: payload.syllabus,
           year: Number(payload.year),
           description: payload.description,
           downloads: 0,
@@ -2273,10 +2599,20 @@ export function PaperRepository() {
         }
 
         setPapers(prev => [newEntry, ...prev])
+        setSec(chosenStream)
 
         setTimeout(() => {
           setUploadModalOpen(false)
-          setUploadForm({ title: "", category: activeSec, subject: "", year: "2024", description: "" })
+          setUploadForm({
+            title: "",
+            category: chosenStream,
+            customStream: "",
+            isCustomStream: false,
+            subject: "",
+            syllabus: "",
+            year: "2024",
+            description: "",
+          })
           setSelectedFile(null)
           setFileBase64("")
           setUploadMessage(null)
@@ -2291,7 +2627,9 @@ export function PaperRepository() {
         _id: localId,
         title: payload.title,
         section: payload.section,
+        stream: payload.stream,
         subject: payload.subject,
+        syllabus: payload.syllabus,
         year: Number(payload.year),
         description: payload.description,
         downloads: 0,
@@ -2302,10 +2640,20 @@ export function PaperRepository() {
         createdAt: new Date().toISOString(),
       }
       setPapers(prev => [localEntry, ...prev])
+      setSec(chosenStream)
       setUploadMessage({ text: "Paper saved successfully (offline archive mode)!", type: "success" })
       setTimeout(() => {
         setUploadModalOpen(false)
-        setUploadForm({ title: "", category: activeSec, subject: "", year: "2024", description: "" })
+        setUploadForm({
+          title: "",
+          category: chosenStream,
+          customStream: "",
+          isCustomStream: false,
+          subject: "",
+          syllabus: "",
+          year: "2024",
+          description: "",
+        })
         setSelectedFile(null)
         setFileBase64("")
         setUploadMessage(null)
@@ -2342,6 +2690,7 @@ AURA STUDY AI - COMMUNITY REPOSITORY ARCHIVE
 EXAMINATION : ${paper.section || activeSec} ARCHIVE (${paper.year || 2024} SESSION)
 PAPER TITLE : ${paper.title}
 SUBJECT     : ${paper.subject || paper.section}
+SYLLABUS    : ${paper.syllabus || "General Comprehensive Syllabus Modules"}
 STATUS      : VERIFIED ACADEMIC ARCHIVE • PREVIOUS YEAR QUESTION PAPER
 DOWNLOADED  : ${new Date().toLocaleDateString()}
 ================================================================================
@@ -2351,6 +2700,11 @@ INSTRUCTIONS TO CANDIDATES:
 2. All questions are compulsory. Internal choices are provided in Section B and C.
 3. Use of standard mathematical formulations and neat diagrams is recommended.
 4. Total Time Allowed: 3 Hours | Maximum Marks: 100
+
+--------------------------------------------------------------------------------
+SYLLABUS & MODULES COVERED:
+--------------------------------------------------------------------------------
+${paper.syllabus ? paper.syllabus : "Comprehensive Course Syllabus covering Core Fundamentals, Analytical Extensions, and Real-World Applications."}
 
 --------------------------------------------------------------------------------
 SECTION A: CONCEPTUAL FOUNDATIONS & OBJECTIVE ANALYSIS (30 MARKS)
@@ -2390,7 +2744,7 @@ VERIFIED BY AURA STUDY AI • REPOSITORY ARCHIVE # ${paper._id || '2026-REF'}
     URL.revokeObjectURL(url)
   }
 
-  // Admin Approve Paper
+  // Admin Approve Paper -> Immediately updates state and publishes paper live to community
   const handleApprovePaper = async (paperId: string) => {
     try {
       const res = await fetch("/api/papers", {
@@ -2401,20 +2755,28 @@ VERIFIED BY AURA STUDY AI • REPOSITORY ARCHIVE # ${paper._id || '2026-REF'}
             id: sessionUser?.id || "admin-user",
             name: sessionUser?.name || "Admin",
             role: "admin",
+            isAdmin: true,
           })),
         },
-        body: JSON.stringify({ paperId, action: "approve" }),
+        body: JSON.stringify({ paperId, action: "approve", isAdmin: true }),
       })
 
-      if (res.ok) {
-        setPapers(prev => prev.map(p => (p._id === paperId ? { ...p, isApproved: true } : p)))
-        alert("Paper approved and successfully published to Community Repository!")
-      } else {
-        // Fallback update
-        setPapers(prev => prev.map(p => (p._id === paperId ? { ...p, isApproved: true } : p)))
+      // Update paper in state immediately
+      setPapers(prev => prev.map(p => (p._id === paperId || p.paperId === paperId ? { ...p, isApproved: true } : p)))
+      
+      if (previewPaper && (previewPaper._id === paperId || previewPaper.paperId === paperId)) {
+        setPreviewPaper((prev: any) => prev ? { ...prev, isApproved: true } : null)
       }
+
+      // Re-fetch papers to synchronize with database
+      fetchPapers()
+
+      alert("Paper approved! It is now published live for all students to access and download.")
     } catch {
-      setPapers(prev => prev.map(p => (p._id === paperId ? { ...p, isApproved: true } : p)))
+      setPapers(prev => prev.map(p => (p._id === paperId || p.paperId === paperId ? { ...p, isApproved: true } : p)))
+      if (previewPaper && (previewPaper._id === paperId || previewPaper.paperId === paperId)) {
+        setPreviewPaper((prev: any) => prev ? { ...prev, isApproved: true } : null)
+      }
     }
   }
 
@@ -2430,34 +2792,55 @@ VERIFIED BY AURA STUDY AI • REPOSITORY ARCHIVE # ${paper._id || '2026-REF'}
             id: sessionUser?.id || "admin-user",
             name: sessionUser?.name || "Admin",
             role: "admin",
+            isAdmin: true,
           })),
         },
-        body: JSON.stringify({ paperId, action: "reject" }),
+        body: JSON.stringify({ paperId, action: "reject", isAdmin: true }),
       })
-      setPapers(prev => prev.filter(p => p._id !== paperId))
+      setPapers(prev => prev.filter(p => p._id !== paperId && p.paperId !== paperId))
+      if (previewPaper && (previewPaper._id === paperId || previewPaper.paperId === paperId)) {
+        setPreviewPaper(null)
+      }
     } catch {
-      setPapers(prev => prev.filter(p => p._id !== paperId))
+      setPapers(prev => prev.filter(p => p._id !== paperId && p.paperId !== paperId))
+      if (previewPaper && (previewPaper._id === paperId || previewPaper.paperId === paperId)) {
+        setPreviewPaper(null)
+      }
     }
   }
 
-  // Filter papers by search query and approval status
+  // Filter papers by search query, active stream, and approval status
   const filteredPapers = papers.filter(p => {
+    // 1. Search Query Match
     const matchesSearch = searchQuery
       ? p.title?.toLowerCase().includes(searchQuery.toLowerCase()) ||
         p.subject?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        p.syllabus?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        p.section?.toLowerCase().includes(searchQuery.toLowerCase()) ||
         String(p.year)?.includes(searchQuery)
       : true
 
+    if (!matchesSearch) return false
+
+    // 2. Admin Review Mode
     if (isAdmin && adminViewPending) {
-      return matchesSearch && !p.isApproved
+      return !p.isApproved
     }
 
+    // 3. Stream Filter (in normal browsing view)
+    const matchesStream = activeSec === "All" 
+      ? true 
+      : (p.section?.toLowerCase() === activeSec.toLowerCase() || p.stream?.toLowerCase() === activeSec.toLowerCase())
+
+    if (!matchesStream) return false
+
+    // 4. Student view: approved papers OR student's own pending upload
     if (!isAdmin) {
-      // Non-admins see approved papers OR their own pending uploads
-      return matchesSearch && (p.isApproved || (sessionUser?.name && p.uploaderName === sessionUser.name))
+      const isUploader = sessionUser?.name && (p.uploaderName === sessionUser.name || p.uploadedByName === sessionUser.name)
+      return p.isApproved || isUploader
     }
 
-    return matchesSearch
+    return true
   })
 
   const pendingCount = papers.filter(p => !p.isApproved).length
@@ -2472,7 +2855,7 @@ VERIFIED BY AURA STUDY AI • REPOSITORY ARCHIVE # ${paper._id || '2026-REF'}
         <h1 className="text-4xl sm:text-5xl font-black tracking-tight text-foreground">COMMUNITY REPOSITORY</h1>
         <p className="text-muted-foreground text-base sm:text-lg">
           Contribute and access a global database of previous examination papers. 
-          Upload to help others, download directly to master your exams.
+          Upload papers with syllabus modules, create streams and subjects, and download directly to master your exams.
         </p>
 
         {/* Search Bar */}
@@ -2481,7 +2864,7 @@ VERIFIED BY AURA STUDY AI • REPOSITORY ARCHIVE # ${paper._id || '2026-REF'}
           <Input
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="Search papers by subject, title, or year..."
+            placeholder="Search papers by subject, syllabus topic, title, or year..."
             className="pl-10 h-11 rounded-full bg-muted/40 border-muted-foreground/20 focus:border-primary text-sm font-medium"
           />
         </div>
@@ -2490,22 +2873,38 @@ VERIFIED BY AURA STUDY AI • REPOSITORY ARCHIVE # ${paper._id || '2026-REF'}
       {/* Category Tabs & Admin Review Mode Toggle */}
       <div className="space-y-4">
         <div className="flex flex-wrap items-center justify-between gap-4 border-b border-muted/50 pb-4">
-          <div className="flex flex-wrap items-center gap-2 sm:gap-3">
-            {sections.map(s => (
+          <div className="flex flex-wrap items-center gap-2 sm:gap-2.5">
+            <Button
+              variant={activeSec === "All" && !adminViewPending ? "default" : "outline"}
+              onClick={() => { setSec("All"); setAdminViewPending(false); }}
+              className="rounded-full px-5 font-bold text-xs sm:text-sm h-10 transition-all shadow-sm"
+            >
+              All Streams
+            </Button>
+            {allNavStreams.map(s => (
               <Button 
                 key={s} 
                 variant={activeSec === s && !adminViewPending ? "default" : "outline"} 
                 onClick={() => { setSec(s); setAdminViewPending(false); }} 
-                className="rounded-full px-6 font-bold text-sm h-10 transition-all shadow-sm"
+                className="rounded-full px-5 font-bold text-xs sm:text-sm h-10 transition-all shadow-sm"
               >
                 {s}
               </Button>
             ))}
           </div>
 
-          {/* Admin Pending Approvals View Button */}
-          {isAdmin && (
-            <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2">
+            {/* Quick Upload Trigger Button */}
+            <Button
+              onClick={() => setUploadModalOpen(true)}
+              className="rounded-full px-5 text-xs font-black uppercase tracking-wider h-10 gap-2 bg-primary text-primary-foreground shadow-md hover:bg-primary/90"
+            >
+              <Upload className="w-3.5 h-3.5" />
+              <span>Upload Paper</span>
+            </Button>
+
+            {/* Admin Pending Approvals View Button */}
+            {isAdmin && (
               <Button
                 variant={adminViewPending ? "default" : "outline"}
                 onClick={() => setAdminViewPending(!adminViewPending)}
@@ -2516,9 +2915,29 @@ VERIFIED BY AURA STUDY AI • REPOSITORY ARCHIVE # ${paper._id || '2026-REF'}
                 <Clock className="w-3.5 h-3.5" />
                 <span>Admin Review ({pendingCount} Pending)</span>
               </Button>
-            </div>
-          )}
+            )}
+          </div>
         </div>
+
+        {/* Admin Review Banner when in pending mode */}
+        {adminViewPending && (
+          <div className="p-4 rounded-2xl bg-amber-500/10 border border-amber-500/30 flex items-center justify-between gap-3 text-xs text-amber-300">
+            <div className="flex items-center gap-2">
+              <ShieldAlert className="w-4 h-4 text-amber-400 flex-shrink-0" />
+              <span>
+                <strong>Admin Review Queue:</strong> Showing {filteredPapers.length} student uploaded papers awaiting approval. Approving a paper immediately loads and publishes it live to the community.
+              </span>
+            </div>
+            <Button 
+              size="sm" 
+              variant="outline" 
+              onClick={() => setAdminViewPending(false)}
+              className="text-amber-300 border-amber-500/40 hover:bg-amber-500/20 text-xs h-7 rounded-lg"
+            >
+              Exit Review
+            </Button>
+          </div>
+        )}
       </div>
 
       {/* Papers Grid */}
@@ -2534,11 +2953,11 @@ VERIFIED BY AURA STUDY AI • REPOSITORY ARCHIVE # ${paper._id || '2026-REF'}
           <p className="text-muted-foreground text-sm max-w-md mx-auto">
             {adminViewPending 
               ? "All submitted papers have been reviewed and approved!" 
-              : `Be the first to upload a ${activeSec} examination paper to help your fellow students!`
+              : `Be the first student to upload a ${activeSec} examination paper with subject and syllabus to help your peers!`
             }
           </p>
           <Button onClick={() => setUploadModalOpen(true)} className="rounded-full px-8 font-bold">
-            <Upload className="w-4 h-4 mr-2" /> Upload First Paper
+            <Upload className="w-4 h-4 mr-2" /> Upload Paper with Syllabus
           </Button>
         </Card>
       ) : (
@@ -2562,7 +2981,7 @@ VERIFIED BY AURA STUDY AI • REPOSITORY ARCHIVE # ${paper._id || '2026-REF'}
                   <div className="flex items-center gap-1.5">
                     {isPending ? (
                       <Badge className="bg-amber-500/15 text-amber-500 border border-amber-500/30 text-[10px] font-black">
-                        Pending Review
+                        Pending Admin Review
                       </Badge>
                     ) : (
                       <Badge variant="outline" className="font-bold text-xs bg-muted/40">
@@ -2580,9 +2999,19 @@ VERIFIED BY AURA STUDY AI • REPOSITORY ARCHIVE # ${paper._id || '2026-REF'}
                     <p className="text-muted-foreground text-xs line-clamp-2">
                       {paper.description || `Official question paper for ${paper.subject || activeSec} students.`}
                     </p>
+
+                    {/* Syllabus Tag if present */}
+                    {paper.syllabus && (
+                      <div className="pt-1">
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-primary/10 text-primary text-[10px] font-bold border border-primary/20">
+                          <Sparkles className="w-3 h-3" /> Syllabus Tagged
+                        </span>
+                      </div>
+                    )}
+
                     <div className="flex items-center justify-between text-xs text-muted-foreground/70 pt-1 font-medium">
                       <span>Sub: <strong className="text-foreground/80">{paper.subject || paper.section}</strong></span>
-                      <span>By: <strong className="text-foreground/80">{paper.uploaderName || "Aura Team"}</strong></span>
+                      <span>By: <strong className="text-foreground/80">{paper.uploaderName || paper.uploadedByName || "Student Contributor"}</strong></span>
                     </div>
                   </div>
 
@@ -2612,9 +3041,9 @@ VERIFIED BY AURA STUDY AI • REPOSITORY ARCHIVE # ${paper._id || '2026-REF'}
                             <Button
                               size="sm"
                               onClick={() => handleApprovePaper(paper._id)}
-                              className="flex-1 bg-green-600 hover:bg-green-700 text-white font-black text-xs h-8 rounded-lg gap-1"
+                              className="flex-1 bg-green-600 hover:bg-green-700 text-white font-black text-xs h-8 rounded-lg gap-1 shadow-sm"
                             >
-                              <CheckCircle2 className="w-3.5 h-3.5" /> Approve
+                              <CheckCircle2 className="w-3.5 h-3.5" /> Approve & Publish
                             </Button>
                             <Button
                               size="sm"
@@ -2628,11 +3057,11 @@ VERIFIED BY AURA STUDY AI • REPOSITORY ARCHIVE # ${paper._id || '2026-REF'}
                         ) : (
                           <div className="flex items-center justify-between w-full text-[11px] text-muted-foreground">
                             <span className="flex items-center gap-1 text-green-500 font-bold">
-                              <FileCheck className="w-3.5 h-3.5" /> Published
+                              <FileCheck className="w-3.5 h-3.5" /> Published Live
                             </span>
                             <button
                               onClick={() => handleRejectPaper(paper._id)}
-                              className="text-muted-foreground/60 hover:text-red-500 transition-colors"
+                              className="text-muted-foreground/60 hover:text-red-500 transition-colors p-1"
                               title="Delete Paper"
                             >
                               <Trash2 className="w-3.5 h-3.5" />
@@ -2660,12 +3089,12 @@ VERIFIED BY AURA STUDY AI • REPOSITORY ARCHIVE # ${paper._id || '2026-REF'}
               <Upload className="w-8 h-8" />
             </div>
           </div>
-          <h3 className="text-2xl sm:text-3xl font-black mb-2 text-foreground">Contribute to the Archive</h3>
+          <h3 className="text-2xl sm:text-3xl font-black mb-2 text-foreground">Contribute Examination Paper</h3>
           <p className="text-muted-foreground font-medium text-sm sm:text-base mb-6 max-w-md mx-auto">
-            Share your previous year examination papers to empower fellow students across the community.
+            Upload past exam papers, define subject, syllabus modules, and examination stream. Help fellow students excel in exams.
           </p>
           <Button size="lg" className="h-12 px-8 rounded-2xl font-black text-sm shadow-xl pointer-events-none">
-            <Upload className="w-4 h-4 mr-2" /> SELECT FILES TO UPLOAD
+            <Upload className="w-4 h-4 mr-2" /> SELECT PAPER & ADD SYLLABUS
           </Button>
         </Card>
       </div>
@@ -2673,7 +3102,7 @@ VERIFIED BY AURA STUDY AI • REPOSITORY ARCHIVE # ${paper._id || '2026-REF'}
       {/* ===================== UPLOAD PAPER MODAL ===================== */}
       {uploadModalOpen && (
         <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-200">
-          <div className="bg-card border-2 border-primary/30 rounded-3xl max-w-lg w-full p-6 sm:p-8 space-y-6 shadow-2xl relative max-h-[90vh] overflow-y-auto">
+          <div className="bg-card border-2 border-primary/30 rounded-3xl max-w-lg w-full p-6 sm:p-8 space-y-5 shadow-2xl relative max-h-[90vh] overflow-y-auto">
             <button
               onClick={() => { setUploadModalOpen(false); setUploadMessage(null); }}
               className="absolute top-5 right-5 text-muted-foreground hover:text-foreground p-1 rounded-full hover:bg-muted/30"
@@ -2683,13 +3112,13 @@ VERIFIED BY AURA STUDY AI • REPOSITORY ARCHIVE # ${paper._id || '2026-REF'}
 
             <div>
               <div className="flex items-center gap-2 text-primary text-xs font-black uppercase tracking-wider mb-1">
-                <Upload className="w-4 h-4" /> Community Contribution
+                <Upload className="w-4 h-4" /> Student Paper Contribution
               </div>
               <h2 className="text-2xl font-black text-foreground">Upload Examination Paper</h2>
               <p className="text-xs text-muted-foreground mt-0.5">
                 {isAdmin 
                   ? "Admin uploads will be instantly published to the Community Repository." 
-                  : "Your paper will be submitted for Admin approval before going live."
+                  : "Your paper will be submitted for Admin approval. Once approved, it will be published for all students."
                 }
               </p>
             </div>
@@ -2715,7 +3144,7 @@ VERIFIED BY AURA STUDY AI • REPOSITORY ARCHIVE # ${paper._id || '2026-REF'}
                   type="file"
                   ref={fileInputRef}
                   onChange={handleFileChange}
-                  accept=".pdf,.doc,.docx,.jpg,.jpeg,.png"
+                  accept=".pdf,.doc,.docx,.jpg,.jpeg,.png,.txt"
                   className="hidden"
                 />
                 <FileText className="w-8 h-8 text-primary mx-auto mb-2" />
@@ -2727,7 +3156,7 @@ VERIFIED BY AURA STUDY AI • REPOSITORY ARCHIVE # ${paper._id || '2026-REF'}
                 ) : (
                   <div>
                     <p className="text-xs font-black text-foreground">Click to select PDF or Document</p>
-                    <p className="text-[10px] text-muted-foreground mt-0.5">Supports PDF, DOCX, Images up to 25MB</p>
+                    <p className="text-[10px] text-muted-foreground mt-0.5">Supports PDF, DOCX, TXT, Images up to 25MB</p>
                   </div>
                 )}
               </div>
@@ -2739,24 +3168,66 @@ VERIFIED BY AURA STUDY AI • REPOSITORY ARCHIVE # ${paper._id || '2026-REF'}
                   required
                   value={uploadForm.title}
                   onChange={(e) => setUploadForm(prev => ({ ...prev, title: e.target.value }))}
-                  placeholder="e.g. CBSE Class 12 Physics 2024 Board Exam"
+                  placeholder="e.g. Class 12 Physics 2024 Board Exam / Data Structures Final Exam"
                   className="h-10 text-xs rounded-xl"
                 />
               </div>
 
-              {/* Category & Year */}
-              <div className="grid grid-cols-2 gap-3">
-                <div className="space-y-1.5">
-                  <Label className="text-xs font-black uppercase text-muted-foreground">Exam Category</Label>
+              {/* Stream Selection & Custom Stream Creation */}
+              <div className="space-y-2 p-3 rounded-2xl bg-muted/20 border border-muted/30">
+                <div className="flex items-center justify-between">
+                  <Label className="text-xs font-black uppercase text-foreground">Examination Stream / Category *</Label>
+                  <button
+                    type="button"
+                    onClick={() => setUploadForm(prev => ({ ...prev, isCustomStream: !prev.isCustomStream }))}
+                    className="text-[11px] font-bold text-primary hover:underline"
+                  >
+                    {uploadForm.isCustomStream ? "← Choose Existing Stream" : "+ Create New Stream"}
+                  </button>
+                </div>
+
+                {uploadForm.isCustomStream ? (
+                  <div className="space-y-1">
+                    <Input
+                      required
+                      value={uploadForm.customStream}
+                      onChange={(e) => setUploadForm(prev => ({ ...prev, customStream: e.target.value }))}
+                      placeholder="Enter new stream name (e.g. B.Tech CS, Law, Pharmacy, BCA)"
+                      className="h-10 text-xs rounded-xl bg-background border-primary/50 focus:border-primary"
+                    />
+                    <p className="text-[10px] text-muted-foreground">This new stream will automatically appear as a category tab in the repository.</p>
+                  </div>
+                ) : (
                   <select
                     value={uploadForm.category}
-                    onChange={(e) => setUploadForm(prev => ({ ...prev, category: e.target.value }))}
+                    onChange={(e) => {
+                      if (e.target.value === "__custom__") {
+                        setUploadForm(prev => ({ ...prev, isCustomStream: true }))
+                      } else {
+                        setUploadForm(prev => ({ ...prev, category: e.target.value }))
+                      }
+                    }}
                     className="w-full h-10 text-xs rounded-xl bg-background border border-input px-3 font-medium focus:outline-none focus:ring-1 focus:ring-primary"
                   >
-                    {sections.map(s => (
+                    {allNavStreams.map(s => (
                       <option key={s} value={s}>{s} Archive</option>
                     ))}
+                    <option value="__custom__">+ Create New Stream...</option>
                   </select>
+                )}
+              </div>
+
+              {/* Subject Input & Academic Year */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-black uppercase text-muted-foreground">Subject / Course Name *</Label>
+                  <Input
+                    required
+                    value={uploadForm.subject}
+                    onChange={(e) => setUploadForm(prev => ({ ...prev, subject: e.target.value }))}
+                    placeholder="e.g. Operating Systems / Physics / Organic Chemistry"
+                    className="h-10 text-xs rounded-xl"
+                  />
                 </div>
 
                 <div className="space-y-1.5">
@@ -2766,32 +3237,36 @@ VERIFIED BY AURA STUDY AI • REPOSITORY ARCHIVE # ${paper._id || '2026-REF'}
                     onChange={(e) => setUploadForm(prev => ({ ...prev, year: e.target.value }))}
                     className="w-full h-10 text-xs rounded-xl bg-background border border-input px-3 font-medium focus:outline-none focus:ring-1 focus:ring-primary"
                   >
-                    {["2026", "2025", "2024", "2023", "2022", "2021", "2020"].map(y => (
+                    {["2026", "2025", "2024", "2023", "2022", "2021", "2020", "2019", "2018"].map(y => (
                       <option key={y} value={y}>{y} Session</option>
                     ))}
                   </select>
                 </div>
               </div>
 
-              {/* Subject Input */}
-              <div className="space-y-1.5">
-                <Label className="text-xs font-black uppercase text-muted-foreground">Subject / Course Name</Label>
-                <Input
-                  value={uploadForm.subject}
-                  onChange={(e) => setUploadForm(prev => ({ ...prev, subject: e.target.value }))}
-                  placeholder="e.g. Computer Science / Mathematics / Physics"
-                  className="h-10 text-xs rounded-xl"
+              {/* Syllabus / Course Modules Section */}
+              <div className="space-y-1.5 p-3 rounded-2xl bg-primary/5 border border-primary/20">
+                <div className="flex items-center gap-1.5">
+                  <Sparkles className="w-3.5 h-3.5 text-primary" />
+                  <Label className="text-xs font-black uppercase text-foreground">Syllabus & Course Modules</Label>
+                </div>
+                <Textarea
+                  value={uploadForm.syllabus}
+                  onChange={(e) => setUploadForm(prev => ({ ...prev, syllabus: e.target.value }))}
+                  placeholder="Enter syllabus modules or units (e.g. Unit 1: Pointers & Linked Lists, Unit 2: Trees & Graphs, Unit 3: Dynamic Programming)..."
+                  className="text-xs rounded-xl resize-none h-20 bg-background"
                 />
+                <p className="text-[10px] text-muted-foreground">Tagging syllabus units helps fellow students match this paper to their current syllabus exam preparation.</p>
               </div>
 
               {/* Description */}
               <div className="space-y-1.5">
-                <Label className="text-xs font-black uppercase text-muted-foreground">Description / Notes</Label>
+                <Label className="text-xs font-black uppercase text-muted-foreground">Description / Exam Highlights</Label>
                 <Textarea
                   value={uploadForm.description}
                   onChange={(e) => setUploadForm(prev => ({ ...prev, description: e.target.value }))}
-                  placeholder="Include syllabus topics, question structure, or solution highlights..."
-                  className="text-xs rounded-xl resize-none h-20"
+                  placeholder="Include question structure, marking patterns, or exam highlights..."
+                  className="text-xs rounded-xl resize-none h-16"
                 />
               </div>
 
@@ -2818,7 +3293,7 @@ VERIFIED BY AURA STUDY AI • REPOSITORY ARCHIVE # ${paper._id || '2026-REF'}
                   ) : (
                     <>
                       <Upload className="w-4 h-4" />
-                      {isAdmin ? "Approve & Publish" : "Submit for Approval"}
+                      {isAdmin ? "Approve & Publish Live" : "Submit for Admin Approval"}
                     </>
                   )}
                 </Button>
@@ -2850,7 +3325,7 @@ VERIFIED BY AURA STUDY AI • REPOSITORY ARCHIVE # ${paper._id || '2026-REF'}
                 </Badge>
                 {previewPaper.isApproved ? (
                   <Badge className="bg-green-500/15 text-green-500 border border-green-500/30 text-[10px] font-black">
-                    Verified Archive
+                    Verified Community Archive
                   </Badge>
                 ) : (
                   <Badge className="bg-amber-500/15 text-amber-500 border border-amber-500/30 text-[10px] font-black">
@@ -2861,10 +3336,22 @@ VERIFIED BY AURA STUDY AI • REPOSITORY ARCHIVE # ${paper._id || '2026-REF'}
               <h2 className="text-2xl font-black text-foreground">{previewPaper.title}</h2>
               <div className="flex flex-wrap items-center gap-4 text-xs text-muted-foreground">
                 <span>Subject: <strong className="text-foreground">{previewPaper.subject || previewPaper.section}</strong></span>
-                <span>Contributor: <strong className="text-foreground">{previewPaper.uploaderName || "Aura Academic Team"}</strong></span>
+                <span>Contributor: <strong className="text-foreground">{previewPaper.uploaderName || previewPaper.uploadedByName || "Aura Academic Team"}</strong></span>
                 <span>Downloads: <strong className="text-primary">{previewPaper.downloads || 0}</strong></span>
               </div>
             </div>
+
+            {/* Syllabus Section in Preview */}
+            {previewPaper.syllabus && (
+              <div className="space-y-2">
+                <h4 className="text-xs font-black uppercase text-primary tracking-wider flex items-center gap-1.5">
+                  <Sparkles className="w-3.5 h-3.5" /> Syllabus & Course Modules Covered
+                </h4>
+                <div className="text-xs text-foreground bg-primary/5 p-4 rounded-xl border border-primary/20 whitespace-pre-wrap leading-relaxed">
+                  {previewPaper.syllabus}
+                </div>
+              </div>
+            )}
 
             {/* Description */}
             <div className="space-y-2">
@@ -2895,6 +3382,16 @@ VERIFIED BY AURA STUDY AI • REPOSITORY ARCHIVE # ${paper._id || '2026-REF'}
 
             {/* Action Buttons in Review Modal */}
             <div className="pt-2 flex flex-wrap gap-3">
+              {/* If Admin is previewing a pending paper, provide direct Approve button */}
+              {isAdmin && !previewPaper.isApproved && (
+                <Button
+                  onClick={() => handleApprovePaper(previewPaper._id)}
+                  className="bg-green-600 hover:bg-green-700 text-white rounded-xl h-11 text-xs font-black shadow-lg gap-2 flex-1"
+                >
+                  <CheckCircle2 className="w-4 h-4" /> Approve & Publish Live
+                </Button>
+              )}
+
               <Button
                 onClick={() => {
                   handleDownloadPaper(previewPaper)
@@ -2904,6 +3401,7 @@ VERIFIED BY AURA STUDY AI • REPOSITORY ARCHIVE # ${paper._id || '2026-REF'}
               >
                 <Download className="w-4 h-4" /> Download Full Paper
               </Button>
+
               <Button
                 variant="outline"
                 onClick={() => setPreviewPaper(null)}

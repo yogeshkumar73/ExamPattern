@@ -122,8 +122,14 @@ export default function ExamAnalyzer() {
   const [difficulty, setDifficulty] = useState("Standard")
   const [paperFormat, setPaperFormat] = useState("Academic Standard")
   const [questionCount, setQuestionCount] = useState(6)
-  const [outputTypes, setOutputTypes] = useState<string[]>(["mcq", "written"])
+  const [outputTypes, setOutputTypes] = useState<string[]>([])
   const [hybridMode, setHybridMode] = useState(true)
+
+  // Direct paste states for two boxes
+  const [syllabusInputMode, setSyllabusInputMode] = useState<"upload" | "paste">("upload")
+  const [paperInputMode, setPaperInputMode] = useState<"upload" | "paste">("upload")
+  const [manualPaperText, setManualPaperText] = useState<string>("")
+  const [manualPaperName, setManualPaperName] = useState<string>("Historical Paper")
 
   // Step 3 Subtab
   const [resultsTab, setResultsTab] = useState<"topics" | "predictions" | "report">("topics")
@@ -237,15 +243,46 @@ export default function ExamAnalyzer() {
     setIsProcessing(true)
     setError(null)
     try {
+      const fName = (file.name || "").toLowerCase()
+      const fType = (file.type || "").toLowerCase()
+
+      // Direct client-side reading for text files (instant & offline-friendly)
+      if (
+        fType.startsWith("text/") ||
+        /\.(txt|md|markdown|json|csv|rtf|log|tex|py|js|ts|html)$/i.test(fName)
+      ) {
+        const directText = await file.text()
+        if (directText && directText.trim().length > 0) {
+          setSyllabusText(directText)
+          setIsProcessing(false)
+          return
+        }
+      }
+
+      // Serverless extraction via /api/extract-text
       const formData = new FormData()
       formData.append("file", file)
       const response = await fetch("/api/extract-text", { method: "POST", body: formData })
-      if (!response.ok) throw new Error("Extraction failed")
       const data = await response.json()
-      setSyllabusText(data.text)
+
+      if (response.ok && data.text && data.text.trim().length > 0) {
+        setSyllabusText(data.text)
+      } else {
+        // Fallback: direct text read from file in browser
+        const directFallback = await file.text()
+        if (directFallback && directFallback.trim().length > 30) {
+          setSyllabusText(directFallback)
+        } else {
+          throw new Error(data.error || "Extraction failed")
+        }
+      }
     } catch (err: any) {
-      setError("Failed to extract syllabus. Please try a different file.")
-      console.error(err)
+      console.error("[Syllabus Upload Error]:", err)
+      setError(
+        err?.message && err.message !== "Extraction failed"
+          ? err.message
+          : "Failed to extract syllabus text automatically. Please verify your file or use the 'Paste Syllabus' option."
+      )
     } finally {
       setIsProcessing(false)
     }
@@ -255,24 +292,51 @@ export default function ExamAnalyzer() {
     setIsProcessing(true)
     setError(null)
     try {
-      const formData = new FormData()
-      formData.append("file", file)
-      const response = await fetch("/api/extract-text", { method: "POST", body: formData })
-      if (!response.ok) throw new Error("Extraction failed")
-      const data = await response.json()
-      
+      const fName = (file.name || "").toLowerCase()
+      const fType = (file.type || "").toLowerCase()
+      let paperText = ""
+
+      if (
+        fType.startsWith("text/") ||
+        /\.(txt|md|markdown|json|csv|rtf|log|tex|py|js|ts|html)$/i.test(fName)
+      ) {
+        paperText = await file.text()
+      }
+
+      if (!paperText || paperText.trim().length === 0) {
+        const formData = new FormData()
+        formData.append("file", file)
+        const response = await fetch("/api/extract-text", { method: "POST", body: formData })
+        const data = await response.json()
+
+        if (response.ok && data.text && data.text.trim().length > 0) {
+          paperText = data.text
+        } else {
+          const directFallback = await file.text()
+          if (directFallback && directFallback.trim().length > 30) {
+            paperText = directFallback
+          } else {
+            throw new Error(data.error || "Extraction failed")
+          }
+        }
+      }
+
       const newPaper: HistoricalPaperItem = {
         id: `p_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
         name: file.name.replace(/\.[^/.]+$/, ""),
         academicYear: activePaperYear,
-        text: data.text,
-        charCount: data.text.length
+        text: paperText,
+        charCount: paperText.length,
       }
 
       setPapers(prev => [...prev, newPaper])
     } catch (err: any) {
-      setError("Failed to extract historical paper. Please verify file integrity.")
-      console.error(err)
+      console.error("[Historical Paper Upload Error]:", err)
+      setError(
+        err?.message && err.message !== "Extraction failed"
+          ? err.message
+          : "Failed to extract historical paper. Please verify file integrity or use 'Paste Paper'."
+      )
     } finally {
       setIsProcessing(false)
     }
@@ -280,6 +344,19 @@ export default function ExamAnalyzer() {
 
   const removePaper = (id: string) => {
     setPapers(prev => prev.filter(p => p.id !== id))
+  }
+
+  const handleAddManualPaper = () => {
+    if (!manualPaperText.trim()) return
+    const newPaper: HistoricalPaperItem = {
+      id: `p_manual_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+      name: manualPaperName.trim() || `Historical Paper ${activePaperYear}`,
+      academicYear: activePaperYear,
+      text: manualPaperText.trim(),
+      charCount: manualPaperText.trim().length,
+    }
+    setPapers(prev => [...prev, newPaper])
+    setManualPaperText("")
   }
 
   const handleAnalyze = async () => {
@@ -362,15 +439,15 @@ export default function ExamAnalyzer() {
           <TabsList className="grid w-full max-w-3xl grid-cols-3 p-1 h-12 sm:h-16 bg-muted/30 backdrop-blur-md rounded-xl sm:rounded-2xl border shadow-2xl">
             <TabsTrigger value="upload" className="rounded-lg sm:rounded-xl data-[state=active]:bg-background data-[state=active]:shadow-lg text-xs sm:text-sm md:text-base font-semibold px-1 sm:px-3">
               <Layers className="w-4 h-4 sm:w-5 sm:h-5 mr-1 sm:mr-2" />
-              <span className="truncate">1. Input Data</span>
+              <span className="truncate">1. Input Syllabus & Paper</span>
             </TabsTrigger>
             <TabsTrigger value="analyze" disabled={!syllabusText} className="rounded-lg sm:rounded-xl data-[state=active]:bg-background data-[state=active]:shadow-lg text-xs sm:text-sm md:text-base font-semibold px-1 sm:px-3">
               <Zap className="w-4 h-4 sm:w-5 sm:h-5 mr-1 sm:mr-2" />
-              <span className="truncate">2. Review & Config</span>
+              <span className="truncate">2. Compare & Configure</span>
             </TabsTrigger>
             <TabsTrigger value="predict" disabled={!analysisResult} className="rounded-lg sm:rounded-xl data-[state=active]:bg-background data-[state=active]:shadow-lg text-xs sm:text-sm md:text-base font-semibold px-1 sm:px-3">
               <Sparkles className="w-4 h-4 sm:w-5 sm:h-5 mr-1 sm:mr-2" />
-              <span className="truncate">3. Predictions</span>
+              <span className="truncate">3. Practice Predictions</span>
             </TabsTrigger>
           </TabsList>
         </div>
@@ -378,27 +455,66 @@ export default function ExamAnalyzer() {
         {/* ── STEP 1: INPUT DATA (Syllabus & Historical Papers) ────────────────── */}
         <TabsContent value="upload" className="mt-0 space-y-8">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-            {/* Syllabus Card */}
+            {/* Box 1: Syllabus Card */}
             <Card className="border-2 bg-card/40 backdrop-blur shadow-2xl relative overflow-hidden group transition-all hover:border-primary/50">
               <div className="absolute top-0 right-0 p-4 opacity-5 pointer-events-none">
                 <BookOpen className="w-32 h-32" />
               </div>
               <CardHeader>
-                <CardTitle className="flex items-center gap-2 text-2xl font-bold">
-                  <BookOpen className="w-6 h-6 text-primary" />
-                  Official Syllabus
-                </CardTitle>
-                <CardDescription>Upload course syllabus for topic and unit hierarchy extraction</CardDescription>
+                <div className="flex items-center justify-between">
+                  <CardTitle className="flex items-center gap-2 text-xl sm:text-2xl font-bold">
+                    <BookOpen className="w-6 h-6 text-primary" />
+                    Box 1: Official Syllabus
+                  </CardTitle>
+                  <div className="flex gap-1 bg-muted/40 p-1 rounded-xl border text-[11px] font-bold">
+                    <button
+                      type="button"
+                      onClick={() => setSyllabusInputMode("upload")}
+                      className={`px-2.5 py-1 rounded-lg transition-colors ${
+                        syllabusInputMode === "upload" ? "bg-primary text-primary-foreground shadow" : "text-muted-foreground hover:text-foreground"
+                      }`}
+                    >
+                      File Upload
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setSyllabusInputMode("paste")}
+                      className={`px-2.5 py-1 rounded-lg transition-colors ${
+                        syllabusInputMode === "paste" ? "bg-primary text-primary-foreground shadow" : "text-muted-foreground hover:text-foreground"
+                      }`}
+                    >
+                      Paste Text
+                    </button>
+                  </div>
+                </div>
+                <CardDescription>Upload or paste course syllabus for topic and unit hierarchy extraction</CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
-                {isProcessing && !syllabusText ? (
-                  <div className="py-20 flex flex-col items-center">
-                    <Spinner className="w-12 h-12 mb-4 text-primary" />
-                    <p className="font-bold text-primary animate-pulse">Scanning Syllabus Units...</p>
-                  </div>
+                {syllabusInputMode === "upload" ? (
+                  isProcessing && !syllabusText ? (
+                    <div className="py-20 flex flex-col items-center">
+                      <Spinner className="w-12 h-12 mb-4 text-primary" />
+                      <p className="font-bold text-primary animate-pulse">Scanning Syllabus Units...</p>
+                    </div>
+                  ) : (
+                    <FileUpload 
+                      id="syllabus-file-upload" 
+                      title="Upload Course Syllabus"
+                      description="Drag & drop or browse PDF, TXT, or Image"
+                      onFileUpload={handleSyllabusUpload} 
+                    />
+                  )
                 ) : (
-                  <FileUpload onFileUpload={handleSyllabusUpload} />
+                  <div className="space-y-2">
+                    <Textarea 
+                      placeholder="Paste your course syllabus here (Unit 1, Unit 2, topics, learning outcomes)..."
+                      value={syllabusText}
+                      onChange={(e) => setSyllabusText(e.target.value)}
+                      className="min-h-[220px] font-mono text-xs rounded-2xl border-2"
+                    />
+                  </div>
                 )}
+
                 {syllabusText && (
                   <div className="p-4 bg-primary/10 border border-primary/20 rounded-2xl flex items-center justify-between text-primary animate-in slide-in-from-top-2">
                     <div className="flex items-center gap-3">
@@ -409,64 +525,119 @@ export default function ExamAnalyzer() {
                       </div>
                     </div>
                     <Button variant="ghost" size="sm" onClick={() => setSyllabusText("")} className="text-xs text-destructive hover:bg-destructive/10">
-                      Remove
+                      Clear
                     </Button>
                   </div>
                 )}
               </CardContent>
             </Card>
 
-            {/* Historical Papers Card */}
+            {/* Box 2: Historical Papers Card */}
             <Card className="border-2 bg-card/40 backdrop-blur shadow-2xl relative overflow-hidden group transition-all hover:border-blue-500/50">
               <div className="absolute top-0 right-0 p-4 opacity-5 pointer-events-none">
                 <History className="w-32 h-32 text-blue-500" />
               </div>
               <CardHeader>
-                <CardTitle className="flex items-center justify-between text-2xl font-bold">
-                  <div className="flex items-center gap-2">
+                <div className="flex items-center justify-between">
+                  <CardTitle className="flex items-center gap-2 text-xl sm:text-2xl font-bold">
                     <History className="w-6 h-6 text-blue-500" />
-                    Historical Papers
+                    Box 2: Past Exam Papers
+                  </CardTitle>
+                  <div className="flex gap-1 bg-muted/40 p-1 rounded-xl border text-[11px] font-bold">
+                    <button
+                      type="button"
+                      onClick={() => setPaperInputMode("upload")}
+                      className={`px-2.5 py-1 rounded-lg transition-colors ${
+                        paperInputMode === "upload" ? "bg-blue-600 text-white shadow" : "text-muted-foreground hover:text-foreground"
+                      }`}
+                    >
+                      File Upload
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setPaperInputMode("paste")}
+                      className={`px-2.5 py-1 rounded-lg transition-colors ${
+                        paperInputMode === "paste" ? "bg-blue-600 text-white shadow" : "text-muted-foreground hover:text-foreground"
+                      }`}
+                    >
+                      Paste Text
+                    </button>
                   </div>
-                  <Badge variant="outline" className="text-xs border-blue-500/30 text-blue-500">
-                    {papers.length} Uploaded
-                  </Badge>
-                </CardTitle>
-                <CardDescription>Upload past exam papers tagged by academic year for pattern matching</CardDescription>
+                </div>
+                <CardDescription>Upload or paste past exam papers tagged by academic year for pattern matching</CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
-                {/* Academic Year Selector Before Upload */}
-                <div className="p-3.5 rounded-2xl bg-muted/40 border flex items-center justify-between gap-4">
-                  <div className="flex items-center gap-2 text-xs font-bold text-muted-foreground">
-                    <Calendar className="w-4 h-4 text-blue-500" /> Academic Exam Year:
+                {/* Academic Year Selector & Paper Details */}
+                <div className="p-3.5 rounded-2xl bg-muted/40 border grid grid-cols-1 sm:grid-cols-2 gap-3 items-center">
+                  <div className="flex items-center gap-2">
+                    <Calendar className="w-4 h-4 text-blue-500 flex-shrink-0" />
+                    <Label className="text-xs font-bold text-muted-foreground">Exam Year:</Label>
+                    <Select value={String(activePaperYear)} onValueChange={(val) => setActivePaperYear(Number(val))}>
+                      <SelectTrigger className="h-8 rounded-xl border bg-background font-bold text-xs flex-1">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="2025">2025 Paper</SelectItem>
+                        <SelectItem value="2024">2024 Paper</SelectItem>
+                        <SelectItem value="2023">2023 Paper</SelectItem>
+                        <SelectItem value="2022">2022 Paper</SelectItem>
+                        <SelectItem value="2021">2021 Paper</SelectItem>
+                        <SelectItem value="2020">2020 Paper</SelectItem>
+                      </SelectContent>
+                    </Select>
                   </div>
-                  <Select value={String(activePaperYear)} onValueChange={(val) => setActivePaperYear(Number(val))}>
-                    <SelectTrigger className="w-36 h-9 rounded-xl border bg-background font-bold text-xs">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="2025">2025 Paper</SelectItem>
-                      <SelectItem value="2024">2024 Paper</SelectItem>
-                      <SelectItem value="2023">2023 Paper</SelectItem>
-                      <SelectItem value="2022">2022 Paper</SelectItem>
-                      <SelectItem value="2021">2021 Paper</SelectItem>
-                      <SelectItem value="2020">2020 Paper</SelectItem>
-                    </SelectContent>
-                  </Select>
+                  <div className="flex items-center gap-2">
+                    <Input 
+                      placeholder="Paper Name (e.g. Midterm / Final)"
+                      value={manualPaperName}
+                      onChange={(e) => setManualPaperName(e.target.value)}
+                      className="h-8 text-xs rounded-xl"
+                    />
+                  </div>
                 </div>
 
-                {isProcessing && papers.length === 0 ? (
-                  <div className="py-20 flex flex-col items-center">
-                    <Spinner className="w-12 h-12 mb-4 text-blue-500" />
-                    <p className="font-bold text-blue-500 animate-pulse">Extracting Paper Text...</p>
-                  </div>
+                {paperInputMode === "upload" ? (
+                  isProcessing && papers.length === 0 ? (
+                    <div className="py-20 flex flex-col items-center">
+                      <Spinner className="w-12 h-12 mb-4 text-blue-500" />
+                      <p className="font-bold text-blue-500 animate-pulse">Extracting Paper Text...</p>
+                    </div>
+                  ) : (
+                    <FileUpload 
+                      id="historical-paper-file-upload" 
+                      title="Upload Past Exam Paper"
+                      description="Drag & drop or browse PDF, TXT, or Image"
+                      onFileUpload={handleHistoricalPaperUpload} 
+                    />
+                  )
                 ) : (
-                  <FileUpload onFileUpload={handleHistoricalPaperUpload} />
+                  <div className="space-y-2">
+                    <Textarea 
+                      placeholder="Paste past exam paper questions, sections, or marks breakdown here..."
+                      value={manualPaperText}
+                      onChange={(e) => setManualPaperText(e.target.value)}
+                      className="min-h-[160px] font-mono text-xs rounded-2xl border-2"
+                    />
+                    <Button 
+                      onClick={handleAddManualPaper}
+                      disabled={!manualPaperText.trim()}
+                      size="sm"
+                      className="w-full rounded-xl text-xs font-bold bg-blue-600 hover:bg-blue-700 text-white"
+                    >
+                      <Plus className="w-4 h-4 mr-1.5" /> Add Past Paper to Pattern Context
+                    </Button>
+                  </div>
                 )}
 
                 {/* Uploaded Papers List */}
                 {papers.length > 0 && (
                   <div className="space-y-2 pt-2">
-                    <div className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Uploaded Exam Cycles:</div>
+                    <div className="flex items-center justify-between text-xs font-bold uppercase tracking-wider text-muted-foreground">
+                      <span>Loaded Past Exam Papers ({papers.length}):</span>
+                      <Badge variant="outline" className="text-[10px] text-blue-500 border-blue-500/30">
+                        {papers.reduce((sum, p) => sum + p.charCount, 0).toLocaleString()} chars total
+                      </Badge>
+                    </div>
                     <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
                       {papers.map((p) => (
                         <div key={p.id} className="p-3 rounded-2xl bg-muted/30 border flex items-center justify-between gap-3 text-xs">
@@ -475,7 +646,7 @@ export default function ExamAnalyzer() {
                               {p.academicYear}
                             </Badge>
                             <span className="font-bold truncate">{p.name}</span>
-                            <span className="text-muted-foreground font-mono text-[10px] flex-shrink-0">({p.charCount} chars)</span>
+                            <span className="text-muted-foreground font-mono text-[10px] flex-shrink-0">({p.charCount.toLocaleString()} chars)</span>
                           </div>
                           <Button variant="ghost" size="icon" onClick={() => removePaper(p.id)} className="h-7 w-7 text-muted-foreground hover:text-destructive rounded-lg flex-shrink-0">
                             <Trash2 className="w-3.5 h-3.5" />
@@ -496,57 +667,98 @@ export default function ExamAnalyzer() {
               disabled={!syllabusText}
               className="h-14 sm:h-16 px-8 sm:px-16 rounded-2xl shadow-2xl shadow-primary/30 gap-3 text-base sm:text-xl font-black bg-gradient-to-r from-primary to-blue-600 hover:scale-105 transition-transform"
             >
-              Review & Configure <ChevronRight className="w-5 h-5 sm:w-6 sm:h-6" />
+              Compare Syllabus & Paper <ChevronRight className="w-5 h-5 sm:w-6 sm:h-6" />
             </Button>
           </div>
         </TabsContent>
 
-        {/* ── STEP 2: REVIEW & CONFIGURE ──────────────────────────────────────── */}
-        <TabsContent value="analyze" className="mt-0">
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-            <div className="lg:col-span-2 space-y-8">
-              <Card className="shadow-2xl border-2 border-primary/20 overflow-hidden rounded-3xl">
-                <CardHeader className="bg-primary/5 p-5 border-b flex flex-row items-center justify-between">
-                  <div>
-                    <CardTitle className="text-lg sm:text-xl flex items-center gap-2">
-                      <ShieldCheck className="w-5 h-5 text-primary" />
-                      Editable Syllabus & Paper Inputs
-                    </CardTitle>
-                    <CardDescription className="text-xs">Inspect and adjust raw context before triggering multivariable analysis</CardDescription>
-                  </div>
-                  <Badge variant="outline" className="bg-green-500/10 text-green-500 border-green-500/20 px-3 font-bold text-xs">
-                    Multi-Paper Ready ({papers.length} Papers)
+        {/* ── STEP 2: REVIEW, COMPARE & CONFIGURE ─────────────────────────────── */}
+        <TabsContent value="analyze" className="mt-0 space-y-8">
+          {/* Comparative Alignment Banner */}
+          <Card className="border-2 border-primary/20 bg-muted/20 rounded-3xl overflow-hidden shadow-xl">
+            <CardHeader className="bg-primary/5 border-b p-5">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div>
+                  <div className="text-[10px] font-black uppercase tracking-widest text-primary">Multivariable Analysis Engine</div>
+                  <CardTitle className="text-xl sm:text-2xl font-black flex items-center gap-2">
+                    <TrendingUp className="w-6 h-6 text-primary" />
+                    Syllabus & Past Paper Comparison
+                  </CardTitle>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Badge variant="outline" className="bg-green-500/10 text-green-500 border-green-500/30 px-3 py-1 font-bold text-xs">
+                    ✓ Syllabus Ready ({syllabusText.length.toLocaleString()} chars)
                   </Badge>
-                </CardHeader>
+                  <Badge variant="outline" className={`px-3 py-1 font-bold text-xs ${
+                    papers.length > 0 
+                      ? "bg-blue-500/10 text-blue-500 border-blue-500/30" 
+                      : "bg-amber-500/10 text-amber-500 border-amber-500/30"
+                  }`}>
+                    {papers.length > 0 ? `✓ ${papers.length} Past Paper(s) Loaded` : "⚠️ Past Paper Optional"}
+                  </Badge>
+                </div>
+              </div>
+              <CardDescription className="text-xs pt-1">
+                Inspect and compare both inputs side-by-side. Check your desired practice suites and create the pattern blueprint.
+              </CardDescription>
+            </CardHeader>
+          </Card>
 
-                <CardContent className="pt-6 space-y-6">
-                  {/* Editable Syllabus */}
-                  <div className="space-y-2">
-                    <div className="flex items-center justify-between">
-                      <Label className="text-sm font-black uppercase tracking-wider text-primary">Editable Official Syllabus</Label>
-                      <span className="text-xs text-muted-foreground font-mono">{syllabusText.length} chars</span>
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+            {/* Left 2 Columns: Side-by-Side Comparison of Syllabus & Past Paper */}
+            <div className="lg:col-span-2 space-y-6">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                {/* Official Syllabus Column */}
+                <Card className="shadow-lg border-2 border-primary/20 rounded-3xl overflow-hidden">
+                  <CardHeader className="bg-primary/5 p-4 border-b flex flex-row items-center justify-between">
+                    <div className="flex items-center gap-2 font-black text-sm text-primary">
+                      <BookOpen className="w-4 h-4" /> Official Syllabus
                     </div>
+                    <Badge variant="secondary" className="text-[10px] font-mono">
+                      {syllabusText.length.toLocaleString()} chars
+                    </Badge>
+                  </CardHeader>
+                  <CardContent className="p-4 space-y-2">
+                    <Label className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider">
+                      Editable Syllabus Content:
+                    </Label>
                     <Textarea 
                       value={syllabusText}
                       onChange={(e) => setSyllabusText(e.target.value)}
                       placeholder="Syllabus content (units, modules, topics)..."
-                      className="min-h-[220px] font-mono text-xs leading-relaxed border-2 rounded-2xl"
+                      className="min-h-[280px] font-mono text-xs leading-relaxed border-2 rounded-2xl"
                     />
-                  </div>
+                  </CardContent>
+                </Card>
 
-                  {/* Historical Papers Quick Overview */}
-                  <div className="space-y-2">
-                    <Label className="text-sm font-black uppercase tracking-wider text-blue-500">Historical Paper Context</Label>
+                {/* Historical Paper Column */}
+                <Card className="shadow-lg border-2 border-blue-500/20 rounded-3xl overflow-hidden">
+                  <CardHeader className="bg-blue-500/5 p-4 border-b flex flex-row items-center justify-between">
+                    <div className="flex items-center gap-2 font-black text-sm text-blue-500">
+                      <History className="w-4 h-4" /> Past Exam Paper Context
+                    </div>
+                    <Badge variant="secondary" className="text-[10px] font-mono">
+                      {papers.length} paper(s) • {papers.reduce((sum, p) => sum + p.charCount, 0).toLocaleString()} chars
+                    </Badge>
+                  </CardHeader>
+                  <CardContent className="p-4 space-y-3">
                     {papers.length > 0 ? (
-                      <div className="space-y-2">
-                        {papers.map((p, idx) => (
-                          <div key={p.id} className="p-3.5 rounded-2xl bg-muted/30 border space-y-2">
+                      <div className="space-y-3 max-h-[310px] overflow-y-auto pr-1">
+                        {papers.map((p) => (
+                          <div key={p.id} className="p-3 rounded-2xl bg-muted/30 border space-y-2">
                             <div className="flex items-center justify-between">
                               <span className="font-bold text-xs flex items-center gap-2">
                                 <Badge className="bg-blue-600 text-white font-black text-[10px]">{p.academicYear}</Badge>
                                 {p.name}
                               </span>
-                              <span className="text-[10px] text-muted-foreground font-mono">{p.text.length} chars</span>
+                              <Button 
+                                variant="ghost" 
+                                size="sm" 
+                                onClick={() => removePaper(p.id)}
+                                className="h-6 w-6 p-0 text-muted-foreground hover:text-destructive"
+                              >
+                                <Trash2 className="w-3 h-3" />
+                              </Button>
                             </div>
                             <Textarea 
                               value={p.text}
@@ -560,33 +772,58 @@ export default function ExamAnalyzer() {
                         ))}
                       </div>
                     ) : (
-                      <div className="p-4 rounded-2xl bg-amber-500/10 border border-amber-500/20 text-xs text-amber-500 font-medium">
-                        ⚠️ No past paper uploaded. Analysis will be generated from core syllabus requirements. For historical pattern matching, upload at least one past paper in Step 1.
+                      <div className="p-6 rounded-2xl bg-amber-500/10 border border-amber-500/20 text-xs text-amber-500 font-medium space-y-3 text-center">
+                        <div>
+                          ⚠️ No past paper uploaded in Step 1.
+                        </div>
+                        <p className="text-[11px] text-muted-foreground">
+                          You can paste past paper questions right here to compare and match patterns with your syllabus:
+                        </p>
+                        <Textarea 
+                          placeholder="Paste past exam paper questions here..."
+                          value={manualPaperText}
+                          onChange={(e) => setManualPaperText(e.target.value)}
+                          className="min-h-[100px] text-xs font-mono rounded-xl bg-background text-foreground"
+                        />
+                        <Button 
+                          onClick={handleAddManualPaper} 
+                          disabled={!manualPaperText.trim()}
+                          size="sm" 
+                          className="w-full rounded-xl text-xs font-bold bg-blue-600 hover:bg-blue-700 text-white"
+                        >
+                          <Plus className="w-3.5 h-3.5 mr-1" /> Add Past Paper for Comparison
+                        </Button>
                       </div>
                     )}
-                  </div>
+                  </CardContent>
+                </Card>
+              </div>
 
-                  {/* Examiner Constraints */}
-                  <div className="space-y-2">
-                    <Label className="text-sm font-bold">Specific Examiner Constraints / Focus Areas</Label>
-                    <Textarea 
-                      placeholder="e.g. Prioritize Unit 2 and Unit 3, include at least two 10-mark questions, emphasize architectural trade-offs..."
-                      value={requirements}
-                      onChange={(e) => setRequirements(e.target.value)}
-                      className="min-h-[80px] border-2 rounded-xl text-xs"
-                    />
-                  </div>
+              {/* Examiner Constraints */}
+              <Card className="shadow-md border-2 border-primary/20 rounded-3xl overflow-hidden">
+                <CardHeader className="bg-primary/5 p-4 border-b">
+                  <CardTitle className="text-sm font-bold flex items-center gap-2">
+                    <Settings2 className="w-4 h-4 text-primary" /> Specific Examiner Constraints & Requirements
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="p-4">
+                  <Textarea 
+                    placeholder="e.g. Prioritize Unit 2 and Unit 3, include at least two 10-mark questions, emphasize architectural trade-offs..."
+                    value={requirements}
+                    onChange={(e) => setRequirements(e.target.value)}
+                    className="min-h-[70px] border rounded-xl text-xs font-medium"
+                  />
                 </CardContent>
               </Card>
             </div>
 
-            {/* Generation Console Sidebar */}
+            {/* Right Column: Execution Console Sidebar with Clickable Checkboxes */}
             <Card className="shadow-2xl border-2 border-primary/20 bg-muted/20 sticky top-24 h-fit rounded-3xl">
               <CardHeader className="bg-primary/5 border-b p-5">
                 <CardTitle className="text-lg font-black flex items-center gap-2">
                   <Settings2 className="w-5 h-5 text-primary" /> Execution Console
                 </CardTitle>
-                <CardDescription className="text-xs">Blueprint configuration parameters</CardDescription>
+                <CardDescription className="text-xs">Select options and create pattern blueprint</CardDescription>
               </CardHeader>
               <CardContent className="p-5 space-y-6">
                 {/* Target Year */}
@@ -645,32 +882,52 @@ export default function ExamAnalyzer() {
                   <Slider value={[questionCount]} min={2} max={20} step={1} onValueChange={(val) => setQuestionCount(val[0])} />
                 </div>
 
-                {/* Output Modules */}
+                {/* Output Modules Checkboxes (User chooses and clicks, no autofill) */}
                 <div className="space-y-2">
-                  <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Output Suites</Label>
+                  <div className="flex justify-between items-center text-xs">
+                    <Label className="font-bold uppercase tracking-wider text-muted-foreground">Select Output Suites</Label>
+                    <span className="text-[10px] font-bold text-muted-foreground">
+                      {outputTypes.length === 0 ? "Choose at least 1" : `${outputTypes.length} Selected`}
+                    </span>
+                  </div>
                   <div className="grid grid-cols-1 gap-2">
                     {[
-                      { id: "mcq", label: "Objective Suite (MCQ)", icon: "🎯" },
-                      { id: "written", label: "Subjective Suite (Theory)", icon: "📝" },
-                    ].map((type) => (
-                      <div 
-                        key={type.id} 
-                        className={`flex items-center justify-between p-3 rounded-xl border-2 transition-all cursor-pointer text-xs ${
-                          outputTypes.includes(type.id) ? "border-primary bg-primary/10" : "border-border bg-background"
-                        }`} 
-                        onClick={() => toggleOutputType(type.id)}
-                      >
-                        <div className="flex items-center gap-2 font-bold">
-                          <span>{type.icon}</span>
-                          <span>{type.label}</span>
+                      { id: "mcq", label: "Objective Suite (MCQ Practice)", icon: "🎯" },
+                      { id: "written", label: "Subjective Suite (Theory Practice)", icon: "📝" },
+                    ].map((type) => {
+                      const isChecked = outputTypes.includes(type.id)
+                      return (
+                        <div 
+                          key={type.id} 
+                          onClick={() => toggleOutputType(type.id)}
+                          className={`flex items-center justify-between p-3.5 rounded-xl border-2 transition-all text-xs cursor-pointer select-none ${
+                            isChecked ? "border-primary bg-primary/10 shadow-sm" : "border-border bg-background hover:border-primary/40"
+                          }`} 
+                        >
+                          <div className="flex items-center gap-2.5 font-bold flex-1 pointer-events-none">
+                            <span className="text-base">{type.icon}</span>
+                            <span>{type.label}</span>
+                          </div>
+                          <div onClick={(e) => e.stopPropagation()}>
+                            <Checkbox 
+                              id={`output-${type.id}`}
+                              checked={isChecked} 
+                              onCheckedChange={() => toggleOutputType(type.id)}
+                              className="data-[state=checked]:bg-primary cursor-pointer h-5 w-5"
+                            />
+                          </div>
                         </div>
-                        <Checkbox checked={outputTypes.includes(type.id)} />
-                      </div>
-                    ))}
+                      )
+                    })}
                   </div>
+                  {outputTypes.length === 0 && (
+                    <p className="text-[11px] text-amber-500 font-medium">
+                      ⚠️ Please click and choose which suite(s) to generate.
+                    </p>
+                  )}
                 </div>
 
-                {/* Execute Button */}
+                {/* Execute / Create Button */}
                 <Button 
                   onClick={handleAnalyze} 
                   disabled={isProcessing || outputTypes.length === 0}
@@ -678,11 +935,15 @@ export default function ExamAnalyzer() {
                 >
                   {isProcessing ? (
                     <>
-                      <Spinner className="mr-2 h-5 w-5" /> EXECUTING PATTERN ENGINE...
+                      <Spinner className="mr-2 h-5 w-5" /> COMPARING & CREATING BLUEPRINT...
+                    </>
+                  ) : outputTypes.length === 0 ? (
+                    <>
+                      <CheckSquare className="mr-2 h-5 w-5" /> SELECT SUITE(S) ABOVE
                     </>
                   ) : (
                     <>
-                      <Brain className="mr-2 h-5 w-5" /> GENERATE PATTERN ANALYSIS
+                      <Brain className="mr-2 h-5 w-5" /> CREATE PATTERN BLUEPRINT
                     </>
                   )}
                 </Button>

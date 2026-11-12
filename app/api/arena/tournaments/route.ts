@@ -75,6 +75,11 @@ export async function POST(req: NextRequest) {
       avatar,
       tournamentId,
       inviteCode,
+      matchDuration,
+      expiryHours,
+      expiresAt,
+      questionsPerMatch,
+      rules,
     } = body;
 
     if (!action) {
@@ -94,6 +99,10 @@ export async function POST(req: NextRequest) {
         const eventStartTime = scheduledStartTime ? new Date(scheduledStartTime) : (startTime ? new Date(startTime) : new Date());
         const generatedCode = `TRN-${Math.random().toString(36).substring(2, 8).toUpperCase()}`;
         const hasPwd = Boolean(password && password.trim());
+        const durationSec = Number(matchDuration) || 300;
+        const expHours = Number(expiryHours) || 24;
+        const calculatedExpiresAt = expiresAt ? new Date(expiresAt) : new Date(Date.now() + expHours * 3600 * 1000);
+        const qCount = Number(questionsPerMatch) || 10;
 
         let cleanTournamentName = (name || '').trim();
         if (!cleanTournamentName || cleanTournamentName.includes('@')) {
@@ -106,6 +115,17 @@ export async function POST(req: NextRequest) {
           mode,
           difficulty: difficulty || 'intermediate',
           maxParticipants: Number(maxParticipants) || 8,
+          matchDuration: durationSec,
+          expiryHours: expHours,
+          expiresAt: calculatedExpiresAt,
+          questionsPerMatch: qCount,
+          rules: rules || {
+            timePerQuestion: 30,
+            pointsPerCorrect: 100,
+            penaltyPerWrong: 0,
+            allowBots: true,
+            customRules: '',
+          },
           prizeXP: pool,
           prizePool: pool,
           startTime: eventStartTime,
@@ -237,14 +257,39 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // Host Control: Manually start tournament early if >= 2 participants
-    if (action === 'start_tournament') {
+    // Host Control: Manually start tournament early or fill empty slots with bots
+    if (action === 'start_tournament' || action === 'fill_bots') {
       const { tournamentId, userId } = body;
       const tournament = await Tournament.findById(tournamentId);
       if (!tournament) return NextResponse.json({ error: 'Tournament not found' }, { status: 404 });
 
       if (tournament.createdBy !== userId) {
         return NextResponse.json({ error: 'Only the hosting user can start this tournament' }, { status: 403 });
+      }
+
+      const BOT_POOL = [
+        'Pradip [AI Bot]', 'Nova [AI Bot]', 'CyberFalcon [AI Bot]', 'QuantumMind [AI Bot]',
+        'Viper [AI Bot]', 'AlphaCode [AI Bot]', 'ChromaKnight [AI Bot]', 'LogicMaster [AI Bot]',
+        'MatrixPro [AI Bot]', 'ShadowRival [AI Bot]', 'ByteStriker [AI Bot]', 'ApexPredator [AI Bot]'
+      ];
+
+      // Auto-fill remaining empty slots with AI bots if requested or if slots remain
+      if (action === 'fill_bots' || tournament.participants.length < (tournament.maxParticipants || 8)) {
+        const targetCount = tournament.maxParticipants || 8;
+        const currentCount = tournament.participants.length;
+        const needed = Math.max(0, targetCount - currentCount);
+
+        for (let i = 0; i < needed; i++) {
+          const botName = BOT_POOL[(currentCount + i) % BOT_POOL.length];
+          tournament.participants.push({
+            userId: `bot-${Date.now()}-${i}-${Math.random().toString(36).substring(2, 6)}`,
+            name: botName,
+            avatar: `https://ui-avatars.com/api/?name=${encodeURIComponent(botName)}&background=6366f1&color=fff`,
+            seed: currentCount + i + 1,
+            score: 0,
+            eliminated: false,
+          });
+        }
       }
 
       if (tournament.participants.length < 2) {
@@ -264,12 +309,15 @@ export async function POST(req: NextRequest) {
           player1Name: participants[i].name,
           player2Id: participants[i + 1]?.userId || null,
           player2Name: participants[i + 1]?.name || null,
+          player1Score: 0,
+          player2Score: 0,
           winnerId: null,
           battleId: `battle-${Date.now()}-${i}`,
           status: 'pending',
         });
       }
       tournament.bracket = bracket;
+      tournament.currentRound = 1;
       await tournament.save();
 
       return NextResponse.json({ success: true, tournament });
@@ -346,6 +394,24 @@ export async function PUT(req: NextRequest) {
       // Update participant scores
       if (player1) player1.score = (player1.score || 0) + (player1Score || 0);
       if (player2) player2.score = (player2.score || 0) + (player2Score || 0);
+
+      // Reward match winner if not a bot
+      if (winnerId && !winnerId.startsWith('bot-')) {
+        try {
+          const winnerUser = await User.findById(winnerId);
+          if (winnerUser) {
+            const winXP = 300;
+            const winCoins = 100;
+            winnerUser.xp = (winnerUser.xp || 0) + winXP;
+            winnerUser.coins = (winnerUser.coins || 0) + winCoins;
+            winnerUser.arenaPoints = (winnerUser.arenaPoints || 0) + 50;
+            winnerUser.wins = (winnerUser.wins || 0) + 1;
+            await winnerUser.save();
+          }
+        } catch (uErr) {
+          console.error('Failed to update winner user in tournament match:', uErr);
+        }
+      }
 
       // Mark loser as eliminated
       const loserId = matchObj.player1Id === winnerId ? matchObj.player2Id : matchObj.player1Id;

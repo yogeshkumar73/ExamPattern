@@ -17,18 +17,21 @@ import bcrypt from 'bcryptjs';
 
 export async function POST(req: Request) {
   try {
-    const initSecret = process.env.ADMIN_INIT_SECRET;
+    const initSecret = process.env.ADMIN_INIT_SECRET || process.env.ADMIN_SESSION_SECRET;
     const providedSecret = req.headers.get("x-admin-init-secret");
 
-    // In production, block unauthorized initialization
-    if (process.env.NODE_ENV === "production" && (!initSecret || providedSecret !== initSecret)) {
+    // Strictly enforce secret in production or if initSecret is configured
+    if ((process.env.NODE_ENV === "production" || initSecret) && (!providedSecret || providedSecret !== initSecret)) {
       return NextResponse.json(
-        { error: "Forbidden: Admin initialization is restricted in production environment." },
+        { error: "Forbidden: Admin initialization requires a valid x-admin-init-secret header." },
         { status: 403 }
       );
     }
 
-    const { email, password, name } = await req.json();
+    const body = await req.json().catch(() => ({}));
+    const email = typeof body.email === "string" ? body.email.trim().toLowerCase() : "";
+    const password = typeof body.password === "string" ? body.password : "";
+    const name = typeof body.name === "string" ? body.name.trim() : "";
 
     if (!email || !password || !name) {
       return NextResponse.json(
@@ -37,10 +40,10 @@ export async function POST(req: Request) {
       );
     }
 
-    // Password validation
-    if (password.length < 6) {
+    // Password validation: at least 8 characters
+    if (password.length < 8) {
       return NextResponse.json(
-        { error: 'Password must be at least 6 characters' },
+        { error: 'Password must be at least 8 characters for admin security' },
         { status: 400 }
       );
     }
