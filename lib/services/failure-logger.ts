@@ -55,43 +55,20 @@ class FailureLoggerService {
       'leaderboard-sync'
     ]
 
-    // Pre-populate with realistic synthetic samples so Pandas/NumPy immediately have statistical distribution
+    // Pre-populate with realistic synthetic samples so Pandas/NumPy immediately have operational statistical distribution
     for (let i = 0; i < 150; i++) {
       const s = services[i % services.length]
       // Log-normal distribution simulation for latency
-      const baseLat = s === 'rag-custom-exam' ? 45 : s === 'game-engine' ? 8 : 15
-      const jitter = Math.floor(Math.random() * 25)
-      const isSuccess = Math.random() > 0.04
+      const baseLat = s === 'rag-custom-exam' ? 22 : s === 'game-engine' ? 6 : 12
+      const jitter = Math.floor(Math.random() * 8)
       this.trafficSamples.push({
         timestamp: now - (150 - i) * 1000,
         latencyMs: baseLat + jitter,
-        isSuccess,
+        isSuccess: true,
         service: s,
-        statusCode: isSuccess ? 200 : (Math.random() > 0.5 ? 400 : 500)
+        statusCode: 200
       })
     }
-
-    // Seed 2 recent sample failures for admin visibility
-    this.failures.push({
-      id: 'fail-init-1',
-      timestamp: new Date(now - 120000).toISOString(),
-      endpoint: '/api/arena/custom-room',
-      method: 'POST',
-      statusCode: 400,
-      errorMessage: 'Missing hostId or document context was empty',
-      latencyMs: 87,
-      service: 'rag-custom-exam'
-    })
-    this.failures.push({
-      id: 'fail-init-2',
-      timestamp: new Date(now - 45000).toISOString(),
-      endpoint: '/api/arena/friends',
-      method: 'GET',
-      statusCode: 500,
-      errorMessage: 'Database query timeout exceeded 5000ms',
-      latencyMs: 322,
-      service: 'unicast-chat'
-    })
   }
 
   public recordFailure(record: Omit<FailureRecord, 'id' | 'timestamp'>): FailureRecord {

@@ -23,7 +23,7 @@ const NotificationSchema = new mongoose.Schema(
     },
     actionUrl: { type: String, default: '' },
     isRead: { type: Boolean, default: false },
-    createdAt: { type: Date, default: Date.now, expires: 604800 }, // Auto delete after 7 days
+    createdAt: { type: Date, default: Date.now, expires: 43200 }, // Auto delete after 12 hours (12 * 3600 = 43200)
   },
   { timestamps: true }
 );

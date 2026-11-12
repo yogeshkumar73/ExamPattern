@@ -38,6 +38,7 @@ import {
   Menu,
   ChevronDown,
   BookOpen,
+  Gift,
   GraduationCap,
   Home as HomeIcon,
 } from "lucide-react";
@@ -582,6 +583,9 @@ const currentIndex = useMemo(
                   <MenubarItem onClick={() => setStep("profile")} className="cursor-pointer gap-2 font-medium">
                     <User className="text-primary h-4 w-4" /> View Student Profile
                   </MenubarItem>
+                  <MenubarItem onClick={() => setStep("profile")} className="cursor-pointer gap-2 font-medium text-amber-500">
+                    <Gift className="text-amber-500 h-4 w-4" /> Invite & Earn 200 🪙
+                  </MenubarItem>
                   <MenubarSeparator />
                   <MenubarItem onClick={handleSignOut} className="cursor-pointer gap-2 text-destructive font-medium">
                     <LogOut className="h-4 w-4" /> Sign Out
@@ -671,36 +675,56 @@ const currentIndex = useMemo(
                       Academic & AI Systems
                     </div>
                     <Button
-                      variant={currentStep === "home" ? "default" : "ghost"}
-                      className="w-full justify-start gap-3 h-11 text-sm font-bold text-primary hover:text-primary rounded-xl"
+                      variant="ghost"
+                      className={`w-full justify-start gap-3 h-11 text-sm font-bold rounded-xl transition-all ${
+                        currentStep === "home"
+                          ? "bg-primary/15 border border-primary/25 text-primary font-black shadow-xs"
+                          : "text-muted-foreground hover:text-foreground hover:bg-muted/40"
+                      }`}
                       onClick={() => { setStep("home"); setIsMobileMenuOpen(false); }}
                     >
-                      <HomeIcon className="h-4 w-4" /> Home Landing Overview
+                      <HomeIcon className="h-4 w-4 text-primary" /> Home Landing Overview
                     </Button>
                     <Button
-                      variant={currentStep === "upload" || currentStep === "analyze" || currentStep === "predict" ? "default" : "ghost"}
-                      className="w-full justify-start gap-3 h-11 text-sm font-bold text-amber-500 hover:text-amber-600 rounded-xl"
+                      variant="ghost"
+                      className={`w-full justify-start gap-3 h-11 text-sm font-bold rounded-xl transition-all ${
+                        currentStep === "upload" || currentStep === "analyze" || currentStep === "predict"
+                          ? "bg-amber-500/15 border border-amber-500/25 text-amber-400 font-black shadow-xs"
+                          : "text-amber-500 hover:text-amber-400 hover:bg-amber-500/10"
+                      }`}
                       onClick={() => { setStep("upload"); setIsMobileMenuOpen(false); }}
                     >
                       <GraduationCap className="h-4 w-4" /> Exam Pattern Analyzer
                     </Button>
                     <Button
-                      variant={currentStep === "arena" ? "default" : "ghost"}
-                      className="w-full justify-start gap-3 h-11 text-sm font-bold text-rose-500 hover:text-rose-600 rounded-xl"
+                      variant="ghost"
+                      className={`w-full justify-start gap-3 h-11 text-sm font-bold rounded-xl transition-all ${
+                        currentStep === "arena"
+                          ? "bg-rose-500/15 border border-rose-500/25 text-rose-400 font-black shadow-xs"
+                          : "text-rose-500 hover:text-rose-400 hover:bg-rose-500/10"
+                      }`}
                       onClick={() => { setStep("arena"); setIsMobileMenuOpen(false); }}
                     >
                       <Swords className="h-4 w-4" /> Battle Arena
                     </Button>
                     <Button
-                      variant={currentStep === "lab" ? "default" : "ghost"}
-                      className="w-full justify-start gap-3 h-11 text-sm font-bold text-indigo-500 hover:text-indigo-600 rounded-xl"
+                      variant="ghost"
+                      className={`w-full justify-start gap-3 h-11 text-sm font-bold rounded-xl transition-all ${
+                        currentStep === "lab"
+                          ? "bg-indigo-500/15 border border-indigo-500/25 text-indigo-400 font-black shadow-xs"
+                          : "text-indigo-500 hover:text-indigo-400 hover:bg-indigo-500/10"
+                      }`}
                       onClick={() => { setStep("lab"); setIsMobileMenuOpen(false); }}
                     >
                       <Brain className="h-4 w-4" /> Smart Lab
                     </Button>
                     <Button
-                      variant={currentStep === "guider" ? "default" : "ghost"}
-                      className="w-full justify-start gap-3 h-11 text-sm font-bold text-green-500 hover:text-green-600 rounded-xl"
+                      variant="ghost"
+                      className={`w-full justify-start gap-3 h-11 text-sm font-bold rounded-xl transition-all ${
+                        currentStep === "guider"
+                          ? "bg-green-500/15 border border-green-500/25 text-green-400 font-black shadow-xs"
+                          : "text-green-500 hover:text-green-400 hover:bg-green-500/10"
+                      }`}
                       onClick={() => { setStep("guider"); setIsMobileMenuOpen(false); }}
                     >
                       <Sparkles className="h-4 w-4" /> AI Guider Agent
@@ -713,29 +737,45 @@ const currentIndex = useMemo(
                       Community & Social
                     </div>
                     <Button
-                      variant={currentStep === "chat" ? "default" : "ghost"}
-                      className="w-full justify-start gap-3 h-11 text-sm font-bold rounded-xl"
+                      variant="ghost"
+                      className={`w-full justify-start gap-3 h-11 text-sm font-bold rounded-xl transition-all ${
+                        currentStep === "chat"
+                          ? "bg-primary/15 border border-primary/25 text-primary font-black shadow-xs"
+                          : "text-muted-foreground hover:text-foreground hover:bg-muted/40"
+                      }`}
                       onClick={() => { setStep("chat"); setIsMobileMenuOpen(false); }}
                     >
                       <MessageSquare className="h-4 w-4 text-primary" /> Community Chat
                     </Button>
                     <Button
-                      variant={currentStep === "community" ? "default" : "ghost"}
-                      className="w-full justify-start gap-3 h-11 text-sm font-bold rounded-xl"
+                      variant="ghost"
+                      className={`w-full justify-start gap-3 h-11 text-sm font-bold rounded-xl transition-all ${
+                        currentStep === "community"
+                          ? "bg-blue-500/15 border border-blue-500/25 text-blue-400 font-black shadow-xs"
+                          : "text-muted-foreground hover:text-foreground hover:bg-muted/40"
+                      }`}
                       onClick={() => { setStep("community"); setIsMobileMenuOpen(false); }}
                     >
                       <Globe className="h-4 w-4 text-blue-500" /> Paper Repository
                     </Button>
                     <Button
-                      variant={currentStep === "community-join" ? "default" : "ghost"}
-                      className="w-full justify-start gap-3 h-11 text-sm font-bold text-green-600 rounded-xl"
+                      variant="ghost"
+                      className={`w-full justify-start gap-3 h-11 text-sm font-bold rounded-xl transition-all ${
+                        currentStep === "community-join"
+                          ? "bg-green-600/15 border border-green-600/25 text-green-500 font-black shadow-xs"
+                          : "text-green-600 hover:text-green-500 hover:bg-green-500/10"
+                      }`}
                       onClick={() => { setStep("community-join"); setIsMobileMenuOpen(false); }}
                     >
                       <MessageSquare className="h-4 w-4" /> Join WhatsApp Group
                     </Button>
                     <Button
-                      variant={currentStep === "feedback" ? "default" : "ghost"}
-                      className="w-full justify-start gap-3 h-11 text-sm font-bold text-orange-500 rounded-xl"
+                      variant="ghost"
+                      className={`w-full justify-start gap-3 h-11 text-sm font-bold rounded-xl transition-all ${
+                        currentStep === "feedback"
+                          ? "bg-orange-500/15 border border-orange-500/25 text-orange-400 font-black shadow-xs"
+                          : "text-orange-500 hover:text-orange-400 hover:bg-orange-500/10"
+                      }`}
                       onClick={() => { setStep("feedback"); setIsMobileMenuOpen(false); }}
                     >
                       <MessageCircle className="h-4 w-4" /> Student Feedback
@@ -749,23 +789,35 @@ const currentIndex = useMemo(
                     </div>
                     {isAdmin && (
                       <Button
-                        variant={currentStep === "admin" ? "default" : "ghost"}
-                        className="w-full justify-start gap-3 h-11 text-sm font-bold text-primary rounded-xl"
+                        variant="ghost"
+                        className={`w-full justify-start gap-3 h-11 text-sm font-bold rounded-xl transition-all ${
+                          currentStep === "admin"
+                            ? "bg-primary/15 border border-primary/25 text-primary font-black shadow-xs"
+                            : "text-primary hover:bg-primary/10"
+                        }`}
                         onClick={() => { setStep("admin"); setIsMobileMenuOpen(false); }}
                       >
                         <ShieldCheck className="h-4 w-4" /> Admin Command Center
                       </Button>
                     )}
                     <Button
-                      variant={currentStep === "policy" ? "default" : "ghost"}
-                      className="w-full justify-start gap-3 h-11 text-sm font-bold rounded-xl"
+                      variant="ghost"
+                      className={`w-full justify-start gap-3 h-11 text-sm font-bold rounded-xl transition-all ${
+                        currentStep === "policy"
+                          ? "bg-white/10 border border-white/20 text-white font-black shadow-xs"
+                          : "text-muted-foreground hover:text-foreground hover:bg-muted/40"
+                      }`}
                       onClick={() => { setStep("policy"); setIsMobileMenuOpen(false); }}
                     >
                       <Scale className="h-4 w-4" /> Platform Policies
                     </Button>
                     <Button
-                      variant={currentStep === "developer" ? "default" : "ghost"}
-                      className="w-full justify-start gap-3 h-11 text-sm font-bold text-muted-foreground rounded-xl"
+                      variant="ghost"
+                      className={`w-full justify-start gap-3 h-11 text-sm font-bold rounded-xl transition-all ${
+                        currentStep === "developer"
+                          ? "bg-white/10 border border-white/20 text-white font-black shadow-xs"
+                          : "text-muted-foreground hover:text-foreground hover:bg-muted/40"
+                      }`}
                       onClick={() => { setStep("developer"); setIsMobileMenuOpen(false); }}
                     >
                       <Settings className="h-4 w-4" /> Developer Section

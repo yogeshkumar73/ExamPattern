@@ -97,21 +97,39 @@ export default function AdminServicesMonitor() {
     setTimeout(() => setNotification(null), 4000)
   }
 
-  const fetchServicesHealth = useCallback(async (isSilent = false) => {
-    if (!isSilent) setLoading(true)
+  const getAuthHeaders = (): Record<string, string> => {
     try {
-      const rawSession = JSON.parse(localStorage.getItem('aura_session') || '{}')
+      let raw: string | null = null
+      let token: string | null = null
+      if (typeof localStorage !== 'undefined') {
+        raw = localStorage.getItem('aura_session')
+        token = localStorage.getItem('aura_session_token')
+      }
+      if (!raw && typeof sessionStorage !== 'undefined') {
+        raw = sessionStorage.getItem('aura_session')
+        token = sessionStorage.getItem('aura_session_token')
+      }
+      const rawSession = JSON.parse(raw || '{}')
       const user = rawSession.user || rawSession
-
+      const adminToken = user?.adminToken || rawSession.adminToken || user?.token || rawSession.token || token || ''
       const headers: Record<string, string> = {
         'x-session-user': encodeURIComponent(JSON.stringify(user)),
       }
-      if (user?.adminToken) {
-        headers['Authorization'] = `Bearer ${user.adminToken}`
+      if (adminToken) {
+        headers['Authorization'] = `Bearer ${adminToken}`
       }
+      return headers
+    } catch {
+      return {}
+    }
+  }
 
+  const fetchServicesHealth = useCallback(async (isSilent = false) => {
+    if (!isSilent) setLoading(true)
+    try {
       const res = await fetch('/api/admin/services-health', {
-        headers,
+        headers: getAuthHeaders(),
+        credentials: 'include',
         cache: 'no-store'
       })
 
@@ -146,20 +164,13 @@ export default function AdminServicesMonitor() {
   const executeControlAction = async (action: string, serviceId?: string) => {
     setActionLoading(`${action}-${serviceId || 'all'}`)
     try {
-      const rawSession = JSON.parse(localStorage.getItem('aura_session') || '{}')
-      const user = rawSession.user || rawSession
-
-      const headers: Record<string, string> = {
-        'Content-Type': 'application/json',
-        'x-session-user': encodeURIComponent(JSON.stringify(user)),
-      }
-      if (user?.adminToken) {
-        headers['Authorization'] = `Bearer ${user.adminToken}`
-      }
-
       const res = await fetch('/api/admin/services-health', {
         method: 'POST',
-        headers,
+        headers: {
+          'Content-Type': 'application/json',
+          ...getAuthHeaders()
+        },
+        credentials: 'include',
         body: JSON.stringify({ action, serviceId }),
       })
 

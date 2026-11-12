@@ -1,5 +1,9 @@
 import { type NextRequest, NextResponse } from "next/server"
 
+export const dynamic = "force-dynamic"
+export const runtime = "nodejs"
+export const maxDuration = 30
+
 // Pure JS stream text extractor as zero-dependency fallback for PDFs
 function extractTextFromRawPdfBuffer(buffer: Buffer): string {
   try {

@@ -64,6 +64,12 @@ export interface IUser extends Document {
   totalAttempted: number;
   accuracy: number;
 
+  // Referral & Team Invite System
+  referralCode?: string;
+  referredBy?: string;
+  referralCount?: number;
+  referralEarnings?: number;
+
   badges: string[];
   achievements?: any[];
 
@@ -221,6 +227,31 @@ const UserSchema = new Schema<IUser>(
     },
 
     coins: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
+
+    // Referral & Team Invite
+    referralCode: {
+      type: String,
+      unique: true,
+      sparse: true,
+      index: true,
+      uppercase: true,
+      trim: true,
+    },
+    referredBy: {
+      type: String,
+      default: "",
+      trim: true,
+    },
+    referralCount: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
+    referralEarnings: {
       type: Number,
       default: 0,
       min: 0,
@@ -516,6 +547,10 @@ UserSchema.pre<IUser>("save", function (next) {
     }
     if (this.isLabApproved === undefined) {
       this.isLabApproved = true;
+    }
+    if (!this.referralCode) {
+      const codeSuffix = Math.random().toString(36).substring(2, 8).toUpperCase();
+      this.referralCode = `TEAM-${codeSuffix}`;
     }
   }
 

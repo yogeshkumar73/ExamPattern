@@ -4,6 +4,7 @@ import React from "react"
 import ExamAnalyzer from "@/components/exam-analyzer"
 import { useNav } from "@/hooks/use-nav"
 import { HomeHeroSlider } from "@/components/home-hero-slider"
+import { HomeStudentEngagement } from "@/components/home-student-engagement"
 import { PracticePlatformShowcase } from "@/components/practice-platform-showcase"
 import { PlatformVision } from "@/components/platform-vision"
 import { VisionSlider } from "@/components/vision-slider"
@@ -55,7 +56,10 @@ export default function Home() {
       {/* 1. Hero Slide Component: Welcomes New Users & Dynamic Feature Redirects */}
       <HomeHeroSlider />
 
-      {/* 2. Practice Platform Showcase: Interactive Compiler, Challenges, & 1v1 PvP Preview */}
+      {/* 2. Real-Time Student Activity Graph, Skill Pie Chart & Top Winners Showcase */}
+      <HomeStudentEngagement />
+
+      {/* 3. Practice Platform Showcase: Interactive Compiler, Challenges, & 1v1 PvP Preview */}
       <PracticePlatformShowcase />
 
       {/* 3. Platform Vision Component: Vasudhaiva Kutumbakam & Future of Student Education */}

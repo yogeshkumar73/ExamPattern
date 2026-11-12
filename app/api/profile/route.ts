@@ -181,6 +181,10 @@ export async function PUT(req: Request) {
           xp: user.xp || userPoints,
           level: user.level || 1,
           coins: user.coins || 0,
+          referralCode: user.referralCode || `TEAM-${String(user._id).substring(18).toUpperCase()}`,
+          referralCount: user.referralCount || 0,
+          referralEarnings: user.referralEarnings || 0,
+          referredBy: user.referredBy || "",
           elo: user.elo || 1200,
           wins: user.wins || 0,
           losses: user.losses || 0,
@@ -329,6 +333,10 @@ export async function GET(req: Request) {
   xp: user.xp ?? 0,
   level: user.level ?? 1,
   coins: user.coins ?? 0,
+  referralCode: user.referralCode ?? `TEAM-${String(user._id || "STUD").substring(0, 6).toUpperCase()}`,
+  referralCount: user.referralCount ?? 0,
+  referralEarnings: user.referralEarnings ?? 0,
+  referredBy: user.referredBy ?? "",
 
   arenaPoints: user.arenaPoints ?? 1200,
 

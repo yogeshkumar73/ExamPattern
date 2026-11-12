@@ -17,6 +17,9 @@ import {
   consumePostLoginRedirect,
 } from "@/lib/session-storage"
 import AdminServicesDashboard from "@/components/admin-services-dashboard"
+import { AdminArenaMonitor } from "@/components/admin-arena-monitor"
+import { AdminPaperVerification } from "@/components/admin-paper-verification"
+import { AdminGameEngineDashboard } from "@/components/admin-game-engine-dashboard"
 
 // --- ONBOARDING COMPONENT ---
 export function UserOnboarding() {
@@ -790,7 +793,8 @@ export function AdminPanel() {
   const [users, setUsers] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [usersError, setUsersError] = useState<string | null>(null)
-  const [activeTab, setActiveTab] = useState<"services" | "engine" | "arena" | "users" | "credentials" | "activity" | "feedback">("services")
+  const [activeTab, setActiveTab] = useState<"services" | "engine" | "arena" | "users" | "credentials" | "activity" | "feedback" | "papers">("services")
+  const [pendingPapersCount, setPendingPapersCount] = useState(0)
   const [selectedUserId, setSelectedUserId] = useState<string>("")
   
   // Game Engine & Grafana Console States (Admin Only Execution)
@@ -814,6 +818,7 @@ export function AdminPanel() {
   const [selectedArenaUsers, setSelectedArenaUsers] = useState<string[]>([])
   const [rejectReason, setRejectReason] = useState("")
   const [rejectingUserId, setRejectingUserId] = useState<string | null>(null)
+  const [arenaSubTab, setArenaSubTab] = useState<"monitor" | "report" | "access">("monitor")
   
   // Feedback states
   const [feedbacks, setFeedbacks] = useState<any[]>([])
@@ -860,6 +865,16 @@ export function AdminPanel() {
         setUsersError('Could not connect to database. Showing cached data if available.')
         setLoading(false)
       })
+
+    // Fetch pending paper count for admin badge
+    fetch("/api/admin/papers-moderation?status=pending")
+      .then(res => res.json())
+      .then(data => {
+        if (data.success && data.stats) {
+          setPendingPapersCount(data.stats.pendingCount || 0)
+        }
+      })
+      .catch(() => {})
   }, [])
 
   // Fetch Arena Approvals or Feedback based on active tab
@@ -1394,6 +1409,17 @@ export function AdminPanel() {
         >
           <Zap className="w-4 h-4" /> Arena Services
         </button>
+        <button 
+          onClick={() => setActiveTab("papers")} 
+          className={`px-3.5 sm:px-6 py-2 sm:py-3 font-bold text-xs sm:text-sm uppercase tracking-wider rounded-xl transition-all whitespace-nowrap flex items-center gap-2 ${activeTab === "papers" ? "bg-gradient-to-r from-amber-500 to-orange-500 text-white shadow-xl shadow-amber-500/20" : "text-muted-foreground hover:bg-muted/10"}`}
+        >
+          <FileText className="w-4 h-4" /> Paper Verification &amp; Approvals
+          {pendingPapersCount > 0 && (
+            <Badge className="bg-amber-600 text-white text-[10px] px-1.5 py-0 h-4 ml-1 animate-pulse">
+              {pendingPapersCount}
+            </Badge>
+          )}
+        </button>
       </div>
 
       {activeTab === "services" ? (
@@ -1754,14 +1780,72 @@ export function AdminPanel() {
           )}
 
           {activeTab === "arena" && (
-            <Card className="border-2 shadow-2xl overflow-hidden glass-morphism">
-              <CardHeader className="bg-muted/30 border-b">
-                <CardTitle className="flex items-center gap-2">
-                  <Zap className="w-6 h-6 text-orange-500" /> Arena Services - Access Control
-                </CardTitle>
-                <CardDescription>Approve or reject students requesting battle arena access</CardDescription>
-              </CardHeader>
-              <CardContent className="p-6 space-y-6">
+            <div className="space-y-6">
+              {/* Arena Sub-Tab Header Bar */}
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-3 bg-muted/20 border border-border/40 rounded-2xl">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <Button
+                    variant={arenaSubTab === "monitor" ? "default" : "outline"}
+                    size="sm"
+                    onClick={() => setArenaSubTab("monitor")}
+                    className="gap-2 font-black text-xs h-9 shadow-sm"
+                  >
+                    <Activity className="w-4 h-4 text-emerald-400" />
+                    Real-Time Dashboard & Services Monitor
+                  </Button>
+                  <Button
+                    variant={arenaSubTab === "report" ? "default" : "outline"}
+                    size="sm"
+                    onClick={() => setArenaSubTab("report")}
+                    className={`gap-2 font-black text-xs h-9 ${arenaSubTab === "report" ? "bg-gradient-to-r from-purple-600 to-indigo-600 text-white shadow-md" : "border-purple-500/30 text-purple-300 hover:bg-purple-600/10"}`}
+                  >
+                    <Brain className="w-4 h-4 text-amber-300 animate-pulse" />
+                    24H Behavior Prediction & Smart Lab
+                    <Badge className="bg-amber-400 text-black font-black text-[9px] px-1 py-0 ml-1">AI</Badge>
+                  </Button>
+                  <Button
+                    variant={arenaSubTab === "access" ? "default" : "outline"}
+                    size="sm"
+                    onClick={() => {
+                      setArenaSubTab("access")
+                      fetchArenaApprovals()
+                    }}
+                    className="gap-2 font-black text-xs h-9"
+                  >
+                    <ShieldCheck className="w-4 h-4 text-orange-400" />
+                    Access Control & Approvals
+                    {arenaApprovals.filter(a => a.arenaApprovalStatus === 'pending').length > 0 && (
+                      <Badge className="bg-orange-500 text-white text-[10px] px-1.5 py-0 h-4 ml-1">
+                        {arenaApprovals.filter(a => a.arenaApprovalStatus === 'pending').length}
+                      </Badge>
+                    )}
+                  </Button>
+                </div>
+                <Badge variant="outline" className="text-[10px] font-mono text-emerald-400 bg-emerald-500/10 border-emerald-500/20 self-start sm:self-center">
+                  ● HTTP/2 LIVE STREAM ACTIVE
+                </Badge>
+              </div>
+
+              {/* Sub-View 1: Real-Time Services & Behavior Monitor */}
+              {arenaSubTab === "monitor" && (
+                <AdminArenaMonitor activeViewMode="monitor" />
+              )}
+
+              {/* Sub-View 2: 24H Behavioral Prediction & Smart Lab Intelligence */}
+              {arenaSubTab === "report" && (
+                <AdminArenaMonitor activeViewMode="prediction" />
+              )}
+
+              {/* Sub-View 2: Access Control & Student Requests */}
+              {arenaSubTab === "access" && (
+                <Card className="border-2 shadow-2xl overflow-hidden glass-morphism">
+                  <CardHeader className="bg-muted/30 border-b">
+                    <CardTitle className="flex items-center gap-2">
+                      <Zap className="w-6 h-6 text-orange-500" /> Arena Services - Access Control
+                    </CardTitle>
+                    <CardDescription>Approve or reject students requesting battle arena access</CardDescription>
+                  </CardHeader>
+                  <CardContent className="p-6 space-y-6">
                 {/* Filter Buttons */}
                 <div className="flex flex-wrap gap-2">
                   {(['pending', 'approved', 'rejected', 'all'] as const).map((status) => (
@@ -1940,340 +2024,20 @@ export function AdminPanel() {
               </CardContent>
             </Card>
           )}
+        </div>
+      )}
+
+          {activeTab === "papers" && (
+            <div className="w-full">
+              <AdminPaperVerification onCountChange={setPendingPapersCount} />
+            </div>
+          )}
 
           {/* Engine Console (Only Admin Execute) */}
           {activeTab === "engine" && (
-            <div className="space-y-6">
-              {/* Engine Header & Live Status */}
-              <Card className="border-2 border-cyan-500/40 shadow-2xl bg-gradient-to-br from-slate-950 via-slate-900 to-cyan-950 text-white overflow-hidden">
-                <CardHeader className="bg-cyan-500/10 border-b border-cyan-500/20 py-4 sm:py-5 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                  <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-xl bg-cyan-500/20 border border-cyan-500/40 flex items-center justify-center text-cyan-400 flex-shrink-0">
-                      <Activity className="w-6 h-6 animate-pulse" />
-                    </div>
-                    <div>
-                      <CardTitle className="text-base sm:text-xl font-black text-white flex items-center gap-2">
-                        PYTHON GAME ENGINE & GRAFANA CONSOLE
-                        <Badge className="bg-cyan-500 text-black font-black text-[10px]">1,000 REQ/S</Badge>
-                      </CardTitle>
-                      <CardDescription className="text-white/60 text-xs">
-                        Superuser high-throughput queue with multi-threaded workers & vectorized pattern engines
-                      </CardDescription>
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={fetchEngineTelemetry}
-                      disabled={engineTelemetryLoading}
-                      className="border-cyan-500/30 text-cyan-300 hover:bg-cyan-500/10 h-8 text-xs font-bold gap-1.5"
-                    >
-                      <RefreshCw className={`w-3.5 h-3.5 ${engineTelemetryLoading ? "animate-spin" : ""}`} /> Refresh
-                    </Button>
-                    <Badge className="bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 text-xs font-bold px-2.5 py-1">
-                      ● ENGINE ONLINE
-                    </Badge>
-                  </div>
-                </CardHeader>
-
-                <CardContent className="p-4 sm:p-6 space-y-6">
-                  {/* Live Metrics Grid */}
-                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4">
-                    <div className="bg-white/5 border border-white/10 rounded-xl p-3.5">
-                      <div className="flex items-center justify-between text-white/50 text-[11px] font-bold mb-1">
-                        <span>THROUGHPUT</span>
-                        <Gauge className="w-3.5 h-3.5 text-cyan-400" />
-                      </div>
-                      <div className="text-xl sm:text-2xl font-black text-cyan-400">
-                        {engineTelemetry?.qps ?? 842.5} <span className="text-xs text-white/40">req/s</span>
-                      </div>
-                      <div className="text-[10px] text-white/40 mt-0.5">Peak: {engineTelemetry?.peak_qps ?? 1048.0} • Target: 1,000</div>
-                    </div>
-
-                    <div className="bg-white/5 border border-white/10 rounded-xl p-3.5">
-                      <div className="flex items-center justify-between text-white/50 text-[11px] font-bold mb-1">
-                        <span>ACTIVE PLAYERS</span>
-                        <Users className="w-3.5 h-3.5 text-indigo-400" />
-                      </div>
-                      <div className="text-xl sm:text-2xl font-black text-indigo-400">
-                        {engineTelemetry?.active_users ?? 18}
-                      </div>
-                      <div className="text-[10px] text-white/40 mt-0.5">Multi-user concurrent sessions</div>
-                    </div>
-
-                    <div className="bg-white/5 border border-white/10 rounded-xl p-3.5">
-                      <div className="flex items-center justify-between text-white/50 text-[11px] font-bold mb-1">
-                        <span>LATENCY (p50)</span>
-                        <Clock className="w-3.5 h-3.5 text-emerald-400" />
-                      </div>
-                      <div className="text-xl sm:text-2xl font-black text-emerald-400">
-                        {engineTelemetry?.latency_ms?.p50 ?? 0.42} <span className="text-xs text-white/40">ms</span>
-                      </div>
-                      <div className="text-[10px] text-white/40 mt-0.5">p95: {engineTelemetry?.latency_ms?.p95 ?? 1.85}ms</div>
-                    </div>
-
-                    <div className="bg-white/5 border border-white/10 rounded-xl p-3.5">
-                      <div className="flex items-center justify-between text-white/50 text-[11px] font-bold mb-1">
-                        <span>ACCURACY</span>
-                        <Target className="w-3.5 h-3.5 text-yellow-400" />
-                      </div>
-                      <div className="text-xl sm:text-2xl font-black text-yellow-400">
-                        {engineTelemetry?.accuracy_rate_pct ?? 84.6}%
-                      </div>
-                      <div className="text-[10px] text-white/40 mt-0.5">Recorded: {engineTelemetry?.total_answers ?? 320} answers</div>
-                    </div>
-                  </div>
-
-                  {/* 1,000 Req/s Benchmark Card (Admin only execution) */}
-                  <div className="p-4 rounded-xl border border-cyan-500/30 bg-cyan-950/40 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-                    <div>
-                      <div className="flex items-center gap-2 text-sm font-black text-cyan-300">
-                        <Zap className="w-4 h-4 text-cyan-400" />
-                        <span>STRESS TEST ASYNC QUEUE & THREAD POOL</span>
-                        <Badge className="bg-cyan-500/20 text-cyan-300 border-none text-[10px]">ADMIN ONLY</Badge>
-                      </div>
-                      <p className="text-xs text-white/60 mt-1 max-w-xl">
-                        Fires 1,000 parallel requests through FastAPI + Python asyncio queue with hot ring-buffer workers to verify 1,000+ req/s sustained throughput.
-                      </p>
-                    </div>
-                    <Button
-                      onClick={executeEngineBenchmark}
-                      disabled={engineBenchmarking}
-                      className="w-full sm:w-auto bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white font-black text-xs gap-2 px-5 py-2.5 rounded-xl shadow-lg shadow-cyan-500/20 flex-shrink-0"
-                    >
-                      {engineBenchmarking ? <Loader2 className="w-4 h-4 animate-spin" /> : <Play className="w-4 h-4" />}
-                      {engineBenchmarking ? "RUNNING BENCHMARK..." : "EXECUTE 1,000 REQ/S BENCHMARK"}
-                    </Button>
-                  </div>
-
-                  {/* Benchmark Result Banner */}
-                  {engineBenchmarkResult && (
-                    <div className="p-4 rounded-xl bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-between flex-wrap gap-2 animate-in zoom-in-95">
-                      <div className="flex items-center gap-2 text-emerald-400 font-bold text-sm">
-                        <Check className="w-5 h-5 flex-shrink-0" />
-                        <span>Benchmark Verified: Handled {engineBenchmarkResult.totalRequests} requests in {engineBenchmarkResult.elapsedSeconds}s!</span>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <span className="text-xs font-mono bg-emerald-500/20 px-3 py-1 rounded-full text-emerald-300 font-bold">
-                          Achieved: {engineBenchmarkResult.achievedQps} QPS
-                        </span>
-                        <Badge className="bg-emerald-500 text-black font-black text-xs">Exceeds 1,000 req/s</Badge>
-                      </div>
-                    </div>
-                  )}
-                </CardContent>
-              </Card>
-
-              {/* Admin Game Engine Query Console */}
-              <Card className="border-2 shadow-2xl overflow-hidden glass-morphism">
-                <CardHeader className="bg-muted/30 border-b py-4">
-                  <div className="flex items-center justify-between">
-                    <CardTitle className="text-lg font-black flex items-center gap-2">
-                      <Terminal className="w-5 h-5 text-primary" />
-                      GAME ENGINE QUERY RUNNER
-                      <Badge className="bg-primary/20 text-primary border-primary/30 text-[10px]">ADMIN EXECUTE ONLY</Badge>
-                    </CardTitle>
-                    <span className="text-xs text-muted-foreground font-mono">Python 3.11 Runtime</span>
-                  </div>
-                  <CardDescription>
-                    Execute live procedural queries directly against the Python Game Engine and inspect vectorized output in real time.
-                  </CardDescription>
-                </CardHeader>
-
-                <CardContent className="p-5 sm:p-6 space-y-6">
-                  {/* Mode Selector */}
-                  <div>
-                    <label className="text-xs font-black uppercase tracking-wider text-muted-foreground block mb-2">
-                      1. Select Engine Generation Mode
-                    </label>
-                    <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2">
-                      {[
-                        { id: "math", label: "Procedural Math", icon: "➗", desc: "random.math" },
-                        { id: "custom", label: "Topic Pattern", icon: "🧠", desc: "NumPy vectors" },
-                        { id: "document", label: "Doc Analysis", icon: "📄", desc: "Pandas stats" },
-                        { id: "coding", label: "Coding Lab", icon: "💻", desc: "Algorithmic" },
-                        { id: "gk", label: "Knowledge", icon: "🌍", desc: "Fact matrix" },
-                        { id: "puzzle", label: "Logic Puzzle", icon: "🧩", desc: "Deductive" },
-                      ].map((m) => (
-                        <button
-                          key={m.id}
-                          onClick={() => setEngineQueryMode(m.id as any)}
-                          className={`p-3 rounded-xl border text-left transition-all ${
-                            engineQueryMode === m.id
-                              ? "border-primary bg-primary/10 shadow-sm"
-                              : "border-border hover:bg-muted/30"
-                          }`}
-                        >
-                          <div className="text-lg mb-1">{m.icon}</div>
-                          <div className="font-bold text-xs truncate">{m.label}</div>
-                          <div className="text-[10px] text-muted-foreground truncate">{m.desc}</div>
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-
-                  {/* Query Parameters Row */}
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                    <div className="space-y-1.5">
-                      <label className="text-xs font-bold text-muted-foreground">Difficulty Target</label>
-                      <select
-                        value={engineDifficulty}
-                        onChange={(e) => setEngineDifficulty(e.target.value)}
-                        className="w-full h-11 px-3 rounded-xl border-2 bg-background font-medium text-sm"
-                      >
-                        <option value="beginner">Beginner (Foundation)</option>
-                        <option value="intermediate">Intermediate (Standard)</option>
-                        <option value="advanced">Advanced (Competitive)</option>
-                        <option value="expert">Expert (Championship)</option>
-                        <option value="master">Master (Elite)</option>
-                        <option value="grandmaster">Grandmaster (Top 1%)</option>
-                      </select>
-                    </div>
-
-                    <div className="space-y-1.5">
-                      <label className="text-xs font-bold text-muted-foreground">Question Count: {engineCount}</label>
-                      <input
-                        type="range"
-                        min={1}
-                        max={20}
-                        value={engineCount}
-                        onChange={(e) => setEngineCount(Number(e.target.value))}
-                        className="w-full h-11 accent-primary cursor-pointer"
-                      />
-                    </div>
-                  </div>
-
-                  {/* Topic Input */}
-                  <div className="space-y-1.5">
-                    <label className="text-xs font-bold text-muted-foreground flex items-center justify-between">
-                      <span>Query Topic / Subject Domain</span>
-                      <span className="text-[10px] text-primary">NumPy pattern identification</span>
-                    </label>
-                    <Input
-                      placeholder="e.g. Eigenvalues, Polynomial Regression, Combinatorics, Quantum Cryptography"
-                      value={engineTopic}
-                      onChange={(e) => setEngineTopic(e.target.value)}
-                      className="h-11 rounded-xl border-2"
-                    />
-                  </div>
-
-                  {/* Document Text Input */}
-                  {(engineQueryMode === "document" || engineQueryMode === "custom") && (
-                    <div className="space-y-1.5">
-                      <label className="text-xs font-bold text-muted-foreground flex items-center justify-between">
-                        <span>Document / Dataset Context (Pandas & NumPy Vectorization)</span>
-                        <span className="text-[10px] text-cyan-500 font-bold">Pandas DataFrame Analysis</span>
-                      </label>
-                      <Textarea
-                        rows={3}
-                        placeholder="Paste syllabus text, numerical table, or document excerpt to extract distribution patterns..."
-                        value={engineDocument}
-                        onChange={(e) => setEngineDocument(e.target.value)}
-                        className="font-mono text-xs rounded-xl border-2 leading-relaxed"
-                      />
-                    </div>
-                  )}
-
-                  {/* Execute Query Button */}
-                  <div className="flex items-center gap-3 pt-2">
-                    <Button
-                      onClick={executeEngineQuery}
-                      disabled={engineQueryLoading}
-                      className="flex-1 h-12 rounded-xl font-black text-sm bg-primary hover:bg-primary/90 text-primary-foreground gap-2 shadow-lg"
-                    >
-                      {engineQueryLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Terminal className="w-4 h-4" />}
-                      {engineQueryLoading ? "EXECUTING IN PYTHON ENGINE..." : "EXECUTE GAME ENGINE QUERY (ADMIN)"}
-                    </Button>
-                    {engineQueryResult && (
-                      <Button
-                        variant="outline"
-                        onClick={() => setEngineQueryResult(null)}
-                        className="h-12 px-4 rounded-xl text-xs font-bold"
-                      >
-                        Clear
-                      </Button>
-                    )}
-                  </div>
-
-                  {/* Live Query Results */}
-                  {engineQueryResult && (
-                    <div className="space-y-4 pt-4 border-t animate-in fade-in slide-in-from-top-4">
-                      <div className="flex items-center justify-between flex-wrap gap-2">
-                        <div className="flex items-center gap-2">
-                          <Badge className="bg-emerald-500/20 text-emerald-400 border border-emerald-500/40 text-xs font-bold">
-                            ✓ {engineQueryResult.totalGenerated} Questions Generated
-                          </Badge>
-                          <Badge variant="outline" className="text-xs font-mono">
-                            Latency: {engineQueryResult.elapsedMs} ms
-                          </Badge>
-                        </div>
-                        <span className="text-xs text-muted-foreground font-mono">
-                          Source: {engineQueryResult.source}
-                        </span>
-                      </div>
-
-                      {/* Questions List */}
-                      <div className="space-y-3">
-                        {engineQueryResult.questions?.map((q: any, idx: number) => (
-                          <div key={idx} className="p-4 rounded-xl border-2 bg-muted/20 space-y-2.5">
-                            <div className="flex items-start justify-between gap-3">
-                              <span className="font-bold text-sm text-foreground">
-                                {idx + 1}. {q.question || q.title}
-                              </span>
-                              <Badge variant="secondary" className="text-[10px] uppercase font-bold flex-shrink-0">
-                                {q.difficulty || engineDifficulty}
-                              </Badge>
-                            </div>
-
-                            {q.options && q.options.length > 0 && (
-                              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1">
-                                {q.options.map((opt: string, optIdx: number) => (
-                                  <div
-                                    key={optIdx}
-                                    className={`p-2.5 rounded-lg text-xs font-medium border flex items-center gap-2 ${
-                                      opt === q.correct_answer || opt === q.correctAnswer
-                                        ? "bg-emerald-500/10 border-emerald-500/40 text-emerald-400 font-bold"
-                                        : "bg-background border-border text-foreground"
-                                    }`}
-                                  >
-                                    <span className="w-5 h-5 rounded-full border flex items-center justify-center text-[10px] font-bold flex-shrink-0">
-                                      {String.fromCharCode(65 + optIdx)}
-                                    </span>
-                                    <span className="truncate">{opt}</span>
-                                    {(opt === q.correct_answer || opt === q.correctAnswer) && (
-                                      <Check className="w-3.5 h-3.5 ml-auto text-emerald-400 flex-shrink-0" />
-                                    )}
-                                  </div>
-                                ))}
-                              </div>
-                            )}
-
-                            {q.explanation && (
-                              <div className="text-xs text-muted-foreground bg-background/50 p-2.5 rounded-lg border">
-                                <span className="font-bold text-primary mr-1">Explanation:</span>
-                                {q.explanation}
-                              </div>
-                            )}
-
-                            {q.tags && q.tags.length > 0 && (
-                              <div className="flex gap-1.5 flex-wrap pt-1">
-                                {q.tags.map((t: string, tIdx: number) => (
-                                  <span key={tIdx} className="text-[10px] px-2 py-0.5 rounded-full bg-muted font-mono text-muted-foreground">
-                                    #{t}
-                                  </span>
-                                ))}
-                              </div>
-                            )}
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-                </CardContent>
-              </Card>
-            </div>
+            <AdminGameEngineDashboard />
           )}
+
         </div>
 
         <div className="space-y-8">

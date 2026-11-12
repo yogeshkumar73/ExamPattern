@@ -131,13 +131,24 @@ export default function AdminServicesDashboard() {
 
   const getAuthHeaders = (): Record<string, string> => {
     try {
-      const rawSession = JSON.parse(localStorage.getItem('aura_session') || '{}')
+      let raw: string | null = null
+      let token: string | null = null
+      if (typeof localStorage !== 'undefined') {
+        raw = localStorage.getItem('aura_session')
+        token = localStorage.getItem('aura_session_token')
+      }
+      if (!raw && typeof sessionStorage !== 'undefined') {
+        raw = sessionStorage.getItem('aura_session')
+        token = sessionStorage.getItem('aura_session_token')
+      }
+      const rawSession = JSON.parse(raw || '{}')
       const user = rawSession.user || rawSession
+      const adminToken = user?.adminToken || rawSession.adminToken || user?.token || rawSession.token || token || ''
       const headers: Record<string, string> = {
         'x-session-user': encodeURIComponent(JSON.stringify(user)),
       }
-      if (user?.adminToken) {
-        headers['Authorization'] = `Bearer ${user.adminToken}`
+      if (adminToken) {
+        headers['Authorization'] = `Bearer ${adminToken}`
       }
       return headers
     } catch {
@@ -150,6 +161,7 @@ export default function AdminServicesDashboard() {
     try {
       const res = await fetch('/api/admin/services-health', {
         headers: getAuthHeaders(),
+        credentials: 'include',
         cache: 'no-store'
       })
 
@@ -193,11 +205,12 @@ export default function AdminServicesDashboard() {
           'Content-Type': 'application/json',
           ...getAuthHeaders()
         },
+        credentials: 'include',
         body: JSON.stringify({ action: 'verify-all' })
       })
 
       const data = await res.json()
-      if (data.success) {
+      if (res.ok && data.success) {
         setServices(data.services || [])
         if (data.analytics) setAnalytics(data.analytics)
         setVerificationFeedback(`✓ All ${data.verifyResult?.verifiedCount || 7} Services Checked & Working Properly (Avg Latency: ${data.analytics?.latency?.mean || 18}ms)`)
@@ -224,6 +237,7 @@ export default function AdminServicesDashboard() {
           'Content-Type': 'application/json',
           ...getAuthHeaders()
         },
+        credentials: 'include',
         body: JSON.stringify({ action, serviceId })
       })
 

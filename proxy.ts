@@ -63,6 +63,10 @@ function edgeRateLimit(
 // ─── IP Extraction ────────────────────────────────────────────────────────────
 
 function extractIp(req: NextRequest): string {
+  const nfIp = req.headers.get("x-nf-client-connection-ip");
+  if (nfIp) return nfIp.trim();
+  const clientIp = req.headers.get("client-ip");
+  if (clientIp) return clientIp.trim();
   const forwarded = req.headers.get("x-forwarded-for");
   if (forwarded) return forwarded.split(",")[0].trim();
   const realIp = req.headers.get("x-real-ip");
@@ -79,7 +83,7 @@ const BOT_UA_TOKENS = [
 ];
 
 function isBotUa(ua: string): boolean {
-  if (!ua || ua.length < 5) return true;
+  if (!ua) return false;
   const lower = ua.toLowerCase();
   return BOT_UA_TOKENS.some((token) => lower.includes(token));
 }
@@ -94,13 +98,18 @@ interface RateConfig {
 }
 
 const RATE_CONFIGS: Record<RouteCategory, RateConfig> = {
-  auth:  { max: 5,  windowMs: 60_000 },   // 5  req/min
-  admin: { max: 30, windowMs: 60_000 },   // 30 req/min
-  write: { max: 20, windowMs: 60_000 },   // 20 req/min
-  read:  { max: 60, windowMs: 60_000 },   // 60 req/min
+  auth:  { max: 20,  windowMs: 60_000 },   // 20 req/min
+  admin: { max: 60,  windowMs: 60_000 },   // 60 req/min
+  write: { max: 120, windowMs: 60_000 },   // 120 req/min
+  read:  { max: 240, windowMs: 60_000 },   // 240 req/min
 };
 
 function classifyRoute(pathname: string, method: string): RouteCategory | null {
+  // Exclude file extraction from write rate limits
+  if (pathname === "/api/extract-text") {
+    return null;
+  }
+
   // Auth routes — tightest limit
   if (
     pathname.startsWith("/api/auth/") ||

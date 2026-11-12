@@ -32,6 +32,8 @@ import {
   Flame,
   ShieldCheck,
   Bell,
+  Gift,
+  Users,
 } from "lucide-react"
 import { useNav, type SessionUser } from "@/hooks/use-nav"
 import {
@@ -40,6 +42,7 @@ import {
   clearStoredSession,
 } from "@/lib/session-storage"
 import { NotificationsCenter } from "@/components/notifications-center"
+import { InviteFriendsSection } from "@/components/invite-friends-section"
 
 const STREAMS = [
   { value: "class10", label: "Class 10 – Board", color: "bg-blue-500" },
@@ -90,7 +93,7 @@ const PRESET_AVATARS = [
   { id: "matrix", label: "Matrix", url: "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><defs><linearGradient id='g6' x1='0%25' y1='0%25' x2='100%25' y2='100%25'><stop offset='0%25' stop-color='%230f172a'/><stop offset='100%25' stop-color='%23334155'/></linearGradient></defs><rect width='100' height='100' rx='24' fill='url(%23g6)'/><circle cx='50' cy='42' r='18' fill='%2322c55e'/><path d='M25 84c0-14 11-25 25-25s25 11 25 25' fill='%2322c55e'/></svg>" },
 ]
 
-type ProfileTab = "overview" | "academic" | "activity" | "achievements" | "notifications" | "settings"
+type ProfileTab = "overview" | "invite" | "academic" | "activity" | "achievements" | "notifications" | "settings"
 
 interface Achievement {
   id: string
@@ -541,8 +544,9 @@ export function StudentProfile({ initialTab }: { initialTab?: ProfileTab } = {})
     ? Math.round(((profile.wins || 0) / (profile.totalBattles || 1)) * 100)
     : 0
 
-  const tabs: { id: ProfileTab; label: string; icon: any }[] = [
+  const tabs: { id: ProfileTab; label: string; icon: any; badge?: string }[] = [
     { id: "overview",      label: "Overview",          icon: User },
+    { id: "invite",        label: "Invite & Earn",     icon: Gift, badge: "+200 🪙" },
     { id: "academic",      label: "Academic",          icon: GraduationCap },
     { id: "notifications", label: "Messages & Alerts", icon: Bell },
     { id: "activity",      label: "Activity",          icon: Activity },
@@ -815,6 +819,11 @@ export function StudentProfile({ initialTab }: { initialTab?: ProfileTab } = {})
           >
             <tab.icon className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
             {tab.label}
+            {tab.badge && (
+              <span className="ml-1 text-[10px] bg-amber-500 text-black px-1.5 py-0.5 rounded-full font-black">
+                {tab.badge}
+              </span>
+            )}
             {tab.id === "achievements" && unlockedCount > 0 && (
               <span className="ml-1 text-[10px] bg-yellow-500 text-white px-1.5 py-0.5 rounded-full font-black">
                 {unlockedCount}
@@ -940,6 +949,24 @@ export function StudentProfile({ initialTab }: { initialTab?: ProfileTab } = {})
               )}
             </CardContent>
           </Card>
+
+          {/* Invite Teammates & Earn Coins Section */}
+          <div className="md:col-span-2">
+            <InviteFriendsSection
+              currentUser={profile}
+              onCoinsUpdated={(newCoins) => setProfile((prev) => ({ ...prev, coins: newCoins }))}
+            />
+          </div>
+        </div>
+      )}
+
+      {/* ── INVITE & EARN TAB ─────────────────────────────────────────────────── */}
+      {activeTab === "invite" && (
+        <div className="animate-in fade-in duration-300">
+          <InviteFriendsSection
+            currentUser={profile}
+            onCoinsUpdated={(newCoins) => setProfile((prev) => ({ ...prev, coins: newCoins }))}
+          />
         </div>
       )}
 

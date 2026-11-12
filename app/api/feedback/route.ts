@@ -1,40 +1,22 @@
 import { NextResponse } from "next/server";
 import dbConnect from "@/lib/mongodb";
 import { checkRateLimit, getClientIp } from "@/lib/ratelimit";
-import mongoose from "mongoose";
+import FeedbackModel from "@/models/Feedback";
 
-// Mongoose schema for feedback
-let FeedbackModel: mongoose.Model<any>;
-try {
-  FeedbackModel = mongoose.model("Feedback");
-} catch {
-  const FeedbackSchema = new mongoose.Schema({
-    userId: { type: String, default: null },
-    userName: { type: String, default: "Anonymous" },
-    userEmail: { type: String, default: "helpsupport9452@gmail.com" },
-    category: {
-      type: String,
-      enum: ["bug", "feature", "general", "praise", "complaint"],
-      default: "general",
-    },
-    message: { type: String, required: true, maxlength: 2000 },
-    rating: { type: Number, min: 1, max: 5, default: null },
-    status: { type: String, enum: ["new", "read", "replied"], default: "new" },
-    replies: [
-      {
-        text: { type: String, required: true },
-        createdAt: { type: Date, default: Date.now },
-      },
-    ],
-    createdAt: { type: Date, default: Date.now },
-  });
-  FeedbackModel = mongoose.model("Feedback", FeedbackSchema);
+const TWENTY_FOUR_HOURS_MS = 24 * 60 * 60 * 1000; // 24 hours in milliseconds
+
+// In-memory fallback storage for when MongoDB is disconnected or in cold start
+declare global {
+  var __mockFeedbacks: any[] | undefined;
+}
+if (!globalThis.__mockFeedbacks) {
+  globalThis.__mockFeedbacks = [];
 }
 
 export async function POST(req: Request) {
   try {
     const ip = getClientIp(req);
-    const rl = checkRateLimit(`feedback:${ip}`, 5, 60 * 60 * 1000);
+    const rl = checkRateLimit(`feedback:${ip}`, 10, 60 * 60 * 1000);
     if (!rl.allowed) {
       return NextResponse.json(
         { message: `Too many feedback submissions. Try again in ${rl.resetIn}s.` },
@@ -59,18 +41,21 @@ export async function POST(req: Request) {
       );
     }
 
+    const newFeedbackData = {
+      userId: userId || null,
+      userName: userName?.trim() || "Anonymous Student",
+      userEmail: userEmail?.trim().toLowerCase() || "helpsupport9452@gmail.com",
+      category: category || "general",
+      message: message.trim(),
+      rating: rating ? Number(rating) : null,
+      status: "new",
+      replies: [],
+      createdAt: new Date(),
+    };
+
     try {
       await dbConnect();
-      const feedback = await FeedbackModel.create({
-        userId: userId || null,
-        userName: userName?.trim() || "Anonymous Student",
-        userEmail: userEmail?.trim().toLowerCase() || "helpsupport9452@gmail.com",
-        category: category || "general",
-        message: message.trim(),
-        rating: rating ? Number(rating) : null,
-        status: "new",
-        replies: [],
-      });
+      const feedback = await FeedbackModel.create(newFeedbackData);
 
       return NextResponse.json({
         success: true,
@@ -79,9 +64,16 @@ export async function POST(req: Request) {
       });
     } catch (dbError) {
       console.warn("[Feedback] MongoDB unavailable. Saving mock feedback:", dbError);
+      const mockItem = {
+        _id: "fb-" + Date.now() + "-" + Math.random().toString(36).substring(2, 7),
+        ...newFeedbackData,
+      };
+      globalThis.__mockFeedbacks = [mockItem, ...(globalThis.__mockFeedbacks || [])];
+
       return NextResponse.json({
         success: true,
         message: "Thank you for your feedback! (Saved in session).",
+        feedback: mockItem,
       });
     }
   } catch (error: any) {
@@ -99,9 +91,22 @@ export async function GET(req: Request) {
     const limit = Math.min(parseInt(searchParams.get("limit") || "50"), 100);
     const status = searchParams.get("status");
 
+    const cutoff = new Date(Date.now() - TWENTY_FOUR_HOURS_MS);
+
     try {
       await dbConnect();
-      const query: any = {};
+
+      // 1. Automatically purge any feedback older than 24 hours from MongoDB
+      try {
+        await FeedbackModel.deleteMany({ createdAt: { $lt: cutoff } });
+      } catch (purgeErr) {
+        console.warn("[Feedback] Auto-purge past 24h failed:", purgeErr);
+      }
+
+      // 2. Query only feedback submitted within the last 24 hours
+      const query: any = {
+        createdAt: { $gte: cutoff },
+      };
       if (status && status !== "all") query.status = status;
 
       const feedbacks = await FeedbackModel.find(query)
@@ -109,9 +114,31 @@ export async function GET(req: Request) {
         .limit(limit)
         .select("-__v");
 
-      return NextResponse.json({ success: true, feedbacks, total: feedbacks.length });
+      return NextResponse.json({
+        success: true,
+        feedbacks,
+        total: feedbacks.length,
+        autoExpiresAfter: "24h",
+      });
     } catch (dbError) {
-      return NextResponse.json({ success: true, feedbacks: [], total: 0, offline: true });
+      // In-memory fallback: purge items older than 24 hours
+      const now = Date.now();
+      if (globalThis.__mockFeedbacks) {
+        globalThis.__mockFeedbacks = globalThis.__mockFeedbacks.filter(
+          (f: any) => now - new Date(f.createdAt).getTime() < TWENTY_FOUR_HOURS_MS
+        );
+      }
+      const filtered = (globalThis.__mockFeedbacks || []).filter(
+        (f: any) => !status || status === "all" || f.status === status
+      );
+
+      return NextResponse.json({
+        success: true,
+        feedbacks: filtered,
+        total: filtered.length,
+        offline: true,
+        autoExpiresAfter: "24h",
+      });
     }
   } catch (error: any) {
     return NextResponse.json(
@@ -180,11 +207,70 @@ export async function PUT(req: Request) {
       });
     } catch (dbError) {
       console.warn("[Feedback PUT] MongoDB unavailable:", dbError);
+      if (globalThis.__mockFeedbacks) {
+        const item = globalThis.__mockFeedbacks.find((f: any) => f._id === feedbackId);
+        if (item) {
+          item.replies = item.replies || [];
+          item.replies.push({ text: replyText.trim(), createdAt: new Date() });
+          item.status = "replied";
+        }
+      }
       return NextResponse.json({
         success: true,
         message: "Reply saved locally.",
       });
     }
+  } catch (error: any) {
+    return NextResponse.json(
+      { success: false, message: error.message },
+      { status: 500 }
+    );
+  }
+}
+
+export async function DELETE(req: Request) {
+  try {
+    const { searchParams } = new URL(req.url);
+    const id = searchParams.get("id");
+    const purge = searchParams.get("purge");
+    const cutoff = new Date(Date.now() - TWENTY_FOUR_HOURS_MS);
+
+    try {
+      await dbConnect();
+
+      if (purge === "expired") {
+        const res = await FeedbackModel.deleteMany({ createdAt: { $lt: cutoff } });
+        return NextResponse.json({
+          success: true,
+          message: "Expired feedback purged successfully",
+          deletedCount: res.deletedCount,
+        });
+      }
+
+      if (id) {
+        await FeedbackModel.findByIdAndDelete(id);
+        return NextResponse.json({
+          success: true,
+          message: "Feedback removed successfully",
+        });
+      }
+    } catch (dbError) {
+      if (globalThis.__mockFeedbacks) {
+        if (purge === "expired") {
+          globalThis.__mockFeedbacks = globalThis.__mockFeedbacks.filter(
+            (f: any) => Date.now() - new Date(f.createdAt).getTime() < TWENTY_FOUR_HOURS_MS
+          );
+        } else if (id) {
+          globalThis.__mockFeedbacks = globalThis.__mockFeedbacks.filter((f: any) => f._id !== id);
+        }
+      }
+      return NextResponse.json({ success: true, message: "Removed locally" });
+    }
+
+    return NextResponse.json(
+      { success: false, message: "No feedback id or purge action provided." },
+      { status: 400 }
+    );
   } catch (error: any) {
     return NextResponse.json(
       { success: false, message: error.message },

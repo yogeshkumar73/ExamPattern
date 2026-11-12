@@ -412,7 +412,7 @@ export function ArenaChat({ user }: ArenaChatProps) {
   }
 
   return (
-    <div className="flex flex-col gap-3 h-[650px]">
+    <div className="flex flex-col gap-3 h-[calc(100dvh-12rem)] min-h-[520px] sm:h-[650px]">
       {/* Real-time Notification Banner for All Users */}
       {latestNotification && (
         <div
@@ -623,7 +623,7 @@ export function ArenaChat({ user }: ArenaChatProps) {
           </div>
 
           {/* Messages Container */}
-          <div className="flex-1 overflow-y-auto p-3 sm:p-4 space-y-3.5">
+          <div className="flex-1 min-h-0 overflow-y-auto p-3 sm:p-4 space-y-3.5 overscroll-contain">
             {activeRoom.startsWith('dm-') && (
               <div className="p-3 mb-2 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 text-xs text-emerald-300 flex items-center justify-between gap-3">
                 <div className="flex items-center gap-2">
@@ -697,7 +697,7 @@ export function ArenaChat({ user }: ArenaChatProps) {
           </div>
 
           {/* Input Box */}
-          <div className="flex gap-2 border-t border-white/10 p-2.5 sm:p-3 bg-white/[0.01]">
+          <div className="flex gap-2 border-t border-white/10 p-2.5 sm:p-3 bg-slate-950/80 flex-shrink-0 sticky bottom-0 z-10 pb-safe">
             <input
               type="text"
               autoComplete="off"

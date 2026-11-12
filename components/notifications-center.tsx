@@ -112,8 +112,12 @@ export function NotificationsCenter({
       const data = await res.json()
 
       if (data.success && Array.isArray(data.notifications)) {
-        setNotifications(data.notifications)
-        setUnreadCount(data.unreadCount || data.notifications.filter((n: NotificationItem) => !n.isRead).length)
+        const twelveHoursAgo = Date.now() - 12 * 60 * 60 * 1000
+        const activeNotifs = data.notifications.filter(
+          (n: NotificationItem) => !n.isRead && new Date(n.createdAt).getTime() >= twelveHoursAgo
+        )
+        setNotifications(activeNotifs)
+        setUnreadCount(activeNotifs.length)
       }
     } catch (err) {
       console.warn("Failed to load notifications:", err)
@@ -147,12 +151,10 @@ export function NotificationsCenter({
     return () => clearInterval(interval)
   }, [loadNotifications, loadRecipients])
 
-  // Mark single notification read
+  // Mark single notification read (automatically removes it once seen)
   const handleMarkRead = async (notificationId: string) => {
     try {
-      setNotifications(prev =>
-        prev.map(n => (n._id === notificationId ? { ...n, isRead: true } : n))
-      )
+      setNotifications(prev => prev.filter(n => n._id !== notificationId))
       setUnreadCount(prev => Math.max(0, prev - 1))
 
       await fetch("/api/notifications", {
@@ -165,10 +167,10 @@ export function NotificationsCenter({
     }
   }
 
-  // Mark all notifications read
+  // Mark all notifications read (automatically removes all)
   const handleMarkAllRead = async () => {
     try {
-      setNotifications(prev => prev.map(n => ({ ...n, isRead: true })))
+      setNotifications([])
       setUnreadCount(0)
 
       await fetch("/api/notifications", {
@@ -314,7 +316,9 @@ export function NotificationsCenter({
   }
 
   const filteredNotifications = notifications.filter(n => {
-    if (categoryFilter === "unread") return !n.isRead
+    const twelveHoursAgo = Date.now() - 12 * 60 * 60 * 1000
+    if (new Date(n.createdAt).getTime() < twelveHoursAgo || n.isRead) return false
+    if (categoryFilter === "unread") return true
     if (categoryFilter === "direct") return n.category === "direct_message" || n.category === "message"
     if (categoryFilter === "invites") return n.category === "study_invite" || n.category === "battle_challenge"
     return true
@@ -497,9 +501,10 @@ export function NotificationsCenter({
                             size="sm"
                             variant="ghost"
                             onClick={() => handleMarkRead(item._id)}
-                            className="h-6 px-2 text-[10px] font-bold text-primary"
+                            className="h-6 px-2 text-[10px] font-bold text-primary hover:bg-primary/10"
+                            title="Seen (Remove)"
                           >
-                            <Check className="w-3 h-3 mr-1" /> Mark Read
+                            <Check className="w-3 h-3 mr-1" /> Mark Seen
                           </Button>
                         )}
                         {item.category === "battle_challenge" && (
@@ -548,6 +553,7 @@ export function NotificationsCenter({
                               size="sm"
                               variant="ghost"
                               onClick={() => {
+                                handleMarkRead(item._id);
                                 if (onNavigate) {
                                   setIsOpen(false);
                                   onNavigate("profile");
@@ -577,8 +583,22 @@ export function NotificationsCenter({
                               size="sm"
                               variant="ghost"
                               onClick={() => {
-                                if (onNavigate) {
-                                  setIsOpen(false);
+                                handleMarkRead(item._id);
+                                setIsOpen(false);
+                                if (item.senderId && item.senderId !== "system") {
+                                  window.dispatchEvent(
+                                    new CustomEvent("open-unicast-chat", {
+                                      detail: {
+                                        openChatWith: {
+                                          _id: item.senderId,
+                                          name: item.senderName || "Friend",
+                                          photoUrl: item.senderPhotoUrl,
+                                        },
+                                      },
+                                    })
+                                  );
+                                  if (onNavigate) onNavigate("arena");
+                                } else if (onNavigate) {
                                   onNavigate("chat");
                                 }
                               }}

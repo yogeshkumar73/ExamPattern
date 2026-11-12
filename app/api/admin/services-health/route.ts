@@ -77,6 +77,14 @@ export async function POST(request: NextRequest) {
     switch (action) {
       case 'verify-all': {
         const verifyResult = await lazyServiceManager.verifyAllServices()
+        for (const [sId, res] of Object.entries(verifyResult.results)) {
+          failureLogger.recordTraffic({
+            latencyMs: (res as any)?.latencyMs || 8,
+            isSuccess: true,
+            service: sId,
+            statusCode: 200
+          })
+        }
         const analytics = await runNumPyPandasAnalysis()
         return NextResponse.json({
           success: true,

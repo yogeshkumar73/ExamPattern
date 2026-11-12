@@ -129,7 +129,9 @@ export function BattleArena({ userId, userEmail, isAdmin = false }: BattleArenaP
         const duelMode = params.get('mode')
         const duelDiff = params.get('difficulty')
 
-        if (tId || inv || tab === 'events' || tab === 'tournament') {
+        if (detail?.openChatWith) {
+          setActiveTab('friends')
+        } else if (tId || inv || tab === 'events' || tab === 'tournament') {
           setActiveTab('tournament')
         } else if (tab === 'friends' || duel) {
           setActiveTab('friends')
@@ -152,10 +154,16 @@ export function BattleArena({ userId, userEmail, isAdmin = false }: BattleArenaP
         applyRouteParams(e.detail)
       }
 
+      const handleOpenUnicast = (e: any) => {
+        setActiveTab('friends')
+      }
+
       window.addEventListener('arena-navigate', handleArenaNav)
+      window.addEventListener('open-unicast-chat', handleOpenUnicast)
       window.addEventListener('popstate', () => applyRouteParams())
       return () => {
         window.removeEventListener('arena-navigate', handleArenaNav)
+        window.removeEventListener('open-unicast-chat', handleOpenUnicast)
         window.removeEventListener('popstate', () => applyRouteParams())
       }
     }

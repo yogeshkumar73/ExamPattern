@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import bcrypt from "bcryptjs";
 import dbConnect from "@/lib/mongodb";
 import User from "@/models/User";
+import Notification from "@/models/Notification";
 import { mockUsers } from "@/lib/mockDb";
 import { checkRateLimit, getClientIp } from "@/lib/ratelimit";
 
@@ -40,7 +41,12 @@ export async function POST(req: Request) {
       email,
       password,
       phone,
+      inviteCode,
+      referralCode,
+      teamCode,
     } = body;
+
+    const rawInviteCode = (inviteCode || referralCode || teamCode || "").trim().toUpperCase();
 
     name = name?.trim();
     email = email?.trim().toLowerCase();
@@ -118,12 +124,63 @@ export async function POST(req: Request) {
 
       const hashedPassword = await bcrypt.hash(password, 12);
 
+      // Handle referral and credit 200 coins to referring user
+      let referringUser: any = null;
+      let initialCoins = 0;
+      let referredByCode = "";
+
+      if (rawInviteCode) {
+        try {
+          referringUser = await User.findOne({
+            $or: [
+              { referralCode: rawInviteCode },
+              { customId: rawInviteCode },
+              ...(rawInviteCode.length === 24 && /^[0-9a-fA-F]{24}$/.test(rawInviteCode) ? [{ _id: rawInviteCode }] : [])
+            ]
+          });
+
+          if (referringUser) {
+            // Credit referring user 200 coins
+            referringUser.coins = (referringUser.coins || 0) + 200;
+            referringUser.referralCount = (referringUser.referralCount || 0) + 1;
+            referringUser.referralEarnings = (referringUser.referralEarnings || 0) + 200;
+            await referringUser.save();
+
+            // Notify referring user of +200 coin reward
+            try {
+              await Notification.create({
+                userId: String(referringUser._id),
+                recipientEmail: referringUser.email,
+                recipientName: referringUser.name,
+                title: "🎉 +200 Coins Earned! Team Invite",
+                message: `${name} joined Aura Study AI using your team invite code (${rawInviteCode})! +200 coins have been credited to your account.`,
+                category: "system",
+                priority: "high",
+              });
+            } catch (notifErr) {
+              console.warn("Failed to create referral notification:", notifErr);
+            }
+
+            initialCoins = 100; // Welcome reward for the joining student
+            referredByCode = referringUser.referralCode || rawInviteCode;
+          }
+        } catch (refErr) {
+          console.warn("Error processing referral credit:", refErr);
+        }
+      }
+
+      const generatedReferralCode = `TEAM-${Math.random().toString(36).substring(2, 8).toUpperCase()}`;
       const now = new Date();
       const user = await User.create({
         name,
         email,
         password: hashedPassword,
         phone,
+        coins: initialCoins,
+        referralCode: generatedReferralCode,
+        referredBy: referredByCode,
+        referralCount: 0,
+        referralEarnings: 0,
 
         role: "student",
         status: "Active",
@@ -155,7 +212,9 @@ export async function POST(req: Request) {
         {
           success: true,
           message:
-            "Registration successful! Your account and battle arena services are approved and active.",
+            initialCoins > 0
+              ? `Registration successful! Welcome bonus of 100 coins unlocked via Team Invite code! Your referrer also earned 200 coins.`
+              : "Registration successful! Your account and battle arena services are approved and active.",
           userId: user._id,
           user: {
             id: user._id,
@@ -163,6 +222,8 @@ export async function POST(req: Request) {
             email: user.email,
             role: user.role,
             status: user.status,
+            coins: user.coins ?? initialCoins,
+            referralCode: user.referralCode || generatedReferralCode,
             isLabApproved: user.isLabApproved,
             arenaApprovalStatus: user.arenaApprovalStatus,
           },
@@ -194,12 +255,34 @@ export async function POST(req: Request) {
         .substring(2, 11)
         .toUpperCase()}`;
 
+      // Credit 200 coins to mock referrer if matching
+      let mockReferrer = rawInviteCode
+        ? mockUsers.find(
+            (u) =>
+              u.referralCode === rawInviteCode ||
+              u._id === rawInviteCode ||
+              u.name.toUpperCase() === rawInviteCode
+          )
+        : null;
+
+      if (mockReferrer) {
+        mockReferrer.coins = (mockReferrer.coins || 0) + 200;
+        mockReferrer.referralCount = (mockReferrer.referralCount || 0) + 1;
+        mockReferrer.referralEarnings = (mockReferrer.referralEarnings || 0) + 200;
+      }
+
+      const mockReferralCode = `TEAM-${Math.random().toString(36).substring(2, 8).toUpperCase()}`;
       const nowIso = new Date().toISOString();
       mockUsers.push({
         _id: mockId,
         name,
         email,
         phone,
+        coins: mockReferrer ? 100 : 0,
+        referralCode: mockReferralCode,
+        referredBy: mockReferrer ? (mockReferrer.referralCode || rawInviteCode) : "",
+        referralCount: 0,
+        referralEarnings: 0,
 
         status: "Active",
         role: "student",
@@ -232,7 +315,9 @@ export async function POST(req: Request) {
         {
           success: true,
           message:
-            "Registration successful! Your account and battle arena services are approved and active.",
+            mockReferrer
+              ? "Registration successful! Welcome bonus of 100 coins unlocked via Team Invite code! Referrer credited with 200 coins."
+              : "Registration successful! Your account and battle arena services are approved and active.",
           userId: mockId,
           user: {
             id: mockId,
@@ -240,6 +325,8 @@ export async function POST(req: Request) {
             email,
             role: "student",
             status: "Active",
+            coins: mockReferrer ? 100 : 0,
+            referralCode: mockReferralCode,
             isLabApproved: true,
             arenaApprovalStatus: "approved",
           },

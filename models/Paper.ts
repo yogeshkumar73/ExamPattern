@@ -136,7 +136,20 @@ const PaperSchema = new mongoose.Schema(
     // Status and moderation
     isApproved: {
       type: Boolean,
-      default: true,
+      default: false, // Normal uploads require admin verification
+      index: true,
+    },
+    approvedAt: {
+      type: Date,
+      default: null,
+    },
+    approvedBy: {
+      type: String,
+      default: '',
+    },
+    rejectionReason: {
+      type: String,
+      default: '',
     },
     isReported: {
       type: Boolean,

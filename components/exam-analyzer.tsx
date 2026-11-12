@@ -239,50 +239,133 @@ export default function ExamAnalyzer() {
     )
   }
 
+  // Zero-dependency client-side text extractor for browser (works offline and on Netlify)
+  const extractClientSideText = async (file: File): Promise<string> => {
+    try {
+      // 1. Direct text file reading
+      const direct = await file.text().catch(() => "")
+      if (direct && direct.trim().length > 20 && !direct.includes("\0")) {
+        return direct.trim()
+      }
+
+      // 2. Client-side PDF stream extractor
+      const arrayBuf = await file.arrayBuffer().catch(() => null)
+      if (arrayBuf) {
+        const bytes = new Uint8Array(arrayBuf)
+        let raw = ""
+        const chunkSize = 8192
+        for (let i = 0; i < bytes.length; i += chunkSize) {
+          const slice = bytes.subarray(i, i + chunkSize)
+          let chunkStr = ""
+          for (let j = 0; j < slice.length; j++) {
+            chunkStr += String.fromCharCode(slice[j])
+          }
+          raw += chunkStr
+        }
+
+        const textPieces: string[] = []
+        const btRegex = /BT[\s\S]*?ET/g
+        const matches = raw.match(btRegex)
+
+        if (matches && matches.length > 0) {
+          for (const block of matches) {
+            const strRegex = /\(([^)]+)\)\s*(?:Tj|'|")/g
+            let match
+            while ((match = strRegex.exec(block)) !== null) {
+              textPieces.push(match[1])
+            }
+            const hexRegex = /<([0-9a-fA-F]+)>\s*(?:Tj|'|")/g
+            while ((match = hexRegex.exec(block)) !== null) {
+              const hex = match[1]
+              let str = ""
+              for (let i = 0; i < hex.length; i += 2) {
+                str += String.fromCharCode(parseInt(hex.substr(i, 2), 16))
+              }
+              textPieces.push(str)
+            }
+          }
+        }
+
+        if (textPieces.length > 0) {
+          const joined = textPieces.join(" ").replace(/\\([()\\])/g, "$1").trim()
+          if (joined.length > 30) return joined
+        }
+
+        // ASCII word scanner fallback
+        const printable = raw.replace(/[^\x20-\x7E\r\n\t]/g, " ")
+        const words = printable
+          .split(/\s+/)
+          .filter((w) => w.length > 2 && !w.startsWith("/") && !w.includes("obj") && !w.includes("endobj") && !w.includes("stream"))
+
+        if (words.length > 15) {
+          return words.join(" ").slice(0, 50000)
+        }
+      }
+    } catch (_) {}
+    return ""
+  }
+
   const handleSyllabusUpload = async (file: File) => {
     setIsProcessing(true)
     setError(null)
     try {
       const fName = (file.name || "").toLowerCase()
       const fType = (file.type || "").toLowerCase()
+      let extracted = ""
 
-      // Direct client-side reading for text files (instant & offline-friendly)
+      // 1. Direct text reading for standard text/markdown files (instant & offline)
       if (
         fType.startsWith("text/") ||
         /\.(txt|md|markdown|json|csv|rtf|log|tex|py|js|ts|html)$/i.test(fName)
       ) {
-        const directText = await file.text()
-        if (directText && directText.trim().length > 0) {
-          setSyllabusText(directText)
-          setIsProcessing(false)
-          return
+        extracted = await file.text().catch(() => "")
+      }
+
+      // 2. If not yet extracted, attempt serverless API with graceful client fallback
+      if (!extracted || extracted.trim().length === 0) {
+        try {
+          const formData = new FormData()
+          formData.append("file", file)
+          const controller = new AbortController()
+          const timeoutId = setTimeout(() => controller.abort(), 12000)
+
+          const response = await fetch("/api/extract-text", {
+            method: "POST",
+            body: formData,
+            signal: controller.signal,
+          })
+          clearTimeout(timeoutId)
+
+          if (response.ok) {
+            const data = await response.json().catch(() => null)
+            if (data?.text && data.text.trim().length > 0) {
+              extracted = data.text.trim()
+            }
+          }
+        } catch (serverlessErr) {
+          console.warn("[Serverless extraction unavailable, using client extractor]:", serverlessErr)
         }
       }
 
-      // Serverless extraction via /api/extract-text
-      const formData = new FormData()
-      formData.append("file", file)
-      const response = await fetch("/api/extract-text", { method: "POST", body: formData })
-      const data = await response.json()
+      // 3. Client-side browser fallback (handles Netlify serverless deployment errors)
+      if (!extracted || extracted.trim().length === 0) {
+        extracted = await extractClientSideText(file)
+      }
 
-      if (response.ok && data.text && data.text.trim().length > 0) {
-        setSyllabusText(data.text)
+      if (extracted && extracted.trim().length > 0) {
+        setSyllabusText(extracted)
+        setError(null)
       } else {
-        // Fallback: direct text read from file in browser
-        const directFallback = await file.text()
-        if (directFallback && directFallback.trim().length > 30) {
-          setSyllabusText(directFallback)
-        } else {
-          throw new Error(data.error || "Extraction failed")
-        }
+        setError(
+          "Could not automatically extract readable text from this file. Please paste your syllabus text in the 'Paste Text' tab, or upload a TXT/PDF file."
+        )
       }
     } catch (err: any) {
       console.error("[Syllabus Upload Error]:", err)
-      setError(
-        err?.message && err.message !== "Extraction failed"
-          ? err.message
-          : "Failed to extract syllabus text automatically. Please verify your file or use the 'Paste Syllabus' option."
-      )
+      const msg = err?.message === "Failed to fetch"
+        ? "Network error connecting to extraction service. Please paste your syllabus text in the 'Paste Text' tab."
+        : (err?.message || "Failed to process syllabus file. Please try pasting the text directly.")
+      setError(msg)
     } finally {
       setIsProcessing(false)
     }
@@ -296,47 +379,64 @@ export default function ExamAnalyzer() {
       const fType = (file.type || "").toLowerCase()
       let paperText = ""
 
+      // 1. Direct text reading
       if (
         fType.startsWith("text/") ||
         /\.(txt|md|markdown|json|csv|rtf|log|tex|py|js|ts|html)$/i.test(fName)
       ) {
-        paperText = await file.text()
+        paperText = await file.text().catch(() => "")
       }
 
+      // 2. Serverless extraction with timeout
       if (!paperText || paperText.trim().length === 0) {
-        const formData = new FormData()
-        formData.append("file", file)
-        const response = await fetch("/api/extract-text", { method: "POST", body: formData })
-        const data = await response.json()
+        try {
+          const formData = new FormData()
+          formData.append("file", file)
+          const controller = new AbortController()
+          const timeoutId = setTimeout(() => controller.abort(), 12000)
 
-        if (response.ok && data.text && data.text.trim().length > 0) {
-          paperText = data.text
-        } else {
-          const directFallback = await file.text()
-          if (directFallback && directFallback.trim().length > 30) {
-            paperText = directFallback
-          } else {
-            throw new Error(data.error || "Extraction failed")
+          const response = await fetch("/api/extract-text", {
+            method: "POST",
+            body: formData,
+            signal: controller.signal,
+          })
+          clearTimeout(timeoutId)
+
+          if (response.ok) {
+            const data = await response.json().catch(() => null)
+            if (data?.text && data.text.trim().length > 0) {
+              paperText = data.text.trim()
+            }
           }
+        } catch (serverlessErr) {
+          console.warn("[Serverless extraction unavailable, using client extractor]:", serverlessErr)
         }
       }
 
-      const newPaper: HistoricalPaperItem = {
-        id: `p_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
-        name: file.name.replace(/\.[^/.]+$/, ""),
-        academicYear: activePaperYear,
-        text: paperText,
-        charCount: paperText.length,
+      // 3. Client-side browser fallback
+      if (!paperText || paperText.trim().length === 0) {
+        paperText = await extractClientSideText(file)
       }
 
-      setPapers(prev => [...prev, newPaper])
+      if (paperText && paperText.trim().length > 0) {
+        const newPaper: HistoricalPaperItem = {
+          id: `p_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+          name: file.name.replace(/\.[^/.]+$/, ""),
+          academicYear: activePaperYear,
+          text: paperText,
+          charCount: paperText.length,
+        }
+        setPapers(prev => [...prev, newPaper])
+        setError(null)
+      } else {
+        setError("Could not automatically extract text from this past paper. Please use the 'Paste Paper' tab to paste its questions directly.")
+      }
     } catch (err: any) {
       console.error("[Historical Paper Upload Error]:", err)
-      setError(
-        err?.message && err.message !== "Extraction failed"
-          ? err.message
-          : "Failed to extract historical paper. Please verify file integrity or use 'Paste Paper'."
-      )
+      const msg = err?.message === "Failed to fetch"
+        ? "Network error connecting to extraction service. Please paste the paper text directly."
+        : (err?.message || "Failed to process historical paper.")
+      setError(msg)
     } finally {
       setIsProcessing(false)
     }
@@ -393,7 +493,7 @@ export default function ExamAnalyzer() {
       })
 
       if (!response.ok) {
-        const errorData = await response.json()
+        const errorData = await response.json().catch(() => ({ error: "Analysis service temporarily busy. Please retry." }))
         throw new Error(errorData.error || "Analysis pipeline execution failed.")
       }
 
@@ -401,7 +501,10 @@ export default function ExamAnalyzer() {
       setAnalysisResult(data)
       setStep("predict")
     } catch (err: any) {
-      setError(err.message || "An unexpected error occurred during pattern analysis.")
+      const errMsg = err?.message === "Failed to fetch"
+        ? "Network connection issue or analysis service offline. Please check your connection and retry."
+        : (err?.message || "An unexpected error occurred during pattern analysis.")
+      setError(errMsg)
       console.error("Analysis Error:", err)
     } finally {
       setIsProcessing(false)

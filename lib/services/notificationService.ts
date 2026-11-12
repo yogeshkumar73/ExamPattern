@@ -65,17 +65,31 @@ export async function createNotification(params: CreateNotificationParams | any,
 
 export async function getNotificationsForUser(identifier: string, unreadOnly = false) {
   try {
+    const twelveHoursAgo = new Date(Date.now() - 12 * 60 * 60 * 1000);
+
+    // 1. Automatically delete all notifications older than 12 hours
+    await Notification.deleteMany({ createdAt: { $lt: twelveHoursAgo } }).catch(() => {});
+
+    // 2. Automatically delete seen / read notifications for this user
+    await Notification.deleteMany({
+      $or: [
+        { userId: identifier },
+        { recipientEmail: identifier },
+        { userId: 'all' },
+      ],
+      isRead: true,
+    }).catch(() => {});
+
+    // 3. Return only fresh (< 12 hours) and unread (unseen) notifications
     const query: any = {
       $or: [
         { userId: identifier },
         { recipientEmail: identifier },
         { userId: 'all' },
       ],
+      createdAt: { $gte: twelveHoursAgo },
+      isRead: false,
     };
-
-    if (unreadOnly) {
-      query.isRead = false;
-    }
 
     return await Notification.find(query).sort({ createdAt: -1 }).limit(100).lean();
   } catch (error) {
@@ -86,7 +100,8 @@ export async function getNotificationsForUser(identifier: string, unreadOnly = f
 
 export async function markNotificationRead(notificationId: string) {
   try {
-    return await Notification.findByIdAndUpdate(notificationId, { isRead: true }, { new: true });
+    // Automatically delete notification once seen / marked read
+    return await Notification.findByIdAndDelete(notificationId);
   } catch (error) {
     console.error('markNotificationRead error:', error);
     return null;
@@ -95,17 +110,14 @@ export async function markNotificationRead(notificationId: string) {
 
 export async function markAllNotificationsRead(identifier: string) {
   try {
-    return await Notification.updateMany(
-      {
-        $or: [
-          { userId: identifier },
-          { recipientEmail: identifier },
-          { userId: 'all' },
-        ],
-        isRead: false,
-      },
-      { $set: { isRead: true } }
-    );
+    // Automatically delete all seen notifications for this user
+    return await Notification.deleteMany({
+      $or: [
+        { userId: identifier },
+        { recipientEmail: identifier },
+        { userId: 'all' },
+      ],
+    });
   } catch (error) {
     console.error('markAllNotificationsRead error:', error);
     return null;

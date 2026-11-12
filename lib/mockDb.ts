@@ -42,6 +42,12 @@ export interface MockUser {
   arenaPoints?: number;
   arenaRank?: 'Unranked' | 'Bronze' | 'Silver' | 'Gold' | 'Platinum' | 'Diamond' | 'Master' | 'Grandmaster';
   
+  // Team Invite & Referral System
+  referralCode?: string;
+  referredBy?: string;
+  referralCount?: number;
+  referralEarnings?: number;
+  
   // Battle Stats
   wins?: number;
   losses?: number;
