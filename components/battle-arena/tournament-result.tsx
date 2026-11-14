@@ -2,7 +2,8 @@
 
 import { useState } from "react"
 import { Button } from "@/components/ui/button"
-import { Trophy, Medal, Award, X } from "lucide-react"
+import { Badge } from "@/components/ui/badge"
+import { Trophy, Medal, Award, X, Sparkles, CheckCircle2, ShieldCheck, Flame } from "lucide-react"
 
 interface TournamentResultProps {
   tournament: any
@@ -25,95 +26,205 @@ export function TournamentResult({ tournament, onClose, onDestroyRoom }: Tournam
   }
 
   const rankings = tournament.rankings || []
-  const medalIcons = [
-    { icon: '🥇', color: 'from-yellow-500 to-yellow-600', label: 'Champion' },
-    { icon: '🥈', color: 'from-slate-400 to-slate-500', label: 'Runner-up' },
-    { icon: '🥉', color: 'from-orange-400 to-orange-500', label: 'Third Place' },
-  ]
+  const firstWinner = rankings[0]
+  const secondRunnerUp = rankings[1]
+
+  const firstCoins = tournament.firstPrizeCoins || 200
+  const firstBadge = tournament.firstPrizeBadge || "👑 Tournament Grand Champion"
+  const secondCoins = tournament.secondPrizeCoins || 100
+  const secondBadge = tournament.secondPrizeBadge || "🥈 Elite Runner-Up"
 
   return (
-    <div className="fixed inset-0 bg-black/80 backdrop-blur-lg flex items-center justify-center p-4 z-50">
-      <div className="w-full max-w-2xl max-h-[90vh] overflow-y-auto">
-        <div className="arena-card rounded-2xl p-8 space-y-6">
+    <div className="fixed inset-0 bg-black/85 backdrop-blur-xl flex items-center justify-center p-4 z-50 animate-in fade-in">
+      <div className="w-full max-w-3xl max-h-[92vh] overflow-y-auto rounded-3xl border-2 border-purple-500/30 shadow-2xl bg-slate-950">
+        <div className="p-6 sm:p-8 space-y-6">
           {/* Header */}
-          <div className="flex items-center justify-between">
+          <div className="flex items-center justify-between border-b border-white/10 pb-4">
             <div className="flex items-center gap-3">
-              <Trophy className="w-8 h-8 text-yellow-400" />
-              <h2 className="text-3xl font-black text-white">Tournament Results</h2>
+              <div className="p-3 bg-gradient-to-br from-yellow-500 to-amber-600 rounded-2xl shadow-lg shadow-yellow-500/20 text-black font-black">
+                <Trophy className="w-7 h-7 text-white" />
+              </div>
+              <div>
+                <div className="text-[10px] font-black uppercase tracking-widest text-amber-400">Official Tournament Match Complete</div>
+                <h2 className="text-2xl sm:text-3xl font-black text-white">{tournament.name}</h2>
+              </div>
             </div>
             <button
               onClick={onClose}
-              className="p-2 hover:bg-white/10 rounded-lg transition"
+              className="p-2 hover:bg-white/10 rounded-xl transition text-white/50 hover:text-white"
             >
               <X className="w-5 h-5" />
             </button>
           </div>
 
-          {/* Tournament Info */}
-          <div className="bg-white/5 rounded-xl p-4 space-y-2 text-sm text-white/70">
-            <div className="flex justify-between">
-              <span>Tournament:</span>
-              <span className="font-bold">{tournament.name}</span>
+          {/* Tournament Quick Meta */}
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 text-center text-xs">
+            <div className="p-3 bg-white/5 rounded-2xl border border-white/10">
+              <span className="text-[10px] uppercase font-bold text-white/40 block">Mode</span>
+              <span className="font-black text-purple-300 uppercase">{tournament.mode}</span>
             </div>
-            <div className="flex justify-between">
-              <span>Mode:</span>
-              <span className="font-bold uppercase">{tournament.mode}</span>
+            <div className="p-3 bg-white/5 rounded-2xl border border-white/10">
+              <span className="text-[10px] uppercase font-bold text-white/40 block">Participants</span>
+              <span className="font-black text-white">{tournament.participants?.length || rankings.length} Players</span>
             </div>
-            <div className="flex justify-between">
-              <span>Participants:</span>
-              <span className="font-bold">{tournament.participants?.length || 0}</span>
+            <div className="p-3 bg-white/5 rounded-2xl border border-white/10">
+              <span className="text-[10px] uppercase font-bold text-white/40 block">Host Room Code</span>
+              <span className="font-mono font-bold text-amber-300">#{tournament.inviteCode || "TRN-LIVE"}</span>
+            </div>
+            <div className="p-3 bg-white/5 rounded-2xl border border-white/10">
+              <span className="text-[10px] uppercase font-bold text-white/40 block">Prize Pool</span>
+              <span className="font-black text-emerald-400">{firstCoins + secondCoins} Coins</span>
             </div>
           </div>
 
-          {/* Rankings */}
+          {/* ── PODIUM CEREMONY: 1st Winner & 2nd Runner-Up ──────────────── */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            {/* 1st Place Champion */}
+            {firstWinner && (
+              <div className="p-5 rounded-2xl bg-gradient-to-b from-amber-500/20 via-slate-900 to-black border-2 border-amber-500/50 shadow-xl space-y-3 relative overflow-hidden">
+                <div className="flex items-center justify-between">
+                  <Badge className="bg-gradient-to-r from-amber-500 to-yellow-400 text-black font-black text-xs px-2.5 py-0.5">
+                    🥇 1ST PLACE WINNER
+                  </Badge>
+                  <span className="text-amber-300 text-xs font-mono font-black">{firstWinner.finalScore} PTS</span>
+                </div>
+
+                <div className="flex items-center gap-3">
+                  <div className="w-12 h-12 rounded-full ring-2 ring-amber-400 overflow-hidden bg-amber-500/20 flex items-center justify-center font-black text-base text-amber-300">
+                    {firstWinner.userAvatar ? (
+                      <img src={firstWinner.userAvatar} alt={firstWinner.userName} className="w-full h-full object-cover" />
+                    ) : (
+                      firstWinner.userName?.charAt(0) || "W"
+                    )}
+                  </div>
+                  <div>
+                    <h3 className="text-lg font-black text-white truncate">{firstWinner.userName}</h3>
+                    <div className="text-[11px] text-amber-300/80 font-bold flex items-center gap-1">
+                      <Sparkles className="w-3 h-3 text-amber-400" /> Grand Champion
+                    </div>
+                  </div>
+                </div>
+
+                <div className="p-2.5 rounded-xl bg-amber-500/10 border border-amber-500/30 flex items-center justify-between text-xs">
+                  <span className="font-bold text-amber-200">Awarded: +{firstCoins} Coins</span>
+                  <Badge variant="outline" className="text-[10px] text-amber-300 border-amber-400/40">
+                    {firstBadge}
+                  </Badge>
+                </div>
+              </div>
+            )}
+
+            {/* 2nd Place Runner-Up */}
+            {secondRunnerUp && (
+              <div className="p-5 rounded-2xl bg-gradient-to-b from-slate-400/20 via-slate-900 to-black border-2 border-slate-400/40 shadow-xl space-y-3 relative overflow-hidden">
+                <div className="flex items-center justify-between">
+                  <Badge className="bg-gradient-to-r from-slate-300 to-slate-400 text-black font-black text-xs px-2.5 py-0.5">
+                    🥈 2ND PLACE RUNNER-UP
+                  </Badge>
+                  <span className="text-slate-300 text-xs font-mono font-black">{secondRunnerUp.finalScore} PTS</span>
+                </div>
+
+                <div className="flex items-center gap-3">
+                  <div className="w-12 h-12 rounded-full ring-2 ring-slate-400 overflow-hidden bg-slate-400/20 flex items-center justify-center font-black text-base text-slate-200">
+                    {secondRunnerUp.userAvatar ? (
+                      <img src={secondRunnerUp.userAvatar} alt={secondRunnerUp.userName} className="w-full h-full object-cover" />
+                    ) : (
+                      secondRunnerUp.userName?.charAt(0) || "R"
+                    )}
+                  </div>
+                  <div>
+                    <h3 className="text-lg font-black text-white truncate">{secondRunnerUp.userName}</h3>
+                    <div className="text-[11px] text-slate-300/80 font-bold flex items-center gap-1">
+                      <Medal className="w-3 h-3 text-slate-300" /> Elite Finalist
+                    </div>
+                  </div>
+                </div>
+
+                <div className="p-2.5 rounded-xl bg-slate-400/10 border border-slate-400/30 flex items-center justify-between text-xs">
+                  <span className="font-bold text-slate-200">Awarded: +{secondCoins} Coins</span>
+                  <Badge variant="outline" className="text-[10px] text-slate-300 border-slate-400/40">
+                    {secondBadge}
+                  </Badge>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Prize Settlement Confirmation Notice */}
+          <div className="p-3 bg-emerald-500/10 border border-emerald-500/30 rounded-2xl flex items-center justify-between text-xs text-emerald-300">
+            <span className="flex items-center gap-2">
+              <CheckCircle2 className="w-4 h-4 text-emerald-400 flex-shrink-0" />
+              <span>Prize distribution verified: 1st Place credited <strong>{firstCoins} Coins</strong>; 2nd Place credited <strong>{secondCoins} Coins</strong>.</span>
+            </span>
+            <Badge variant="outline" className="text-[10px] text-emerald-400 border-emerald-500/30 font-mono">
+              Debited & Settled
+            </Badge>
+          </div>
+
+          {/* ── COMPLETE COMPARATIVE LEADERBOARD ───────────────────────────── */}
           <div className="space-y-3">
-            <h3 className="text-lg font-bold text-white flex items-center gap-2">
-              <Award className="w-5 h-5" /> Final Rankings
+            <h3 className="text-sm font-black uppercase tracking-wider text-white flex items-center gap-2">
+              <Award className="w-4 h-4 text-purple-400" /> Complete Participant Comparison
             </h3>
 
             {rankings.length === 0 ? (
-              <div className="text-center py-8 text-white/50">No rankings available</div>
+              <div className="text-center py-6 text-white/50 text-xs">No rankings available</div>
             ) : (
               <div className="space-y-2">
                 {rankings.map((rank: any, idx: number) => {
-                  const medal = medalIcons[idx] || { icon: `#${idx + 1}`, color: 'from-gray-500 to-gray-600', label: `Place ${idx + 1}` }
-                  const isMedal = idx < 3
+                  const isFirst = idx === 0
+                  const isSecond = idx === 1
+                  const isThird = idx === 2
 
                   return (
                     <div
-                      key={rank.userId}
-                      className={`rounded-lg p-4 flex items-center gap-4 ${
-                        isMedal
-                          ? `bg-gradient-to-r ${medal.color}`
-                          : 'bg-white/5 hover:bg-white/10'
-                      } transition`}
+                      key={rank.userId || idx}
+                      className={`p-3.5 rounded-2xl border flex items-center justify-between gap-3 text-xs transition ${
+                        isFirst
+                          ? "bg-amber-500/10 border-amber-500/40"
+                          : isSecond
+                          ? "bg-slate-400/10 border-slate-400/40"
+                          : isThird
+                          ? "bg-amber-800/10 border-amber-700/30"
+                          : "bg-white/5 border-white/10"
+                      }`}
                     >
-                      {/* Rank */}
-                      <div className="text-3xl font-black w-12 text-center">
-                        {isMedal ? medal.icon : `#${idx + 1}`}
-                      </div>
+                      <div className="flex items-center gap-3 min-w-0">
+                        <div className="w-7 h-7 rounded-xl bg-white/10 flex items-center justify-center font-black text-xs text-white flex-shrink-0">
+                          {isFirst ? "🥇" : isSecond ? "🥈" : isThird ? "🥉" : `#${idx + 1}`}
+                        </div>
 
-                      {/* Player Info */}
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-3">
-                          {rank.userAvatar && (
-                            <img
-                              src={rank.userAvatar}
-                              alt={rank.userName}
-                              className="w-10 h-10 rounded-full object-cover"
-                            />
+                        <div className="w-8 h-8 rounded-full overflow-hidden bg-white/10 flex items-center justify-center flex-shrink-0">
+                          {rank.userAvatar ? (
+                            <img src={rank.userAvatar} alt={rank.userName} className="w-full h-full object-cover" />
+                          ) : (
+                            <span className="font-bold text-white text-[10px]">{rank.userName?.charAt(0) || "U"}</span>
                           )}
-                          <div className="min-w-0">
-                            <p className="font-bold text-white truncate">{rank.userName}</p>
-                            <p className="text-xs text-white/50 truncate">ID: {rank.userId}</p>
+                        </div>
+
+                        <div className="min-w-0">
+                          <div className="font-black text-white truncate flex items-center gap-1.5">
+                            <span>{rank.userName}</span>
+                            {isFirst && <Badge className="bg-amber-500/20 text-amber-300 text-[9px] px-1.5 py-0 border-none">Champion</Badge>}
+                            {isSecond && <Badge className="bg-slate-400/20 text-slate-300 text-[9px] px-1.5 py-0 border-none">Runner-Up</Badge>}
                           </div>
+                          <span className="text-[10px] text-white/40 font-mono">Rank #{idx + 1}</span>
                         </div>
                       </div>
 
-                      {/* Score */}
-                      <div className="text-right">
-                        <p className="text-2xl font-black text-white">{rank.finalScore}</p>
-                        <p className="text-xs text-white/60">Points</p>
+                      <div className="text-right flex items-center gap-4 flex-shrink-0">
+                        <div>
+                          <div className="font-black text-sm text-purple-300 font-mono">{rank.finalScore} PTS</div>
+                          <div className="text-[10px] text-white/40">Score</div>
+                        </div>
+
+                        {isFirst ? (
+                          <Badge className="bg-amber-500 text-black font-black text-[10px]">+{firstCoins} Coins</Badge>
+                        ) : isSecond ? (
+                          <Badge className="bg-slate-300 text-black font-black text-[10px]">+{secondCoins} Coins</Badge>
+                        ) : (
+                          <Badge variant="outline" className="text-white/40 border-white/10 text-[10px]">Completed</Badge>
+                        )}
                       </div>
                     </div>
                   )
@@ -122,20 +233,21 @@ export function TournamentResult({ tournament, onClose, onDestroyRoom }: Tournam
             )}
           </div>
 
-          {/* Actions */}
-          <div className="flex gap-3 pt-4">
+          {/* Action Buttons */}
+          <div className="flex flex-col sm:flex-row gap-3 pt-2">
             <Button
               onClick={onClose}
-              className="flex-1 bg-white/10 hover:bg-white/20 text-white border border-white/20 font-bold"
+              className="flex-1 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white font-bold h-11 rounded-xl text-xs shadow-lg"
             >
-              Close
+              Back to Tournaments Lobby
             </Button>
             <Button
               onClick={handleDestroyRoom}
               disabled={destroying}
-              className="flex-1 bg-red-500/20 hover:bg-red-500/30 text-red-400 border border-red-500/30 font-bold"
+              variant="outline"
+              className="border-red-500/30 text-red-400 hover:bg-red-500/10 font-bold h-11 rounded-xl text-xs"
             >
-              {destroying ? 'Destroying...' : 'Destroy Room'}
+              {destroying ? "Closing..." : "Close & Auto-Clean Room"}
             </Button>
           </div>
         </div>

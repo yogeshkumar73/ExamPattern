@@ -123,6 +123,13 @@ export function BattleRoom({ config, user, onBattleEnd }: BattleRoomProps) {
   const modeConfig = MODE_CONFIG[config.mode] || MODE_CONFIG.math
   const ModeIcon = modeConfig.icon
 
+  // Deterministic shared duel voice room ID for full-duplex HTTP/2 & WebRTC 1v1 audio
+  const duelVoiceRoomId = config.duelId || config.roomCode || (
+    config.opponent?.name 
+      ? `duel-${[user?.id || user?.name || 'player', config.opponent.id || config.opponent.name].sort().join('-')}`
+      : 'duel-voice'
+  )
+
   // Track answered question IDs for deduplication across refetches and sessions
   const answeredIdsRef = useRef<Set<string>>(new Set())
 
@@ -533,7 +540,7 @@ export function BattleRoom({ config, user, onBattleEnd }: BattleRoomProps) {
             {/* Duel Voice Bar at Top */}
             <div className="flex justify-center">
               <DuelVoiceChat
-                roomId={config.duelId || 'duel-voice'}
+                roomId={duelVoiceRoomId}
                 user={user}
                 opponentName={config.opponent?.name || 'Opponent'}
                 opponentAvatar={config.opponent?.photoUrl || config.opponent?.avatar}
@@ -608,7 +615,7 @@ export function BattleRoom({ config, user, onBattleEnd }: BattleRoomProps) {
             {(config.duelId || config.battleType === '1v1') && (
               <div className="flex justify-center">
                 <DuelVoiceChat
-                  roomId={config.duelId || 'duel-voice'}
+                  roomId={duelVoiceRoomId}
                   user={user}
                   opponentName={config.opponent?.name || 'Opponent'}
                   opponentAvatar={config.opponent?.photoUrl || config.opponent?.avatar}
@@ -793,7 +800,7 @@ export function BattleRoom({ config, user, onBattleEnd }: BattleRoomProps) {
         {(config.duelId || config.battleType === '1v1' || config.battleType === 'private') && (
           <div className="flex-1 max-w-md mx-auto">
             <DuelVoiceChat
-              roomId={config.duelId || config.roomCode || 'duel-voice'}
+              roomId={duelVoiceRoomId}
               user={user}
               opponentName={config.opponent?.name || 'Opponent'}
               opponentAvatar={config.opponent?.photoUrl || config.opponent?.avatar}

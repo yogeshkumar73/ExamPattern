@@ -199,9 +199,14 @@ export async function PATCH(req: NextRequest) {
 
     try {
       await dbConnect();
-      const query = mongoose.isValidObjectId(paperId)
-        ? { _id: paperId }
-        : { $or: [{ paperId }, { _id: paperId }] };
+      const isObjId = mongoose.isValidObjectId(paperId);
+      const seedMatch = SAMPLE_VERIFICATION_PAPERS.find(s => s._id === paperId || s.paperId === paperId);
+      
+      const query = isObjId
+        ? { $or: [{ _id: paperId }, { paperId }] }
+        : seedMatch 
+        ? { $or: [{ paperId }, { paperId: seedMatch.paperId }] }
+        : { paperId };
 
       if (action === "approve") {
         updatedPaper = await Paper.findOneAndUpdate(
@@ -231,22 +236,97 @@ export async function PATCH(req: NextRequest) {
         await Paper.findOneAndDelete(query);
       }
 
-      // Dispatch notification to uploader if identified
-      if (updatedPaper && updatedPaper.uploaderId) {
+      // If paper was not yet persisted in DB (e.g. from sample verification queue), insert it now
+      if (!updatedPaper && (action === "approve" || action === "reject")) {
+        const seed = SAMPLE_VERIFICATION_PAPERS.find(s => s._id === paperId || s.paperId === paperId);
+        if (seed) {
+          let resolvedUserId = "";
+          let resolvedUserEmail = seed.uploaderEmail || "";
+          try {
+            const User = (await import("@/models/User")).default;
+            const foundUser = await User.findOne({ email: seed.uploaderEmail }).select("_id email").lean();
+            if (foundUser) {
+              resolvedUserId = String(foundUser._id);
+              resolvedUserEmail = foundUser.email;
+            }
+          } catch {}
+
+          updatedPaper = await Paper.create({
+            paperId: seed.paperId,
+            title: seed.title,
+            description: seed.description,
+            examType: seed.examType,
+            stream: seed.stream,
+            section: seed.section,
+            subject: seed.subject,
+            syllabus: seed.syllabus,
+            year: seed.year,
+            fileName: seed.fileName,
+            fileType: seed.fileType,
+            fileSize: seed.fileSize,
+            uploaderName: seed.uploaderName,
+            uploaderEmail: resolvedUserEmail,
+            uploaderId: resolvedUserId || "student",
+            uploadedBy: resolvedUserId || "student",
+            isApproved: action === "approve",
+            approvedAt: action === "approve" ? new Date() : null,
+            approvedBy: action === "approve" ? verifiedBy : "",
+            rejectionReason: action === "reject" ? (rejectionReason || "Does not meet verification quality guidelines") : "",
+          });
+        }
+      }
+
+      // Dispatch real in-app notification / message to the student
+      if (updatedPaper && (action === "approve" || action === "reject")) {
         try {
           const { createNotification } = await import("@/lib/services/notificationService");
+          const User = (await import("@/models/User")).default;
+
+          let targetUserId = updatedPaper.uploaderId ? String(updatedPaper.uploaderId) : "";
+          let targetEmail = updatedPaper.uploaderEmail || "";
+
+          // Resolve User ID if only email is present or placeholder
+          if ((!targetUserId || targetUserId === "student" || targetUserId.startsWith("anon-")) && targetEmail) {
+            const userDoc = await User.findOne({ email: targetEmail }).select("_id email").lean();
+            if (userDoc) {
+              targetUserId = String(userDoc._id);
+              targetEmail = userDoc.email || targetEmail;
+            }
+          }
+
+          // If targetEmail is missing but targetUserId is ObjectId, resolve email
+          if (!targetEmail && targetUserId && mongoose.isValidObjectId(targetUserId)) {
+            const userDoc = await User.findById(targetUserId).select("_id email").lean();
+            if (userDoc) {
+              targetEmail = userDoc.email || "";
+            }
+          }
+
+          const refId = updatedPaper.paperId || (updatedPaper._id ? `PAP-${String(updatedPaper._id).slice(-6).toUpperCase()}` : "PAP-REF");
+          const isApprove = action === "approve";
+
+          const notifTitle = isApprove
+            ? `✅ Paper Approved: Ref #${refId}`
+            : `⚠️ Paper Review Notice: Ref #${refId}`;
+
+          const notifMessage = isApprove
+            ? `Congratulations! Your uploaded past paper "${updatedPaper.title}" (Ref #${refId}) has been verified & approved by ${verifiedBy}. It is now published live in the Paper Repository for all students to access!`
+            : `Your submitted paper "${updatedPaper.title}" (Ref #${refId}) was reviewed by ${verifiedBy}. Status: Rejected. Reason: ${rejectionReason || "Does not meet verification quality guidelines"}. Please check and resubmit.`;
+
           await createNotification({
-            userId: String(updatedPaper.uploaderId),
-            title: action === "approve" ? "✅ Past Paper Approved!" : "⚠️ Past Paper Verification Update",
-            message: action === "approve"
-              ? `Your paper "${updatedPaper.title}" has been verified by Admin and is now live in the Community Paper Repository.`
-              : `Your paper "${updatedPaper.title}" was reviewed. Reason: ${rejectionReason || "Verification not granted"}.`,
-            category: "system",
-            priority: "normal",
+            userId: targetUserId || targetEmail || "student",
+            recipientEmail: targetEmail,
+            recipientName: updatedPaper.uploaderName || "Student",
+            senderId: "admin-moderation",
+            senderName: verifiedBy,
+            title: notifTitle,
+            message: notifMessage,
+            category: isApprove ? "achievement" : "system",
+            priority: "high",
             actionUrl: "/?step=repository",
           });
         } catch (notifErr) {
-          console.warn("[Admin Papers Moderation] Failed to send notification:", notifErr);
+          console.warn("[Admin Papers Moderation] Failed to send notification to uploader:", notifErr);
         }
       }
 
@@ -275,6 +355,28 @@ export async function PATCH(req: NextRequest) {
         } else if (action === "reject") {
           target.isApproved = false;
           (target as any).rejectionReason = rejectionReason || "Does not meet quality standards";
+        }
+
+        try {
+          const { createNotification } = await import("@/lib/services/notificationService");
+          const refId = target.paperId || (target._id ? `PAP-${String(target._id).slice(-6).toUpperCase()}` : "PAP-REF");
+          const isApprove = action === "approve";
+          await createNotification({
+            userId: target.uploaderEmail || "student",
+            recipientEmail: target.uploaderEmail || "",
+            recipientName: target.uploaderName || "Student",
+            senderId: "admin-moderation",
+            senderName: verifiedBy,
+            title: isApprove ? `✅ Paper Approved: Ref #${refId}` : `⚠️ Paper Review Notice: Ref #${refId}`,
+            message: isApprove
+              ? `Congratulations! Your uploaded past paper "${target.title}" (Ref #${refId}) has been verified and approved by ${verifiedBy}. It is now published live in the Paper Repository for all students to access!`
+              : `Your paper submission "${target.title}" (Ref #${refId}) was reviewed by ${verifiedBy}. Status: Rejected. Reason: ${rejectionReason || "Does not meet verification quality guidelines"}. Please revise and resubmit.`,
+            category: isApprove ? "achievement" : "system",
+            priority: "high",
+            actionUrl: "/?step=repository",
+          });
+        } catch (notifErr) {
+          console.warn("[Admin Papers Moderation Mock] Notification dispatch error:", notifErr);
         }
       }
 

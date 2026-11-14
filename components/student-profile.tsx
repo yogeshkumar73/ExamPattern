@@ -128,6 +128,7 @@ interface FullProfile extends SessionUser {
   countryCode?: string
   city?: string
   ip?: string
+  gender?: string
 }
 
 export function StudentProfile({ initialTab }: { initialTab?: ProfileTab } = {}) {
@@ -135,7 +136,7 @@ export function StudentProfile({ initialTab }: { initialTab?: ProfileTab } = {})
 
   const defaultTab: ProfileTab = initialTab || (currentStep === "setup" ? "academic" : "overview")
   const [profile, setProfile] = useState<FullProfile>({
-    id: "", name: "", email: "", phone: "", branch: "", bio: "",
+    id: "", name: "", email: "", phone: "", branch: "", bio: "", gender: "",
     photoUrl: "", stream: "", course: "", department: "", grade: "",
     role: "student", profileComplete: false, points: 0, rank: "Bronze",
     xp: 0, level: 1, coins: 0, elo: 1200, wins: 0, losses: 0,
@@ -422,6 +423,13 @@ export function StudentProfile({ initialTab }: { initialTab?: ProfileTab } = {})
 
   // ── Save profile ──────────────────────────────────────────────────────────────
   const handleSave = async () => {
+    // Validate mandatory gender field
+    if (!profile.gender || !profile.gender.trim()) {
+      showToast("⚠️ Gender is a mandatory field. Please select your gender before saving.")
+      setIsSaving(false)
+      return
+    }
+
     setIsSaving(true)
     try {
       const res = await fetch("/api/profile", {
@@ -434,6 +442,7 @@ export function StudentProfile({ initialTab }: { initialTab?: ProfileTab } = {})
           phone: profile.phone,
           branch: profile.branch,
           bio: profile.bio,
+          gender: profile.gender,
           photoUrl: profile.photoUrl,
           stream: profile.stream,
           course: profile.course,
@@ -860,6 +869,32 @@ export function StudentProfile({ initialTab }: { initialTab?: ProfileTab } = {})
                 </div>
               ))}
               <div className="space-y-1">
+                <div className="flex items-center justify-between">
+                  <Label className="text-xs font-black uppercase text-muted-foreground">
+                    Gender <span className="text-red-500 font-black">*</span>
+                  </Label>
+                  <Badge variant="outline" className="text-[10px] bg-red-500/10 text-red-400 border-red-500/30">
+                    Mandatory
+                  </Badge>
+                </div>
+                <Select
+                  disabled={!isEditing}
+                  value={profile.gender || ""}
+                  onValueChange={(val) => setProfile({ ...profile, gender: val } as any)}
+                >
+                  <SelectTrigger className="font-medium border-2">
+                    <SelectValue placeholder="Select Gender (Required)" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="male">👨 Male</SelectItem>
+                    <SelectItem value="female">👩 Female</SelectItem>
+                    <SelectItem value="other">⚧️ Other / Non-Binary</SelectItem>
+                    <SelectItem value="prefer_not_to_say">👤 Prefer not to say</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-1">
                 <Label className="text-xs font-black uppercase text-muted-foreground">Bio</Label>
                 <Textarea
                   disabled={!isEditing}
@@ -894,6 +929,7 @@ export function StudentProfile({ initialTab }: { initialTab?: ProfileTab } = {})
                 { label: "Total Battles", value: profile.totalBattles ?? 0, icon: "⚔️" },
                 { label: "Win Rate", value: winRate > 0 ? `${winRate}%` : "0%", icon: "🎯" },
                 { label: "Best Streak", value: profile.bestStreak ?? 0, icon: "🔥" },
+                { label: "Gender", value: profile.gender ? (profile.gender.charAt(0).toUpperCase() + profile.gender.slice(1)) : "Not specified", icon: "⚧️" },
                 { label: "Stream", value: streamInfo?.label || "Not set", icon: "📚" },
                 { label: "Lab Access", value: profile.isLabApproved ? "Approved ✓" : "Pending", icon: "🔬" },
                 { label: "Account Status", value: (profile as any).status || "Active", icon: "🟢" },

@@ -75,7 +75,6 @@ export async function getNotificationsForUser(identifier: string, unreadOnly = f
       $or: [
         { userId: identifier },
         { recipientEmail: identifier },
-        { userId: 'all' },
       ],
       isRead: true,
     }).catch(() => {});
@@ -115,7 +114,6 @@ export async function markAllNotificationsRead(identifier: string) {
       $or: [
         { userId: identifier },
         { recipientEmail: identifier },
-        { userId: 'all' },
       ],
     });
   } catch (error) {

@@ -23,6 +23,7 @@ import { TournamentBracket } from "./tournament-bracket"
 import { StudentTournaments } from "./student-tournaments"
 import { FriendsPanel } from "./friends-panel"
 import { CustomExamArena } from "./custom-exam-arena"
+import { VisitProfileModal } from "./visit-profile-modal"
 
 interface ArenaUser {
   id: string
@@ -115,6 +116,7 @@ export function BattleArena({ userId, userEmail, isAdmin = false }: BattleArenaP
   const [loading, setLoading] = useState(true)
   const [onlineCount, setOnlineCount] = useState(0)
   const [activeTab, setActiveTab] = useState('lobby')
+  const [visitingProfileUser, setVisitingProfileUser] = useState<any | null>(null)
 
   useEffect(() => {
     if (typeof window !== 'undefined') {
@@ -131,14 +133,14 @@ export function BattleArena({ userId, userEmail, isAdmin = false }: BattleArenaP
 
         if (detail?.openChatWith) {
           setActiveTab('friends')
-        } else if (tId || inv || tab === 'events' || tab === 'tournament') {
+        } else if (tId || inv || tab === 'events' || tab === 'tournament' || rCode?.startsWith('TRN-')) {
           setActiveTab('tournament')
+        } else if (tab === 'study-clash' || tab === 'clash' || tab === 'custom-room' || rCode?.startsWith('CLASH-')) {
+          setActiveTab('study-clash')
         } else if (tab === 'friends' || duel) {
           setActiveTab('friends')
           if (duelMode) setSelectedMode(duelMode)
           if (duelDiff) setSelectedDifficulty(duelDiff)
-        } else if (tab === 'study-clash' || tab === 'clash' || tab === 'custom-room') {
-          setActiveTab('study-clash')
         } else if (rCode) {
           setActiveTab('lobby')
           setSelectedBattleType('private')
@@ -158,12 +160,20 @@ export function BattleArena({ userId, userEmail, isAdmin = false }: BattleArenaP
         setActiveTab('friends')
       }
 
+      const handleOpenVisitProfile = (e: any) => {
+        if (e.detail?.user) {
+          setVisitingProfileUser(e.detail.user)
+        }
+      }
+
       window.addEventListener('arena-navigate', handleArenaNav)
       window.addEventListener('open-unicast-chat', handleOpenUnicast)
+      window.addEventListener('open-visit-profile', handleOpenVisitProfile)
       window.addEventListener('popstate', () => applyRouteParams())
       return () => {
         window.removeEventListener('arena-navigate', handleArenaNav)
         window.removeEventListener('open-unicast-chat', handleOpenUnicast)
+        window.removeEventListener('open-visit-profile', handleOpenVisitProfile)
         window.removeEventListener('popstate', () => applyRouteParams())
       }
     }
@@ -1708,6 +1718,24 @@ export function BattleArena({ userId, userEmail, isAdmin = false }: BattleArenaP
             )}
           </div>
         </div>
+      )}
+      {visitingProfileUser && (
+        <VisitProfileModal
+          user={visitingProfileUser}
+          currentUser={arenaUser}
+          isOpen={!!visitingProfileUser}
+          onClose={() => setVisitingProfileUser(null)}
+          onStartChat={(target) => {
+            setVisitingProfileUser(null)
+            setActiveTab('friends')
+            window.dispatchEvent(new CustomEvent('open-unicast-chat', { detail: { openChatWith: target } }))
+          }}
+          onStartDuel={(target) => {
+            setVisitingProfileUser(null)
+            setActiveTab('friends')
+            window.dispatchEvent(new CustomEvent('arena-navigate', { detail: { tab: 'friends', duel: 1, targetUser: target } }))
+          }}
+        />
       )}
     </div>
   )

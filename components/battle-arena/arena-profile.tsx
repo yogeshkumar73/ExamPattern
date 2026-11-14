@@ -63,11 +63,13 @@ export function ArenaProfile({ user, onRefresh }: ArenaProfileProps) {
   const [location, setLocation] = useState<any>(null)
 
   useEffect(() => {
-    fetch("/api/user/location")
+    const uid = user?.id || user?._id
+    const query = uid ? `?userId=${encodeURIComponent(uid)}` : ""
+    fetch(`/api/user/location${query}`)
       .then(r => r.json())
       .then(d => { if (d && d.country) setLocation(d) })
       .catch(() => {})
-  }, [])
+  }, [user?.id, user?._id])
 
   useEffect(() => {
     if (!user?.id) return
@@ -117,10 +119,17 @@ export function ArenaProfile({ user, onRefresh }: ArenaProfileProps) {
           <div className="text-white font-black text-xl mt-3">{user.name}</div>
           <div className="text-white/50 text-sm">{user.email}</div>
 
-          {/* Location / Country via IP */}
-          <div className="mt-2 inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-white/5 border border-white/10 text-white/80">
-            <span>{location?.flag || "🌍"}</span>
-            <span>{location?.city ? `${location.city}, ` : ""}{location?.country || user.country || "India"}</span>
+          {/* Location / Country via IP & Gender Section */}
+          <div className="mt-2 flex items-center justify-center gap-1.5 flex-wrap">
+            <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-white/5 border border-white/10 text-white/80">
+              <span>{location?.flag || "🌍"}</span>
+              <span>{location?.city ? `${location.city}, ` : ""}{location?.country || user.country || "India"}</span>
+            </div>
+            {user.gender && (
+              <div className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold bg-indigo-500/20 border border-indigo-500/30 text-indigo-300">
+                <span>{user.gender === 'male' ? '👨 Male' : user.gender === 'female' ? '👩 Female' : user.gender === 'other' ? '⚧️ Other' : '👤 ' + user.gender}</span>
+              </div>
+            )}
           </div>
 
           <div className={`inline-block mt-3 px-4 py-1.5 rounded-full text-sm font-black bg-gradient-to-r ${rankGradient} text-white`}>

@@ -48,6 +48,20 @@ export interface MockUser {
   referralCount?: number;
   referralEarnings?: number;
   
+  // Location and Personal Details
+  city?: string;
+  country?: string;
+  countryCode?: string;
+  region?: string;
+  locationFormatted?: string;
+  isLocationVerified?: boolean;
+  lastLocationUpdate?: Date | string;
+  ip?: string;
+  lastIp?: string;
+  gender?: string;
+  password?: string;
+  emailVerified?: boolean;
+  
   // Battle Stats
   wins?: number;
   losses?: number;

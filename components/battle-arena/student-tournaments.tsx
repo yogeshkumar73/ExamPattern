@@ -66,11 +66,17 @@ export function StudentTournaments({ user }: StudentTournamentsProps) {
     difficulty: 'intermediate',
     maxParticipants: 8,
     prizePool: 1000,
+    firstPrizeCoins: 300,
+    firstPrizeBadge: '👑 Tournament Grand Champion',
+    secondPrizeCoins: 150,
+    secondPrizeBadge: '🥈 Elite Runner-Up',
     timeType: 'immediate', // immediate | scheduled
     scheduledTime: '',
     isPrivate: false,
     password: '',
     matchDuration: 300, // in seconds (120, 180, 300, 600)
+    timePerQuestion: 30, // 15, 30, 45, 60
+    passingCutoff: 50, // 40, 50, 60, 75
     expiryHours: 24, // 1, 6, 12, 24, 48
     questionsPerMatch: 10, // 5, 10, 15
     pointsPerCorrect: 100,
@@ -101,32 +107,59 @@ export function StudentTournaments({ user }: StudentTournamentsProps) {
   // Auto-detect invite or tournamentId from URL query param or arena-navigate event
   useEffect(() => {
     if (typeof window !== 'undefined') {
-      const applyInviteParam = (detail?: any) => {
+      const applyInviteParam = async (detail?: any) => {
         const params = new URLSearchParams(window.location.search)
         const invite = detail?.invite || params.get('invite')
         const tId = detail?.tournamentId || params.get('tournamentId')
 
-        if (tId && tournaments.length > 0) {
-          const found = tournaments.find(t => t._id === tId || t.inviteCode === invite)
-          if (found) {
-            const isParticipant = found.participants?.some((p: any) => p.userId === user?.id)
-            if (isParticipant && found.status === 'active') {
-              setSelectedTournament(found)
-              setShowGameMode(true)
-              setActiveTab('playing')
-              return
+        if (!tId && !invite) return
+
+        let found = tournaments.find(t => (tId && t._id === tId) || (invite && t.inviteCode?.toUpperCase() === invite.toUpperCase()))
+
+        // If not found in current state, fetch it from API
+        if (!found) {
+          try {
+            const queryParam = invite ? `invite=${encodeURIComponent(invite)}` : `id=${encodeURIComponent(tId!)}`
+            const res = await fetch(`/api/arena/tournaments?${queryParam}`)
+            const data = await res.json()
+            if (data.tournament) {
+              found = data.tournament
             }
+          } catch (e) {
+            console.error('Error fetching tournament invite:', e)
           }
         }
 
+        if (found) {
+          const isParticipant = found.participants?.some((p: any) => p.userId === user?.id)
+          if (isParticipant) {
+            setSelectedTournament(found)
+            if (found.status === 'active') {
+              setShowGameMode(true)
+              setActiveTab('playing')
+            } else {
+              setActiveTab('my-tournaments')
+            }
+            return
+          }
+
+          // Non-participant: If public room, join immediately with NO password
+          if (!found.isPrivate && !found.hasPassword) {
+            await handleJoinTournament(found)
+            return
+          }
+
+          // Private room with password: prompt password modal
+          setPasswordPromptTournament(found)
+          setEnteredPassword("")
+          setPasswordError(null)
+          return
+        }
+
+        // If tournament was not found and invite string exists, open join code modal as fallback
         if (invite && !showGameMode) {
           setJoinInviteCode(invite)
           setShowCodeJoinModal(true)
-        } else if (tId && tournaments.length > 0) {
-          const found = tournaments.find(t => t._id === tId)
-          if (found) {
-            handleJoinTournament(found)
-          }
         }
       }
 
@@ -177,6 +210,10 @@ export function StudentTournaments({ user }: StudentTournamentsProps) {
           difficulty: formData.difficulty,
           maxParticipants: formData.maxParticipants,
           prizePool: formData.prizePool,
+          firstPrizeCoins: formData.firstPrizeCoins,
+          firstPrizeBadge: formData.firstPrizeBadge,
+          secondPrizeCoins: formData.secondPrizeCoins,
+          secondPrizeBadge: formData.secondPrizeBadge,
           startTime: formData.timeType === 'scheduled' && formData.scheduledTime ? formData.scheduledTime : new Date().toISOString(),
           scheduledStartTime: formData.timeType === 'scheduled' && formData.scheduledTime ? formData.scheduledTime : null,
           password: formData.isPrivate ? formData.password.trim() : '',
@@ -187,10 +224,11 @@ export function StudentTournaments({ user }: StudentTournamentsProps) {
           expiryHours: formData.expiryHours,
           questionsPerMatch: formData.questionsPerMatch,
           rules: {
-            timePerQuestion: 30,
+            timePerQuestion: formData.timePerQuestion || 30,
             pointsPerCorrect: formData.pointsPerCorrect,
             penaltyPerWrong: 0,
             allowBots: formData.allowBots,
+            passingCutoff: formData.passingCutoff || 50,
             customRules: formData.customRules,
           },
         })
@@ -203,11 +241,17 @@ export function StudentTournaments({ user }: StudentTournamentsProps) {
           difficulty: 'intermediate',
           maxParticipants: 8,
           prizePool: 1000,
+          firstPrizeCoins: 300,
+          firstPrizeBadge: '👑 Tournament Grand Champion',
+          secondPrizeCoins: 150,
+          secondPrizeBadge: '🥈 Elite Runner-Up',
           timeType: 'immediate',
           scheduledTime: '',
           isPrivate: false,
           password: '',
           matchDuration: 300,
+          timePerQuestion: 30,
+          passingCutoff: 50,
           expiryHours: 24,
           questionsPerMatch: 10,
           pointsPerCorrect: 100,
@@ -257,8 +301,8 @@ export function StudentTournaments({ user }: StudentTournamentsProps) {
   }
 
   const handleJoinTournament = async (tournament: any, passwordOverride?: string) => {
-    // If tournament has password and user is not host and no password provided yet
-    if (tournament.hasPassword && tournament.createdBy !== user?.id && !passwordOverride) {
+    // Only prompt for password if tournament is private and has password and user is not host and no password provided yet
+    if (tournament.isPrivate && tournament.hasPassword && tournament.createdBy !== user?.id && !passwordOverride) {
       setPasswordPromptTournament(tournament)
       setEnteredPassword("")
       setPasswordError(null)
@@ -285,7 +329,13 @@ export function StudentTournaments({ user }: StudentTournamentsProps) {
         setEnteredPassword("")
         setPasswordError(null)
         await fetchTournaments()
-        setActiveTab('my-tournaments')
+        setSelectedTournament(data.tournament)
+        if (data.tournament?.status === 'active') {
+          setShowGameMode(true)
+          setActiveTab('playing')
+        } else {
+          setActiveTab('my-tournaments')
+        }
       } else {
         if (passwordPromptTournament) {
           setPasswordError(data.error || 'Incorrect tournament password')
@@ -333,7 +383,13 @@ export function StudentTournaments({ user }: StudentTournamentsProps) {
         setJoinInviteCode("")
         setJoinPassword("")
         await fetchTournaments()
-        setActiveTab('my-tournaments')
+        setSelectedTournament(data.tournament)
+        if (data.tournament?.status === 'active') {
+          setShowGameMode(true)
+          setActiveTab('playing')
+        } else {
+          setActiveTab('my-tournaments')
+        }
       } else {
         alert(data.error || 'Could not join with this code')
       }
@@ -401,9 +457,22 @@ export function StudentTournaments({ user }: StudentTournamentsProps) {
 
   const handleMatchComplete = async () => {
     await fetchTournaments()
-    if (selectedTournament?.status === 'finished') {
-      setShowGameMode(false)
-      setShowResults(true)
+    const tId = selectedTournament?._id
+    if (tId) {
+      try {
+        const res = await fetch(`/api/arena/tournaments?id=${tId}`)
+        const data = await res.json()
+        if (data.tournament) {
+          setSelectedTournament(data.tournament)
+          if (data.tournament.status === 'finished' || data.tournament.isDestroyed) {
+            setShowGameMode(false)
+            setShowResults(true)
+            await fetchTournaments()
+          }
+        }
+      } catch (err) {
+        console.error('Error refreshing completed tournament:', err)
+      }
     }
   }
 
@@ -555,6 +624,91 @@ export function StudentTournaments({ user }: StudentTournamentsProps) {
               </div>
             </div>
 
+            {/* 1st Winner & 2nd Runner-Up Prize Distribution */}
+            <div className="p-4 bg-gradient-to-r from-amber-500/10 via-purple-950/20 to-black border-2 border-amber-500/30 rounded-2xl space-y-3">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-black uppercase tracking-wider text-amber-300 flex items-center gap-2">
+                  <Trophy className="w-4 h-4 text-amber-400" /> Host Prize Pool & Winner Distribution
+                </span>
+                <Badge variant="outline" className="text-[10px] text-amber-300 border-amber-400/40">
+                  Total: {formData.firstPrizeCoins + formData.secondPrizeCoins} Coins
+                </Badge>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                {/* 1st Place Champion */}
+                <div className="p-3 bg-black/40 border border-amber-500/20 rounded-xl space-y-1.5">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[11px] font-black text-amber-400 flex items-center gap-1.5">
+                      🥇 1st Place (Grand Champion)
+                    </span>
+                    <span className="text-[10px] font-mono text-amber-300">{formData.firstPrizeCoins} Coins</span>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <label className="text-[10px] text-white/50 block">Coins Award</label>
+                      <select
+                        value={formData.firstPrizeCoins}
+                        onChange={(e) => setFormData({ ...formData, firstPrizeCoins: parseInt(e.target.value) })}
+                        className="w-full bg-slate-900 border border-white/10 text-white rounded-lg px-2 py-1 text-xs"
+                      >
+                        <option value={100}>100 Coins</option>
+                        <option value={200}>200 Coins</option>
+                        <option value={300}>300 Coins</option>
+                        <option value={500}>500 Coins</option>
+                        <option value={1000}>1,000 Coins</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className="text-[10px] text-white/50 block">Winner Badge</label>
+                      <Input
+                        value={formData.firstPrizeBadge}
+                        onChange={(e) => setFormData({ ...formData, firstPrizeBadge: e.target.value })}
+                        className="bg-slate-900 border-white/10 text-white rounded-lg h-7 text-[11px]"
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                {/* 2nd Place Runner-Up */}
+                <div className="p-3 bg-black/40 border border-slate-400/20 rounded-xl space-y-1.5">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[11px] font-black text-slate-300 flex items-center gap-1.5">
+                      🥈 2nd Place (Runner-Up)
+                    </span>
+                    <span className="text-[10px] font-mono text-slate-300">{formData.secondPrizeCoins} Coins</span>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <label className="text-[10px] text-white/50 block">Coins Award</label>
+                      <select
+                        value={formData.secondPrizeCoins}
+                        onChange={(e) => setFormData({ ...formData, secondPrizeCoins: parseInt(e.target.value) })}
+                        className="w-full bg-slate-900 border border-white/10 text-white rounded-lg px-2 py-1 text-xs"
+                      >
+                        <option value={50}>50 Coins</option>
+                        <option value={100}>100 Coins</option>
+                        <option value={150}>150 Coins</option>
+                        <option value={250}>250 Coins</option>
+                        <option value={500}>500 Coins</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className="text-[10px] text-white/50 block">Runner-Up Badge</label>
+                      <Input
+                        value={formData.secondPrizeBadge}
+                        onChange={(e) => setFormData({ ...formData, secondPrizeBadge: e.target.value })}
+                        className="bg-slate-900 border-white/10 text-white rounded-lg h-7 text-[11px]"
+                      />
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <p className="text-[10px] text-amber-200/60 italic">
+                * Total prize pool ({formData.firstPrizeCoins + formData.secondPrizeCoins} Coins) is backed by Host account and credited to 1st Winner & 2nd Runner-Up upon match completion.
+              </p>
+            </div>
+
             {/* 3. Event Time Setting */}
             <div className="p-3.5 bg-white/5 border border-white/10 rounded-xl space-y-3">
               <label className="text-xs font-black uppercase tracking-wider text-white/80 block">
@@ -605,7 +759,7 @@ export function StudentTournaments({ user }: StudentTournamentsProps) {
                 </label>
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3">
                 {/* Match Duration */}
                 <div>
                   <label className="text-[11px] font-bold text-white/70 block mb-1">
@@ -616,45 +770,61 @@ export function StudentTournaments({ user }: StudentTournamentsProps) {
                     onChange={(e) => setFormData({ ...formData, matchDuration: parseInt(e.target.value) })}
                     className="w-full bg-slate-900 border border-white/10 text-white rounded-xl px-3 py-2 text-xs focus:outline-none focus:border-purple-500"
                   >
-                    <option value={120}>⚡ 2 Minutes (Blitz Match)</option>
-                    <option value={180}>⏱️ 3 Minutes (Standard Match)</option>
+                    <option value={120}>⚡ 2 Minutes (Blitz)</option>
+                    <option value={180}>⏱️ 3 Minutes (Standard)</option>
                     <option value={300}>⚔️ 5 Minutes (Competitive)</option>
                     <option value={600}>🛡️ 10 Minutes (Endurance)</option>
                   </select>
                 </div>
 
-                {/* Expiry Window */}
+                {/* Time Per Question */}
                 <div>
                   <label className="text-[11px] font-bold text-white/70 block mb-1">
-                    Registration Expiry Window
+                    Time Per Question
                   </label>
                   <select
-                    value={formData.expiryHours}
-                    onChange={(e) => setFormData({ ...formData, expiryHours: parseInt(e.target.value) })}
+                    value={formData.timePerQuestion}
+                    onChange={(e) => setFormData({ ...formData, timePerQuestion: parseInt(e.target.value) })}
                     className="w-full bg-slate-900 border border-white/10 text-white rounded-xl px-3 py-2 text-xs focus:outline-none focus:border-purple-500"
                   >
-                    <option value={1}>⌛ 1 Hour Window</option>
-                    <option value={6}>⌛ 6 Hours Window</option>
-                    <option value={12}>⌛ 12 Hours Window</option>
-                    <option value={24}>⌛ 24 Hours Window</option>
-                    <option value={48}>⌛ 48 Hours Window</option>
+                    <option value={15}>⚡ 15 Seconds (Rapid)</option>
+                    <option value={30}>⏱️ 30 Seconds (Standard)</option>
+                    <option value={45}>🧠 45 Seconds (Deep)</option>
+                    <option value={60}>🛡️ 60 Seconds (Complex)</option>
                   </select>
                 </div>
 
                 {/* Questions Per Match */}
                 <div>
                   <label className="text-[11px] font-bold text-white/70 block mb-1">
-                    Questions Per Match
+                    Questions Count
                   </label>
                   <select
                     value={formData.questionsPerMatch}
                     onChange={(e) => setFormData({ ...formData, questionsPerMatch: parseInt(e.target.value) })}
                     className="w-full bg-slate-900 border border-white/10 text-white rounded-xl px-3 py-2 text-xs focus:outline-none focus:border-purple-500"
                   >
-                    <option value={5}>5 Questions / Match</option>
-                    <option value={10}>10 Questions / Match</option>
-                    <option value={15}>15 Questions / Match</option>
-                    <option value={20}>20 Questions / Match</option>
+                    <option value={5}>5 Questions</option>
+                    <option value={10}>10 Questions</option>
+                    <option value={15}>15 Questions</option>
+                    <option value={20}>20 Questions</option>
+                  </select>
+                </div>
+
+                {/* Passing Cutoff */}
+                <div>
+                  <label className="text-[11px] font-bold text-white/70 block mb-1">
+                    Passing Cutoff %
+                  </label>
+                  <select
+                    value={formData.passingCutoff}
+                    onChange={(e) => setFormData({ ...formData, passingCutoff: parseInt(e.target.value) })}
+                    className="w-full bg-slate-900 border border-white/10 text-white rounded-xl px-3 py-2 text-xs focus:outline-none focus:border-purple-500"
+                  >
+                    <option value={40}>40% Passing</option>
+                    <option value={50}>50% Standard</option>
+                    <option value={60}>60% First Div</option>
+                    <option value={75}>75% Distinction</option>
                   </select>
                 </div>
               </div>
@@ -953,7 +1123,7 @@ export function StudentTournaments({ user }: StudentTournamentsProps) {
                     </div>
 
                     {/* Hosting User Only Controls Panel */}
-                    {isHost && tournament.status === 'open' && (
+                    {isHost && (tournament.status === 'open' || tournament.status === 'active') && (
                       <div className="p-3 bg-purple-500/10 border border-purple-500/20 rounded-xl space-y-2 mt-2">
                         <div className="flex items-center justify-between text-xs">
                           <span className="font-black text-purple-300 flex items-center gap-1.5">
@@ -974,24 +1144,28 @@ export function StudentTournaments({ user }: StudentTournamentsProps) {
                           )}
 
                           <div className="flex items-center gap-2 ml-auto">
-                            <Button
-                              size="sm"
-                              onClick={() => handleHostFillBotsAndStart(tournament._id)}
-                              disabled={actionLoading === tournament._id}
-                              className="bg-purple-600 hover:bg-purple-700 text-white text-xs font-bold h-7 px-2.5 shadow-md shadow-purple-600/20"
-                            >
-                              <Bot className="w-3 h-3 mr-1" /> Fill AI Bots & Start
-                            </Button>
+                            {tournament.status === 'open' && (
+                              <>
+                                <Button
+                                  size="sm"
+                                  onClick={() => handleHostFillBotsAndStart(tournament._id)}
+                                  disabled={actionLoading === tournament._id}
+                                  className="bg-purple-600 hover:bg-purple-700 text-white text-xs font-bold h-7 px-2.5 shadow-md shadow-purple-600/20"
+                                >
+                                  <Bot className="w-3 h-3 mr-1" /> Fill AI Bots & Start
+                                </Button>
 
-                            {tournament.participants?.length >= 2 && (
-                              <Button
-                                size="sm"
-                                onClick={() => handleHostStartTournament(tournament._id)}
-                                disabled={actionLoading === tournament._id}
-                                className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold h-7 px-2.5"
-                              >
-                                <Play className="w-3 h-3 mr-1" /> Start Now ({tournament.participants.length} Players)
-                              </Button>
+                                {tournament.participants?.length >= 2 && (
+                                  <Button
+                                    size="sm"
+                                    onClick={() => handleHostStartTournament(tournament._id)}
+                                    disabled={actionLoading === tournament._id}
+                                    className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold h-7 px-2.5"
+                                  >
+                                    <Play className="w-3 h-3 mr-1" /> Start Now ({tournament.participants.length} Players)
+                                  </Button>
+                                )}
+                              </>
                             )}
 
                             <Button
@@ -999,9 +1173,9 @@ export function StudentTournaments({ user }: StudentTournamentsProps) {
                               variant="outline"
                               onClick={() => handleHostCancelTournament(tournament._id)}
                               disabled={actionLoading === tournament._id}
-                              className="border-rose-500/30 text-rose-400 hover:bg-rose-500/10 text-xs h-7 px-2"
+                              className="border-rose-500/30 text-rose-400 hover:bg-rose-500/10 text-xs h-7 px-2 font-medium"
                             >
-                              Cancel Event
+                              {tournament.status === 'active' ? 'Close & Remove Room' : 'Cancel Event'}
                             </Button>
                           </div>
                         </div>

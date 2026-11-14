@@ -8,6 +8,9 @@ import { checkRateLimit, getClientIp } from "@/lib/ratelimit";
 const EMAIL_REGEX =
   /^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$/;
 
+const GMAIL_REGEX =
+  /^[a-zA-Z0-9](\.?[a-zA-Z0-9_-]+)*@(gmail\.com|googlemail\.com)$/i;
+
 const PHONE_REGEX = /^[6-9]\d{9}$/;
 
 const PASSWORD_REGEX =
@@ -39,14 +42,14 @@ export async function POST(req: Request) {
       );
     }
 
-    if (!EMAIL_REGEX.test(email)) {
+    if (!EMAIL_REGEX.test(email) || !GMAIL_REGEX.test(email)) {
       return NextResponse.json(
-        { message: "Invalid Gmail address format." },
+        { message: "Please enter a valid Gmail address (ending in @gmail.com)." },
         { status: 400 }
       );
     }
 
-    const cleanPhone = phone.replace(/^\+91/, ""); // strip country code if present
+    const cleanPhone = phone.replace(/[\s\-\+]/g, "").replace(/^91/, ""); // strip country code and formatting
     if (!PHONE_REGEX.test(cleanPhone)) {
       return NextResponse.json(
         { message: "Invalid phone number. Please enter the 10-digit number registered with your account." },

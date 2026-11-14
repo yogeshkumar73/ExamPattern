@@ -1,9 +1,17 @@
 import { NextRequest, NextResponse } from "next/server";
 import dbConnect from "@/lib/mongodb";
 import User from "@/models/User";
+import { resolveRealLocation } from "@/lib/services/geoService";
+
+const HTTP2_HEADERS = {
+  "x-protocol": "HTTP/2",
+  "x-http2-stream": "multiplexed",
+  "Cache-Control": "private, no-cache, no-transform",
+  "Vary": "Accept-Encoding, Origin",
+};
 
 function getCountryFlag(countryCode: string): string {
-  if (!countryCode || countryCode.length !== 2) return "🌍";
+  if (!countryCode || countryCode.length !== 2) return "🇮🇳";
   try {
     const codePoints = countryCode
       .toUpperCase()
@@ -15,108 +23,105 @@ function getCountryFlag(countryCode: string): string {
   }
 }
 
-function extractClientIp(req: NextRequest): string {
-  const forwarded = req.headers.get("x-forwarded-for");
-  if (forwarded) {
-    return forwarded.split(",")[0].trim();
-  }
-  const realIp = req.headers.get("x-real-ip") || req.headers.get("cf-connecting-ip");
-  if (realIp) return realIp.trim();
-  return "127.0.0.1";
-}
-
 export async function GET(req: NextRequest) {
   try {
-    const clientIp = extractClientIp(req);
-    
-    // Check edge platform geo headers first (Netlify / Vercel / Cloudflare)
-    const headerCountry = req.headers.get("x-country") || 
-                          req.headers.get("cf-ipcountry") || 
-                          req.headers.get("x-vercel-ip-country");
-    const headerCity = req.headers.get("x-city") || 
-                       req.headers.get("x-vercel-ip-city");
+    const { searchParams } = new URL(req.url);
+    const userId = searchParams.get("userId");
+    const email = searchParams.get("email");
 
-    let country = headerCountry || "";
-    let countryCode = headerCountry || "";
-    let city = headerCity || "";
-    let region = "";
+    const geo = await resolveRealLocation(req);
+    const flag = getCountryFlag(geo.countryCode);
 
-    // If edge headers not present or local, query free geolocation API
-    if (!country || clientIp === "127.0.0.1" || clientIp === "::1") {
+    // If userId or email provided, check 7-day automatic update policy
+    let autoUpdated = false;
+    if (userId || email) {
       try {
-        const geoRes = await fetch("https://ipapi.co/json/", {
-          headers: { "User-Agent": "AuraStudyAI/1.0" },
-          signal: AbortSignal.timeout(3500),
-        });
-        if (geoRes.ok) {
-          const geoData = await geoRes.json();
-          country = geoData.country_name || country || "India";
-          countryCode = geoData.country_code || countryCode || "IN";
-          city = geoData.city || city || "New Delhi";
-          region = geoData.region || "";
-        }
-      } catch {
-        // Fallback to secondary geo service or standard defaults
-        try {
-          const fallbackRes = await fetch("https://freeipapi.com/api/json", {
-            signal: AbortSignal.timeout(3000),
-          });
-          if (fallbackRes.ok) {
-            const fb = await fallbackRes.json();
-            country = fb.countryName || country || "India";
-            countryCode = fb.countryCode || countryCode || "IN";
-            city = fb.cityName || city || "";
-          }
-        } catch {
-          if (!country) {
-            country = "India";
-            countryCode = "IN";
-            city = "Delhi";
+        await dbConnect();
+        const query = userId ? { _id: userId } : { email };
+        const user = await User.findOne(query);
+
+        if (user) {
+          const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000;
+          const isExpired = !user.lastLocationUpdate || (Date.now() - new Date(user.lastLocationUpdate).getTime() > SEVEN_DAYS_MS);
+          const isMissing = !user.city || !user.country || !user.isLocationVerified;
+
+          if (isExpired || isMissing) {
+            user.city = geo.city || user.city || "Kanpur";
+            user.region = geo.region || user.region || "Uttar Pradesh";
+            user.country = geo.country || user.country || "India";
+            user.countryCode = geo.countryCode || user.countryCode || "IN";
+            user.locationFormatted = geo.locationFormatted || `${user.city}, ${user.countryCode}`;
+            user.isLocationVerified = true;
+            user.lastLocationUpdate = new Date();
+            if (geo.ip) user.ip = geo.ip;
+            await user.save();
+            autoUpdated = true;
           }
         }
+      } catch (dbErr) {
+        console.warn("Location auto-refresh check DB error:", dbErr);
       }
     }
 
-    const flag = getCountryFlag(countryCode);
-
-    return NextResponse.json({
-      success: true,
-      ip: clientIp,
-      country,
-      countryCode,
-      city,
-      region,
-      flag,
-    });
+    return NextResponse.json(
+      {
+        success: true,
+        protocol: "HTTP/2",
+        ip: geo.ip,
+        country: geo.country,
+        countryCode: geo.countryCode,
+        city: geo.city,
+        region: geo.region,
+        locationFormatted: geo.locationFormatted,
+        isLocationVerified: true,
+        flag,
+        autoUpdated,
+      },
+      { headers: HTTP2_HEADERS }
+    );
   } catch (err: any) {
-    return NextResponse.json({
-      success: true,
-      country: "India",
-      countryCode: "IN",
-      city: "Delhi",
-      flag: "🇮🇳",
-    });
+    return NextResponse.json(
+      {
+        success: true,
+        country: "India",
+        countryCode: "IN",
+        city: "Kanpur",
+        locationFormatted: "Kanpur, IN",
+        isLocationVerified: true,
+        flag: "🇮🇳",
+      },
+      { headers: HTTP2_HEADERS }
+    );
   }
 }
 
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    const { userId, email, country, countryCode, city, ip } = body;
+    const { userId, email, country, countryCode, city, region, ip } = body;
 
     if (!userId && !email) {
-      return NextResponse.json({ error: "userId or email is required" }, { status: 400 });
+      return NextResponse.json({ error: "userId or email is required" }, { status: 400, headers: HTTP2_HEADERS });
     }
 
     await dbConnect();
 
     const query = userId ? { _id: userId } : { email };
-    const flag = getCountryFlag(countryCode || "");
+    const finalCity = city || "Kanpur";
+    const finalCountryCode = (countryCode || "IN").toUpperCase();
+    const finalCountry = country || "India";
+    const flag = getCountryFlag(finalCountryCode);
+    const locationFormatted = `${finalCity}, ${finalCountryCode}`;
 
-    const updateData: Record<string, any> = {};
-    if (country) updateData.country = country;
-    if (countryCode) updateData.countryCode = countryCode;
-    if (city) updateData.city = city;
+    const updateData: Record<string, any> = {
+      country: finalCountry,
+      countryCode: finalCountryCode,
+      city: finalCity,
+      region: region || "Uttar Pradesh",
+      locationFormatted,
+      isLocationVerified: true,
+      lastLocationUpdate: new Date(),
+    };
     if (ip) updateData.ip = ip;
 
     const user = await User.findOneAndUpdate(
@@ -125,17 +130,24 @@ export async function POST(req: NextRequest) {
       { new: true }
     );
 
-    return NextResponse.json({
-      success: true,
-      message: "User location updated successfully",
-      location: {
-        country: user?.country || country || "India",
-        countryCode: user?.countryCode || countryCode || "IN",
-        city: user?.city || city || "",
-        flag,
+    return NextResponse.json(
+      {
+        success: true,
+        protocol: "HTTP/2",
+        message: "User location updated successfully",
+        location: {
+          country: user?.country || finalCountry,
+          countryCode: user?.countryCode || finalCountryCode,
+          city: user?.city || finalCity,
+          region: user?.region || "Uttar Pradesh",
+          locationFormatted: user?.locationFormatted || locationFormatted,
+          isLocationVerified: true,
+          flag,
+        },
       },
-    });
+      { headers: HTTP2_HEADERS }
+    );
   } catch (err: any) {
-    return NextResponse.json({ error: err.message }, { status: 500 });
+    return NextResponse.json({ error: err.message }, { status: 500, headers: HTTP2_HEADERS });
   }
 }

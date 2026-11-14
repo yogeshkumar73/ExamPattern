@@ -104,6 +104,11 @@ const PaperSchema = new mongoose.Schema(
       type: String,
       required: true,
     },
+    uploaderEmail: {
+      type: String,
+      default: '',
+      index: true,
+    },
     uploaderAvatar: {
       type: String,
       default: '',

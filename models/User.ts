@@ -11,7 +11,13 @@ export interface IUser extends Document {
   country?: string;
   countryCode?: string;
   city?: string;
+  region?: string;
+  locationFormatted?: string;
+  isLocationVerified?: boolean;
   ip?: string;
+  lastIp?: string;
+  lastLocationUpdate?: Date;
+  gender?: "male" | "female" | "other" | "prefer_not_to_say" | "";
   stream?: StreamType | "";
   course?: string;
   department?: string;
@@ -123,7 +129,17 @@ const UserSchema = new Schema<IUser>(
     country: { type: String, default: "" },
     countryCode: { type: String, default: "" },
     city: { type: String, default: "" },
+    region: { type: String, default: "" },
+    locationFormatted: { type: String, default: "" },
+    isLocationVerified: { type: Boolean, default: false },
     ip: { type: String, default: "" },
+    lastIp: { type: String, default: "" },
+    lastLocationUpdate: { type: Date },
+    gender: {
+      type: String,
+      enum: ["male", "female", "other", "prefer_not_to_say", ""],
+      default: "prefer_not_to_say",
+    },
 
     stream: {
       type: String,
@@ -573,6 +589,10 @@ UserSchema.index({
 UserSchema.index({
   xp: -1,
 });
+
+if (process.env.NODE_ENV !== "production" && mongoose.models.User) {
+  delete (mongoose.models as any).User;
+}
 
 const User =
   mongoose.models.User ||

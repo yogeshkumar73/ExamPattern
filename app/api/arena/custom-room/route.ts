@@ -124,6 +124,67 @@ function generateLocalQuestions(content: string, count: number, format: string) 
   return list;
 }
 
+async function distributePrize(room: any) {
+  if (!room || room.prizeDistributed) return;
+  const coinsToAward = Number(room.prizeCoins || 0);
+  if (coinsToAward <= 0) {
+    room.prizeDistributed = true;
+    return;
+  }
+
+  try {
+    const User = (await import("@/models/User")).default;
+    const mongoose = (await import("mongoose")).default;
+    const { createNotification } = await import("@/lib/services/notificationService");
+
+    const sorted = [...(room.participants || [])].sort((a: any, b: any) => (b.score || 0) - (a.score || 0));
+    const winner = sorted[0];
+    if (!winner) return;
+
+    let winnerUser = null;
+    if (mongoose.isValidObjectId(winner.userId)) {
+      winnerUser = await User.findById(winner.userId);
+    }
+    if (!winnerUser && (winner.email || winner.userEmail)) {
+      winnerUser = await User.findOne({ email: winner.email || winner.userEmail });
+    }
+    if (!winnerUser && winner.name) {
+      winnerUser = await User.findOne({ name: winner.name });
+    }
+
+    if (winnerUser) {
+      winnerUser.coins = (winnerUser.coins || 0) + coinsToAward;
+      winnerUser.points = (winnerUser.points || 0) + coinsToAward;
+      const badge = room.prizeBadge || "Clash Champion";
+      if (!Array.isArray(winnerUser.badges)) winnerUser.badges = [];
+      if (!winnerUser.badges.includes(badge)) {
+        winnerUser.badges.push(badge);
+      }
+      winnerUser.wins = (winnerUser.wins || 0) + 1;
+      await winnerUser.save();
+
+      // Dispatch victory notification to winner
+      await createNotification({
+        userId: String(winnerUser._id),
+        recipientEmail: winnerUser.email,
+        senderId: room.hostId || "arena",
+        senderName: room.hostName || "Study Clash",
+        title: `🏆 Clash Champion! Won ${coinsToAward} Coins & "${badge}" Badge`,
+        message: `Congratulations ${winner.name}! You scored Rank #1 with ${winner.score || 0} pts in "${room.title}"! ${coinsToAward} Prize Coins (debited from host ${room.hostName}) have been credited to your balance, and the "${badge}" badge has been added to your profile!`,
+        category: "achievement",
+        priority: "high",
+        actionUrl: "/?step=arena",
+      }).catch(() => {});
+    }
+
+    room.prizeDistributed = true;
+    if (typeof room.save === "function") await room.save();
+    memoryRooms.set(room.roomId, room);
+  } catch (err) {
+    console.warn("Failed to distribute clash prize:", err);
+  }
+}
+
 export async function GET(req: NextRequest) {
   try {
     const { searchParams } = new URL(req.url);
@@ -145,6 +206,9 @@ export async function GET(req: NextRequest) {
       if (!room && roomId) {
         room = memoryRooms.get(roomId);
       }
+      if (!room && roomCode) {
+        room = Array.from(memoryRooms.values()).find(r => r.roomCode === roomCode);
+      }
 
       if (!room) {
         return NextResponse.json({ success: false, message: "Room not found." }, { status: 404 });
@@ -153,34 +217,36 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ success: true, room });
     }
 
-    // List Public Live Games for other students to click 'Join Now'
+    // List Public Live Games for students to click 'Join Now' with no password
     if (type === "public") {
       let publicRooms: any[] = [];
       try {
         publicRooms = await CustomArenaRoom.find({
           isPrivate: false,
-          status: { $in: ["waiting", "playing"] },
+          status: { $in: ["waiting", "playing", "in_progress"] },
         })
           .sort({ createdAt: -1 })
-          .limit(20)
+          .limit(30)
           .lean();
       } catch (_) {}
 
       if (publicRooms.length === 0) {
         publicRooms = Array.from(memoryRooms.values()).filter(
-          r => !r.isPrivate && (r.status === "waiting" || r.status === "playing")
+          r => !r.isPrivate && (r.status === "waiting" || r.status === "playing" || r.status === "in_progress")
         );
       }
 
       return NextResponse.json({ success: true, rooms: publicRooms });
     }
 
-    // List all active or recent rooms
+    // List all active or recent rooms (both public and private live rooms)
     let allRooms: any[] = [];
     try {
-      allRooms = await CustomArenaRoom.find({})
+      allRooms = await CustomArenaRoom.find({
+        status: { $in: ["waiting", "playing", "in_progress", "completed"] },
+      })
         .sort({ createdAt: -1 })
-        .limit(25)
+        .limit(30)
         .lean();
     } catch (_) {}
 
@@ -257,6 +323,42 @@ export async function POST(req: NextRequest) {
       joinedAt: new Date(),
     };
 
+    const prizeCoins = Math.max(0, Number(body.prizeCoins ?? 100));
+    const prizeBadge = body.prizeBadge || "Clash Champion";
+    let hostDebited = false;
+
+    // Debit host account for prize pool stake
+    try {
+      await dbConnect();
+      const User = (await import("@/models/User")).default;
+      const mongoose = (await import("mongoose")).default;
+
+      let hostUser = null;
+      if (mongoose.isValidObjectId(hostId)) {
+        hostUser = await User.findById(hostId);
+      }
+      if (!hostUser && (body.hostEmail || body.email)) {
+        hostUser = await User.findOne({ email: body.hostEmail || body.email });
+      }
+      if (!hostUser && hostName) {
+        hostUser = await User.findOne({ name: hostName });
+      }
+
+      if (hostUser && prizeCoins > 0) {
+        if ((hostUser.coins || 0) >= prizeCoins) {
+          hostUser.coins -= prizeCoins;
+        } else {
+          const remainder = prizeCoins - (hostUser.coins || 0);
+          hostUser.coins = 0;
+          hostUser.points = Math.max(0, (hostUser.points || 0) - remainder);
+        }
+        await hostUser.save();
+        hostDebited = true;
+      }
+    } catch (userDebitErr) {
+      console.warn("Could not debit host user coins:", userDebitErr);
+    }
+
     const roomData = {
       roomId,
       roomCode,
@@ -274,12 +376,43 @@ export async function POST(req: NextRequest) {
       maxPlayers: Math.max(2, Math.min(16, maxPlayers || 4)),
       questionCount: questions.length,
       timeLimitSeconds: Math.max(60, timeLimitSeconds || 300),
+      prizeCoins,
+      prizeBadge,
+      hostDebited,
+      prizeDistributed: false,
       status: "waiting",
       questions,
       participants: [initialParticipant],
       teamScores: { "Team Alpha": 0, "Team Beta": 0 },
       createdAt: new Date(),
     };
+
+    // If room is public, broadcast notification to all other active students
+    if (!isPrivate) {
+      try {
+        const { createNotification } = await import("@/lib/services/notificationService");
+        const User = (await import("@/models/User")).default;
+        const otherUsers = await User.find({
+          email: { $ne: body.hostEmail || body.email || "" }
+        }).limit(20).select("_id email name").lean();
+
+        for (const u of otherUsers) {
+          createNotification({
+            userId: String(u._id),
+            recipientEmail: u.email,
+            senderId: hostId,
+            senderName: hostName,
+            title: `📢 Live Study Clash Room: ${title}`,
+            message: `${hostName} opened a public practice clash on "${title}"! Code: ${roomCode}. Join live now without password! Prize Pool: ${prizeCoins} Coins + "${prizeBadge}" Badge!`,
+            category: "battle_challenge",
+            priority: "high",
+            actionUrl: `/?step=arena&tab=clash&roomCode=${roomCode}&isPublic=true`,
+          }).catch(() => {});
+        }
+      } catch (broadcastErr) {
+        console.warn("Public clash broadcast error:", broadcastErr);
+      }
+    }
 
     // Store in DB & memory
     try {
@@ -318,8 +451,10 @@ export async function PUT(req: NextRequest) {
     const studentAnswer = body.studentAnswer !== undefined ? body.studentAnswer : body.answer;
     const timeTaken = body.timeTaken;
 
-    if (!roomId) {
-      return NextResponse.json({ success: false, message: "roomId required." }, { status: 400 });
+    const roomCode = body.roomCode || body.code;
+
+    if (!roomId && !roomCode) {
+      return NextResponse.json({ success: false, message: "roomId or roomCode required." }, { status: 400 });
     }
 
     try {
@@ -327,17 +462,20 @@ export async function PUT(req: NextRequest) {
     } catch (_) {}
 
     let room: any = null;
+    const searchFilter = roomId ? { roomId } : { roomCode };
     try {
-      room = await CustomArenaRoom.findOne({ roomId });
+      room = await CustomArenaRoom.findOne(searchFilter);
     } catch (_) {}
 
     if (!room) {
-      room = memoryRooms.get(roomId);
+      room = roomId ? memoryRooms.get(roomId) : Array.from(memoryRooms.values()).find(r => r.roomCode === roomCode);
     }
 
     if (!room) {
       return NextResponse.json({ success: false, message: "Room not found." }, { status: 404 });
     }
+
+    const effectiveRoomId = room.roomId;
 
     // 1. UPDATE RULES & TIMING (Creator / Host Only)
     if (action === "update_rules") {
@@ -355,7 +493,7 @@ export async function PUT(req: NextRequest) {
       }
 
       if (typeof room.save === "function") await room.save();
-      memoryRooms.set(roomId, room);
+      memoryRooms.set(effectiveRoomId, room);
       return NextResponse.json({ success: true, message: "Rules updated successfully.", room });
     }
 
@@ -389,7 +527,7 @@ export async function PUT(req: NextRequest) {
       }
 
       if (typeof room.save === "function") await room.save();
-      memoryRooms.set(roomId, room);
+      memoryRooms.set(effectiveRoomId, room);
       return NextResponse.json({ success: true, message: "Joined room successfully.", room });
     }
 
@@ -399,7 +537,7 @@ export async function PUT(req: NextRequest) {
       if (p) {
         p.team = team;
         if (typeof room.save === "function") await room.save();
-        memoryRooms.set(roomId, room);
+        memoryRooms.set(effectiveRoomId, room);
       }
       return NextResponse.json({ success: true, room });
     }
@@ -415,7 +553,7 @@ export async function PUT(req: NextRequest) {
       room.expiresAt = new Date(Date.now() + (room.timeLimitSeconds * 1000));
 
       if (typeof room.save === "function") await room.save();
-      memoryRooms.set(roomId, room);
+      memoryRooms.set(effectiveRoomId, room);
       return NextResponse.json({ success: true, message: "Match started!", room });
     }
 
@@ -529,10 +667,11 @@ export async function PUT(req: NextRequest) {
         if (topUser) {
           room.winnerUser = { userId: topUser.userId, name: topUser.name, score: topUser.score };
         }
+        await distributePrize(room);
       }
 
       if (typeof room.save === "function") await room.save();
-      memoryRooms.set(roomId, room);
+      memoryRooms.set(effectiveRoomId, room);
 
       return NextResponse.json({
         success: true,
@@ -563,10 +702,11 @@ export async function PUT(req: NextRequest) {
         if (topUser) {
           room.winnerUser = { userId: topUser.userId, name: topUser.name, score: topUser.score };
         }
+        await distributePrize(room);
       }
 
       if (typeof room.save === "function") await room.save();
-      memoryRooms.set(roomId, room);
+      memoryRooms.set(effectiveRoomId, room);
       return NextResponse.json({ success: true, room });
     }
 
@@ -592,6 +732,21 @@ export async function DELETE(req: NextRequest) {
       if (room && room.hostId !== userId) {
         return NextResponse.json({ success: false, message: "Only the host can delete the room." }, { status: 403 });
       }
+
+      // Refund host if room was canceled before match started/distributed
+      if (room && room.hostDebited && !room.prizeDistributed && (room.prizeCoins || 0) > 0) {
+        const User = (await import("@/models/User")).default;
+        const mongoose = (await import("mongoose")).default;
+        let hostUser = null;
+        if (mongoose.isValidObjectId(room.hostId)) {
+          hostUser = await User.findById(room.hostId);
+        }
+        if (hostUser) {
+          hostUser.coins = (hostUser.coins || 0) + Number(room.prizeCoins);
+          await hostUser.save();
+        }
+      }
+
       await CustomArenaRoom.deleteOne({ roomId });
     } catch (_) {}
 

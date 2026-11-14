@@ -657,21 +657,54 @@ export function ArenaChat({ user }: ArenaChatProps) {
                     className={`flex gap-2.5 sm:gap-3 ${isOwn ? "justify-end" : "justify-start"}`}
                   >
                     {!isOwn && (
-                      <Image
-                        src={getAvatar(msg.senderAvatar, msg.senderName)}
-                        alt={msg.senderName}
-                        width={32}
-                        height={32}
-                        unoptimized
-                        className="h-8 w-8 rounded-xl object-cover flex-shrink-0 border border-white/10"
-                      />
+                      <button
+                        type="button"
+                        onClick={() => {
+                          window.dispatchEvent(new CustomEvent('open-visit-profile', {
+                            detail: {
+                              user: {
+                                userId: msg.senderId,
+                                id: msg.senderId,
+                                name: msg.senderName,
+                                avatar: msg.senderAvatar,
+                              }
+                            }
+                          }))
+                        }}
+                        className="flex-shrink-0 hover:opacity-80 transition-opacity"
+                        title={`View ${msg.senderName}'s Profile`}
+                      >
+                        <Image
+                          src={getAvatar(msg.senderAvatar, msg.senderName)}
+                          alt={msg.senderName}
+                          width={32}
+                          height={32}
+                          unoptimized
+                          className="h-8 w-8 rounded-xl object-cover border border-white/10"
+                        />
+                      </button>
                     )}
 
                     <div className={`flex max-w-[85%] sm:max-w-[75%] flex-col ${isOwn ? "items-end" : "items-start"}`}>
                       {!isOwn && (
-                        <span className="mb-1 px-1 text-[11px] font-bold text-white/60">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            window.dispatchEvent(new CustomEvent('open-visit-profile', {
+                              detail: {
+                                user: {
+                                  userId: msg.senderId,
+                                  id: msg.senderId,
+                                  name: msg.senderName,
+                                  avatar: msg.senderAvatar,
+                                }
+                              }
+                            }))
+                          }}
+                          className="mb-1 px-1 text-[11px] font-bold text-white/60 hover:text-white text-left transition-colors"
+                        >
                           {msg.senderName}
-                        </span>
+                        </button>
                       )}
 
                       <div

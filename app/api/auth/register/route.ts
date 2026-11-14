@@ -9,6 +9,9 @@ import { checkRateLimit, getClientIp } from "@/lib/ratelimit";
 const EMAIL_REGEX =
   /^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$/;
 
+const GMAIL_REGEX =
+  /^[a-zA-Z0-9](\.?[a-zA-Z0-9_-]+)*@(gmail\.com|googlemail\.com)$/i;
+
 const PASSWORD_REGEX =
   /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?#&^()_\-+=])[A-Za-z\d@$!%*?#&^()_\-+=]{8,}$/;
 
@@ -73,25 +76,27 @@ export async function POST(req: Request) {
       );
     }
 
-    // Email validation
-    if (!EMAIL_REGEX.test(email)) {
+    // Email / Gmail validation
+    if (!EMAIL_REGEX.test(email) || !GMAIL_REGEX.test(email)) {
       return NextResponse.json(
         {
-          message: "Please enter a valid email address.",
+          message: "Please enter a valid Gmail address (ending in @gmail.com).",
         },
         { status: 400 }
       );
     }
 
     // Phone validation
-    if (!PHONE_REGEX.test(phone)) {
+    const cleanPhone = phone ? phone.replace(/[\s\-\+]/g, "").replace(/^91/, "") : "";
+    if (!PHONE_REGEX.test(cleanPhone)) {
       return NextResponse.json(
         {
-          message: "Please enter a valid 10-digit mobile number.",
+          message: "Please enter a valid 10-digit mobile number starting with 6-9.",
         },
         { status: 400 }
       );
     }
+    phone = cleanPhone;
 
     // Password validation
     if (!PASSWORD_REGEX.test(password)) {

@@ -5,7 +5,7 @@ import {
   Swords, Shield, Users, Lock, Unlock, Zap, Trophy, Play, CheckCircle2,
   AlertCircle, Clock, FileText, Upload, Sparkles, RefreshCw, Send, ArrowRight,
   Crown, Share2, Copy, Check, Eye, HelpCircle, Flame, Target, Award,
-  ChevronRight, ArrowLeft, BarChart3, Binary, BookOpen, Loader2
+  ChevronRight, ArrowLeft, BarChart3, Binary, BookOpen, Loader2, Coins, Medal
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -18,6 +18,8 @@ interface CustomExamArenaProps {
     email?: string
     level?: number
     arenaRank?: string
+    coins?: number
+    points?: number
   } | null
   onBackToLobby?: () => void
 }
@@ -65,9 +67,18 @@ interface RoomData {
   examFormat: 'mcqs' | 'written' | 'mixed'
   maxPlayers: number
   timeLimitMinutes: number
+  prizeCoins?: number
+  prizeBadge?: string
+  hostDebited?: boolean
+  prizeDistributed?: boolean
+  winnerUser?: {
+    userId: string
+    name: string
+    score: number
+  }
   documentName?: string
   documentContent?: string
-  status: 'waiting' | 'in_progress' | 'completed' | 'expired'
+  status: 'waiting' | 'in_progress' | 'playing' | 'completed' | 'expired'
   questions: Question[]
   participants: Participant[]
   teamScores: {
@@ -79,20 +90,20 @@ interface RoomData {
 }
 
 export function CustomExamArena({ currentUser, onBackToLobby }: CustomExamArenaProps) {
-  // Navigation inside Custom Arena
-  // 'browse' | 'create' | 'lobby' | 'exam' | 'results'
+  // Navigation inside Custom Arena: 'browse' | 'create' | 'lobby' | 'exam' | 'results'
   const [view, setView] = useState<'browse' | 'create' | 'lobby' | 'exam' | 'results'>('browse')
   
-  // Public games state
-  const [publicRooms, setPublicRooms] = useState<RoomData[]>([])
+  // Public & live games state
+  const [allRooms, setAllRooms] = useState<RoomData[]>([])
   const [loadingRooms, setLoadingRooms] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
-  const [filterFormat, setFilterFormat] = useState<'all' | 'mcqs' | 'written' | 'mixed'>('all')
+  const [filterFormat, setFilterFormat] = useState<'all' | 'public' | 'private' | 'mcqs' | 'written' | 'mixed'>('all')
 
   // Active joined room
   const [currentRoom, setCurrentRoom] = useState<RoomData | null>(null)
   const [roomError, setRoomError] = useState<string | null>(null)
   const [copiedCode, setCopiedCode] = useState(false)
+  const [copiedInvite, setCopiedInvite] = useState(false)
 
   // Quick Join with Code & Password modal
   const [joinModalOpen, setJoinModalOpen] = useState(false)
@@ -102,10 +113,12 @@ export function CustomExamArena({ currentUser, onBackToLobby }: CustomExamArenaP
 
   // Creation form state
   const [createTitle, setCreateTitle] = useState('')
-  const [createMatchType, setCreateMatchType] = useState<'1v1' | 'team' | 'open'>('team')
+  const [createMatchType, setCreateMatchType] = useState<'1v1' | 'team' | 'open'>('open')
   const [createExamFormat, setCreateExamFormat] = useState<'mcqs' | 'written' | 'mixed'>('mcqs')
   const [createIsPrivate, setCreateIsPrivate] = useState(false)
   const [createPassword, setCreatePassword] = useState('')
+  const [createPrizeCoins, setCreatePrizeCoins] = useState(100)
+  const [createPrizeBadge, setCreatePrizeBadge] = useState('Clash Champion 🏆')
   const [createMaxPlayers, setCreateMaxPlayers] = useState(4)
   const [createQuestionCount, setCreateQuestionCount] = useState(5)
   const [createTimeLimit, setCreateTimeLimit] = useState(10)
@@ -132,14 +145,14 @@ export function CustomExamArena({ currentUser, onBackToLobby }: CustomExamArenaP
 
   const isHost = currentRoom?.hostId === currentUser?.id
 
-  // 1. Fetch public rooms
-  const fetchPublicRooms = async () => {
+  // 1. Fetch live rooms
+  const fetchLiveRooms = async () => {
     setLoadingRooms(true)
     try {
-      const res = await fetch('/api/arena/custom-room?type=public')
+      const res = await fetch('/api/arena/custom-room')
       if (res.ok) {
         const data = await res.json()
-        setPublicRooms(data.rooms || [])
+        setAllRooms(data.rooms || [])
       }
     } catch (e) {
       console.error('Failed to fetch custom rooms', e)
@@ -149,8 +162,8 @@ export function CustomExamArena({ currentUser, onBackToLobby }: CustomExamArenaP
   }
 
   useEffect(() => {
-    fetchPublicRooms()
-    const iv = setInterval(fetchPublicRooms, 8000)
+    fetchLiveRooms()
+    const iv = setInterval(fetchLiveRooms, 6000)
     return () => clearInterval(iv)
   }, [])
 
@@ -198,7 +211,7 @@ export function CustomExamArena({ currentUser, onBackToLobby }: CustomExamArenaP
     return () => clearInterval(timer)
   }, [view, currentRoom?.roomId])
 
-  // File upload reader with RAG PDF text extraction
+  // File upload reader with PDF text extraction
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (!file) return
@@ -206,7 +219,6 @@ export function CustomExamArena({ currentUser, onBackToLobby }: CustomExamArenaP
     setIsExtractingPdf(true)
     setExtractionStatus('Extracting document text using RAG engine...')
 
-    // 1. Send to serverless /api/extract-text for high-fidelity PDF extraction
     try {
       const formData = new FormData()
       formData.append('file', file)
@@ -224,10 +236,9 @@ export function CustomExamArena({ currentUser, onBackToLobby }: CustomExamArenaP
         }
       }
     } catch (err) {
-      console.warn('Server text extraction fallback to client reader:', err)
+      console.warn('Server text extraction fallback:', err)
     }
 
-    // 2. Client fallback reader
     const reader = new FileReader()
     reader.onload = (event) => {
       const text = event.target?.result as string
@@ -238,7 +249,7 @@ export function CustomExamArena({ currentUser, onBackToLobby }: CustomExamArenaP
     reader.readAsText(file)
   }
 
-  // CREATE ROOM HANDLER
+  // CREATE ROOM HANDLER (With Host Prize Coins Debit & Public/Private Setting)
   const handleCreateRoom = async (e: React.FormEvent) => {
     e.preventDefault()
     setCreatingLoading(true)
@@ -250,17 +261,20 @@ export function CustomExamArena({ currentUser, onBackToLobby }: CustomExamArenaP
       const effectiveHostAvatar = currentUser?.avatar || ''
 
       const payload = {
-        title: createTitle || 'Custom Syllabus Clash',
+        title: createTitle.trim() || 'Custom Syllabus Clash',
         hostId: effectiveHostId,
         hostName: effectiveHostName,
         hostAvatar: effectiveHostAvatar,
+        hostEmail: currentUser?.email || '',
         userId: effectiveHostId,
         userName: effectiveHostName,
         userAvatar: effectiveHostAvatar,
         matchType: createMatchType,
         examFormat: createExamFormat,
         isPrivate: createIsPrivate,
-        password: createPassword,
+        password: createPassword.trim(),
+        prizeCoins: Number(createPrizeCoins),
+        prizeBadge: createPrizeBadge,
         maxPlayers: Number(createMaxPlayers),
         timeLimitMinutes: Number(createTimeLimit),
         timeLimitSeconds: Number(createTimeLimit) * 60,
@@ -291,7 +305,7 @@ export function CustomExamArena({ currentUser, onBackToLobby }: CustomExamArenaP
     }
   }
 
-  // JOIN ROOM HANDLER (By code or public Join Now)
+  // JOIN ROOM HANDLER (Direct Public Join with No Password, or Private with Password)
   const handleJoinRoom = async (roomCode: string, passwordAttempt?: string) => {
     if (!currentUser) return
     setJoiningLoading(true)
@@ -304,20 +318,24 @@ export function CustomExamArena({ currentUser, onBackToLobby }: CustomExamArenaP
         body: JSON.stringify({
           action: 'join',
           roomCode,
+          code: roomCode,
           password: passwordAttempt,
           userId: currentUser.id,
           userName: currentUser.name,
-          userAvatar: currentUser.avatar,
+          userAvatar: currentUser.avatar || '',
+          userEmail: currentUser.email || '',
         }),
       })
 
       const data = await res.json()
-      if (!res.ok) {
-        throw new Error(data.error || 'Failed to join room')
+      if (!res.ok || !data.success) {
+        throw new Error(data.message || data.error || 'Failed to join room')
       }
 
       setCurrentRoom(data.room)
       setJoinModalOpen(false)
+      setJoinCodeInput('')
+      setJoinPasswordInput('')
       if (data.room.status === 'in_progress' || data.room.status === 'playing') {
         setView('exam')
       } else {
@@ -329,6 +347,41 @@ export function CustomExamArena({ currentUser, onBackToLobby }: CustomExamArenaP
       setJoiningLoading(false)
     }
   }
+
+  // Auto-listen to notification / URL routing for direct public join vs private password modal
+  useEffect(() => {
+    const handleNav = (e: any) => {
+      const detail = e.detail || {}
+      const rCode = detail.roomCode || detail.code
+      if (!rCode) return
+
+      if (detail.autoJoin || detail.isPublic) {
+        handleJoinRoom(rCode)
+      } else {
+        setJoinCodeInput(rCode)
+        setJoinPasswordInput('')
+        setJoinModalOpen(true)
+      }
+    }
+
+    if (typeof window !== 'undefined') {
+      const params = new URLSearchParams(window.location.search)
+      const rCode = params.get('roomCode') || params.get('code')
+      const isPublic = params.get('isPublic') === 'true'
+      const isPrivate = params.get('isPrivate') === 'true'
+      if (rCode) {
+        if (isPublic) {
+          handleJoinRoom(rCode)
+        } else if (isPrivate) {
+          setJoinCodeInput(rCode)
+          setJoinPasswordInput('')
+          setJoinModalOpen(true)
+        }
+      }
+      window.addEventListener('arena-navigate', handleNav)
+      return () => window.removeEventListener('arena-navigate', handleNav)
+    }
+  }, [currentUser?.id])
 
   // CHANGE TEAM HANDLER
   const handleChangeTeam = async (targetTeam: 'alpha' | 'beta') => {
@@ -365,8 +418,10 @@ export function CustomExamArena({ currentUser, onBackToLobby }: CustomExamArenaP
           action: 'update_rules',
           roomId: currentRoom.roomId,
           userId: currentUser.id,
-          timeLimitMinutes: editTimeLimit,
-          maxPlayers: editMaxPlayers,
+          updates: {
+            timeLimitSeconds: editTimeLimit * 60,
+            maxPlayers: editMaxPlayers,
+          }
         }),
       })
       const data = await res.json()
@@ -381,7 +436,7 @@ export function CustomExamArena({ currentUser, onBackToLobby }: CustomExamArenaP
     }
   }
 
-  // HOST START GAME
+  // HOST START GAME (Multicast Questions to All Joined Students)
   const handleStartClash = async () => {
     if (!currentRoom || !currentUser || !isHost) return
     try {
@@ -477,25 +532,31 @@ export function CustomExamArena({ currentUser, onBackToLobby }: CustomExamArenaP
     }
   }
 
-  // Filtered public rooms
-  const filteredRooms = publicRooms.filter(r => {
+  // Filtered rooms
+  const filteredRooms = allRooms.filter(r => {
     const matchesSearch = r.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
       r.hostName.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      (r.documentName && r.documentName.toLowerCase().includes(searchQuery.toLowerCase()))
-    const matchesFormat = filterFormat === 'all' || r.examFormat === filterFormat
-    return matchesSearch && matchesFormat
+      (r.documentName && r.documentName.toLowerCase().includes(searchQuery.toLowerCase())) ||
+      r.roomCode.toLowerCase().includes(searchQuery.toLowerCase())
+    
+    if (filterFormat === 'public') return matchesSearch && !r.isPrivate
+    if (filterFormat === 'private') return matchesSearch && r.isPrivate
+    if (filterFormat === 'mcqs' || filterFormat === 'written' || filterFormat === 'mixed') {
+      return matchesSearch && r.examFormat === filterFormat
+    }
+    return matchesSearch
   })
 
-  // Get current user's participant profile
+  // Current user's participant entry
   const myParticipant = currentRoom?.participants.find(p => p.userId === currentUser?.id)
 
-  // Sort participants by score for rankings
+  // Sorted participants for leaderboard
   const rankedParticipants = [...(currentRoom?.participants || [])].sort((a, b) => b.score - a.score)
   const alphaParticipants = (currentRoom?.participants || []).filter(p => p.team === 'alpha' || p.team === 'Team Alpha').sort((a, b) => b.score - a.score)
   const betaParticipants = (currentRoom?.participants || []).filter(p => p.team === 'beta' || p.team === 'Team Beta').sort((a, b) => b.score - a.score)
 
   // =========================================================================
-  // VIEW 1: BROWSE PUBLIC ROOMS & LIVE GAMES
+  // VIEW 1: BROWSE PUBLIC & LIVE CLASH ROOMS
   // =========================================================================
   if (view === 'browse') {
     return (
@@ -503,26 +564,34 @@ export function CustomExamArena({ currentUser, onBackToLobby }: CustomExamArenaP
         {/* Banner Header */}
         <div className="arena-card p-6 bg-gradient-to-r from-purple-950/60 via-indigo-950/40 to-black border-purple-500/30 flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
           <div>
-            <div className="flex items-center gap-2 mb-2">
+            <div className="flex items-center gap-2 mb-2 flex-wrap">
               <Badge className="bg-purple-600/30 text-purple-300 border-purple-500/40 text-xs">
                 ⚡ Custom Study Arena
               </Badge>
               <Badge className="bg-emerald-500/20 text-emerald-400 border-emerald-500/30 text-xs">
                 Python ML Answer Verification
               </Badge>
+              <Badge className="bg-amber-500/20 text-amber-300 border-amber-500/30 text-xs flex items-center gap-1">
+                <Coins className="w-3 h-3 text-amber-400" /> Coin Prize Pools Active
+              </Badge>
             </div>
             <h2 className="text-2xl font-black text-white tracking-tight flex items-center gap-2">
               <BookOpen className="w-6 h-6 text-purple-400" />
               STUDY CLASH ROOMS
             </h2>
-            <p className="text-xs text-white/60 max-w-xl mt-1">
-              Create your own syllabus or document clash room, invite classmates 1-to-1 or team-vs-team, or jump into live public games. Powered by NumPy vector similarity and machine learning evaluation.
+            <p className="text-xs text-white/60 max-w-xl mt-1 leading-relaxed">
+              Create your own syllabus or document clash room, invite classmates 1 to 1 or team vs team, or jump into live public games. Powered by NumPy vector similarity and machine learning evaluation.
             </p>
           </div>
 
           <div className="flex items-center gap-2.5 flex-wrap">
             <Button
-              onClick={() => setJoinModalOpen(true)}
+              onClick={() => {
+                setJoinCodeInput('')
+                setJoinPasswordInput('')
+                setRoomError(null)
+                setJoinModalOpen(true)
+              }}
               variant="outline"
               className="border-white/20 bg-white/5 hover:bg-white/10 text-white text-xs font-bold"
             >
@@ -545,24 +614,31 @@ export function CustomExamArena({ currentUser, onBackToLobby }: CustomExamArenaP
           <div className="relative w-full sm:w-80">
             <input
               type="text"
-              placeholder="Search rooms, syllabus, or hosts..."
+              placeholder="Search rooms, syllabus, hosts, or code..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-1.5 text-xs text-white placeholder-white/40 focus:outline-none focus:border-purple-400"
             />
           </div>
 
-          <div className="flex items-center gap-2 w-full sm:w-auto justify-between sm:justify-end">
-            <div className="flex gap-1 bg-white/5 p-1 rounded-lg border border-white/10">
-              {(['all', 'mcqs', 'written', 'mixed'] as const).map(fmt => (
+          <div className="flex items-center gap-2 w-full sm:w-auto justify-between sm:justify-end flex-wrap">
+            <div className="flex gap-1 bg-white/5 p-1 rounded-lg border border-white/10 flex-wrap">
+              {[
+                { id: 'all', label: 'ALL' },
+                { id: 'public', label: 'PUBLIC LIVE' },
+                { id: 'private', label: 'PRIVATE SQUADS' },
+                { id: 'mcqs', label: 'MCQS' },
+                { id: 'written', label: 'WRITTEN' },
+                { id: 'mixed', label: 'MIXED' },
+              ].map(tab => (
                 <button
-                  key={fmt}
-                  onClick={() => setFilterFormat(fmt)}
+                  key={tab.id}
+                  onClick={() => setFilterFormat(tab.id as any)}
                   className={`px-2.5 py-1 rounded text-[11px] font-bold uppercase transition-all ${
-                    filterFormat === fmt ? 'bg-purple-600 text-white' : 'text-white/60 hover:text-white'
+                    filterFormat === tab.id ? 'bg-purple-600 text-white' : 'text-white/60 hover:text-white'
                   }`}
                 >
-                  {fmt}
+                  {tab.label}
                 </button>
               ))}
             </div>
@@ -570,7 +646,7 @@ export function CustomExamArena({ currentUser, onBackToLobby }: CustomExamArenaP
             <Button
               size="sm"
               variant="ghost"
-              onClick={fetchPublicRooms}
+              onClick={fetchLiveRooms}
               className="text-white/60 hover:text-white h-8 px-2"
               title="Refresh Live Games"
             >
@@ -579,34 +655,36 @@ export function CustomExamArena({ currentUser, onBackToLobby }: CustomExamArenaP
           </div>
         </div>
 
-        {/* Live Public Games Grid */}
+        {/* Live Games Grid */}
         <div>
           <div className="flex items-center justify-between mb-3">
             <h3 className="text-white font-bold text-sm flex items-center gap-2">
               <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-              LIVE PUBLIC GAMES ({filteredRooms.length})
+              LIVE STUDY CLASH ROOMS ({filteredRooms.length})
             </h3>
-            <span className="text-[11px] text-white/40">Synchronized same-paper solving</span>
+            <span className="text-[11px] text-white/40 font-mono">
+              Synchronized same-paper solving • Auto-Ranked
+            </span>
           </div>
 
           {loadingRooms && filteredRooms.length === 0 ? (
             <div className="text-center py-16 arena-card">
               <RefreshCw className="w-8 h-8 text-purple-400 animate-spin mx-auto mb-2" />
-              <p className="text-xs text-white/50">Scanning live games across arena...</p>
+              <p className="text-xs text-white/50">Scanning live clash rooms across arena...</p>
             </div>
           ) : filteredRooms.length === 0 ? (
             <div className="text-center py-16 arena-card border-dashed border-white/10 p-8">
               <FileText className="w-12 h-12 text-white/20 mx-auto mb-3" />
-              <p className="text-sm font-bold text-white mb-1">No live public rooms open right now</p>
+              <p className="text-sm font-bold text-white mb-1">No rooms found matching filter</p>
               <p className="text-xs text-white/50 max-w-sm mx-auto mb-4">
-                Be the first to host an exam clash! Upload a syllabus or document, set the time limit, and battle your classmates.
+                Be the first to host an exam clash! Stake a prize coin pool, upload questions, and battle your classmates live.
               </p>
               <Button
                 onClick={() => setView('create')}
                 size="sm"
                 className="bg-purple-600 hover:bg-purple-700 text-white font-bold text-xs"
               >
-                + Create Public Clash
+                + Create Study Clash Room
               </Button>
             </div>
           ) : (
@@ -618,14 +696,26 @@ export function CustomExamArena({ currentUser, onBackToLobby }: CustomExamArenaP
                 return (
                   <div
                     key={room._id || room.roomId}
-                    className="arena-card p-5 border-white/10 hover:border-purple-500/50 bg-black/40 transition-all flex flex-col justify-between group"
+                    className="arena-card p-5 border-white/10 hover:border-purple-500/50 bg-black/40 transition-all flex flex-col justify-between group rounded-2xl"
                   >
                     <div>
+                      {/* Card Header & Privacy Indicator */}
                       <div className="flex items-start justify-between gap-2 mb-3">
                         <div>
-                          <span className="text-[10px] font-mono text-purple-400 uppercase font-bold tracking-wider">
-                            {room.matchType === 'team' ? '🛡️ Team Battle' : room.matchType === '1v1' ? '⚔️ 1v1 Duel' : '🌐 Open Match'}
-                          </span>
+                          <div className="flex items-center gap-1.5 mb-1 flex-wrap">
+                            <span className="text-[10px] font-mono text-purple-400 uppercase font-bold tracking-wider">
+                              {room.matchType === 'team' ? '🛡️ Team Battle' : room.matchType === '1v1' ? '⚔️ 1v1 Duel' : '🌐 Open Match'}
+                            </span>
+                            {room.isPrivate ? (
+                              <Badge className="bg-amber-500/15 text-amber-300 border-amber-500/30 text-[10px] gap-1 py-0">
+                                <Lock className="w-2.5 h-2.5 text-amber-400" /> Private Room
+                              </Badge>
+                            ) : (
+                              <Badge className="bg-emerald-500/15 text-emerald-300 border-emerald-500/30 text-[10px] gap-1 py-0">
+                                <Unlock className="w-2.5 h-2.5 text-emerald-400" /> Public (No Password)
+                              </Badge>
+                            )}
+                          </div>
                           <h4 className="text-white font-bold text-base leading-snug line-clamp-1 group-hover:text-purple-300 transition-colors">
                             {room.title}
                           </h4>
@@ -637,31 +727,43 @@ export function CustomExamArena({ currentUser, onBackToLobby }: CustomExamArenaP
                               : 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40'
                           }`}
                         >
-                          {isMatchInProgress ? 'Playing' : 'Lobby'}
+                          {isMatchInProgress ? 'Playing' : 'Waiting'}
                         </Badge>
                       </div>
 
-                      <div className="space-y-2 text-xs text-white/70 mb-4 bg-white/5 p-3 rounded-lg border border-white/5">
+                      {/* Prize Coins & Badge Banner */}
+                      <div className="flex items-center justify-between p-2.5 rounded-xl bg-amber-500/10 border border-amber-500/20 text-xs text-amber-300 mb-3">
+                        <div className="flex items-center gap-1.5 font-bold font-mono">
+                          <Coins className="w-4 h-4 text-amber-400" />
+                          <span>Prize Pool: {room.prizeCoins || 100} Coins</span>
+                        </div>
+                        <span className="text-[10px] font-bold bg-amber-500/20 px-2 py-0.5 rounded text-amber-200">
+                          {room.prizeBadge || 'Clash Champion'}
+                        </span>
+                      </div>
+
+                      {/* Room Stats */}
+                      <div className="space-y-1.5 text-xs text-white/70 mb-4 bg-white/5 p-3 rounded-xl border border-white/5 font-mono">
                         <div className="flex items-center justify-between">
-                          <span className="text-white/40">Host:</span>
-                          <span className="font-bold text-white flex items-center gap-1">
+                          <span className="text-white/40 font-sans">Host:</span>
+                          <span className="font-bold text-white flex items-center gap-1 font-sans">
                             {room.hostName}
                           </span>
                         </div>
                         <div className="flex items-center justify-between">
-                          <span className="text-white/40">Exam Format:</span>
-                          <span className="font-mono text-purple-300 font-bold uppercase text-[11px]">
+                          <span className="text-white/40 font-sans">Room Format:</span>
+                          <span className="text-purple-300 font-bold uppercase text-[11px]">
                             {room.examFormat}
                           </span>
                         </div>
                         <div className="flex items-center justify-between">
-                          <span className="text-white/40">Questions & Time:</span>
+                          <span className="text-white/40 font-sans">Questions &amp; Time:</span>
                           <span className="text-white/90">
-                            {room.questions?.length || 5} Qs • {room.timeLimitMinutes} mins
+                            {room.questions?.length || 5} Qs • {room.timeLimitMinutes || 10} mins
                           </span>
                         </div>
                         <div className="flex items-center justify-between">
-                          <span className="text-white/40">Students:</span>
+                          <span className="text-white/40 font-sans">Students:</span>
                           <span className={`font-bold ${isFull ? 'text-rose-400' : 'text-emerald-400'}`}>
                             {room.participants.length} / {room.maxPlayers}
                           </span>
@@ -669,21 +771,34 @@ export function CustomExamArena({ currentUser, onBackToLobby }: CustomExamArenaP
                       </div>
                     </div>
 
+                    {/* Card Footer: Code & Action Button */}
                     <div className="pt-2 border-t border-white/10 flex items-center justify-between gap-2">
-                      <span className="text-[11px] font-mono text-white/40">
-                        Code: {room.roomCode}
+                      <span className="text-[11px] font-mono font-bold text-purple-300">
+                        Code: #{room.roomCode}
                       </span>
-                      <Button
-                        onClick={() => handleJoinRoom(room.roomCode)}
-                        disabled={isFull || joiningLoading}
-                        className={`text-xs font-bold px-3 py-1.5 h-8 ${
-                          isFull
-                            ? 'bg-white/10 text-white/40'
-                            : 'bg-purple-600 hover:bg-purple-500 text-white shadow-md shadow-purple-600/30'
-                        }`}
-                      >
-                        {isFull ? 'Full' : 'Join Now ⚡'}
-                      </Button>
+
+                      {room.isPrivate ? (
+                        <Button
+                          onClick={() => {
+                            setJoinCodeInput(room.roomCode)
+                            setJoinPasswordInput('')
+                            setRoomError(null)
+                            setJoinModalOpen(true)
+                          }}
+                          disabled={isFull || joiningLoading}
+                          className="text-xs font-bold px-3 py-1.5 h-8 bg-amber-600 hover:bg-amber-500 text-white gap-1 shadow-md shadow-amber-600/30"
+                        >
+                          <Lock className="w-3 h-3" /> Enter with Password
+                        </Button>
+                      ) : (
+                        <Button
+                          onClick={() => handleJoinRoom(room.roomCode)}
+                          disabled={isFull || joiningLoading}
+                          className="text-xs font-bold px-3 py-1.5 h-8 bg-emerald-600 hover:bg-emerald-500 text-white gap-1 shadow-md shadow-emerald-600/30"
+                        >
+                          <Zap className="w-3 h-3" /> Join Now ⚡
+                        </Button>
+                      )}
                     </div>
                   </div>
                 )
@@ -695,10 +810,10 @@ export function CustomExamArena({ currentUser, onBackToLobby }: CustomExamArenaP
         {/* Modal: Join with Room Code & Password */}
         {joinModalOpen && (
           <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
-            <div className="arena-card max-w-md w-full p-6 border-purple-500/40 bg-zinc-950 space-y-4">
+            <div className="arena-card max-w-md w-full p-6 border-purple-500/40 bg-zinc-950 space-y-4 rounded-2xl shadow-2xl">
               <div className="flex items-center justify-between border-b border-white/10 pb-3">
                 <h3 className="text-white font-bold text-base flex items-center gap-2">
-                  <Lock className="w-4 h-4 text-amber-400" /> Enter Private Clash Room
+                  <Lock className="w-4 h-4 text-amber-400" /> Enter Study Clash Room
                 </h3>
                 <button
                   onClick={() => setJoinModalOpen(false)}
@@ -719,7 +834,7 @@ export function CustomExamArena({ currentUser, onBackToLobby }: CustomExamArenaP
                   <label className="text-xs font-bold text-white/70 block mb-1">Room Code</label>
                   <input
                     type="text"
-                    placeholder="e.g. CLASH-47A1"
+                    placeholder="e.g. CLASH-4721"
                     value={joinCodeInput}
                     onChange={(e) => setJoinCodeInput(e.target.value.toUpperCase())}
                     className="w-full bg-black/60 border border-white/20 rounded-xl px-3 py-2 text-sm text-white font-mono font-bold uppercase focus:outline-none focus:border-purple-400"
@@ -728,15 +843,18 @@ export function CustomExamArena({ currentUser, onBackToLobby }: CustomExamArenaP
 
                 <div>
                   <label className="text-xs font-bold text-white/70 block mb-1">
-                    Password <span className="text-white/40">(if private)</span>
+                    Squad Password <span className="text-white/40">(required for private rooms)</span>
                   </label>
                   <input
                     type="password"
-                    placeholder="Enter room password..."
+                    placeholder="Enter private team password..."
                     value={joinPasswordInput}
                     onChange={(e) => setJoinPasswordInput(e.target.value)}
                     className="w-full bg-black/60 border border-white/20 rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:border-purple-400"
                   />
+                  <p className="text-[10px] text-white/40 mt-1">
+                    * If you are joining a Public room, leave password blank and click Enter Clash.
+                  </p>
                 </div>
               </div>
 
@@ -751,7 +869,7 @@ export function CustomExamArena({ currentUser, onBackToLobby }: CustomExamArenaP
                 <Button
                   onClick={() => handleJoinRoom(joinCodeInput, joinPasswordInput)}
                   disabled={!joinCodeInput || joiningLoading}
-                  className="bg-purple-600 hover:bg-purple-700 text-white font-bold text-xs"
+                  className="bg-purple-600 hover:bg-purple-700 text-white font-bold text-xs px-4"
                 >
                   {joiningLoading ? 'Connecting...' : 'Enter Clash ⚡'}
                 </Button>
@@ -764,7 +882,7 @@ export function CustomExamArena({ currentUser, onBackToLobby }: CustomExamArenaP
   }
 
   // =========================================================================
-  // VIEW 2: CREATE ROOM (HOST SETS RULES & FEEDS DOCUMENT)
+  // VIEW 2: CREATE ROOM (HOST SETS PRIZE POOL, RULES & FEEDS SYLLABUS)
   // =========================================================================
   if (view === 'create') {
     return (
@@ -779,11 +897,11 @@ export function CustomExamArena({ currentUser, onBackToLobby }: CustomExamArenaP
             </button>
             <div>
               <h2 className="text-xl font-black text-white">Create Study Clash Room</h2>
-              <p className="text-xs text-white/50">Host controls all rules, time limits, and question papers</p>
+              <p className="text-xs text-white/50">Host controls prize pool, team rules, and question paper</p>
             </div>
           </div>
           <Badge className="bg-purple-600/20 text-purple-300 border-purple-500/30 text-xs">
-            Creator Authority
+            Host Authority
           </Badge>
         </div>
 
@@ -795,10 +913,10 @@ export function CustomExamArena({ currentUser, onBackToLobby }: CustomExamArenaP
         )}
 
         <form onSubmit={handleCreateRoom} className="space-y-6">
-          {/* Room Basics */}
+          {/* 1. Room Basics */}
           <div className="arena-card p-5 space-y-4">
             <h3 className="text-sm font-bold text-white flex items-center gap-2">
-              <Shield className="w-4 h-4 text-purple-400" /> 1. Room Identity & Match Type
+              <Shield className="w-4 h-4 text-purple-400" /> 1. Room Identity &amp; Match Type
             </h3>
 
             <div>
@@ -806,7 +924,7 @@ export function CustomExamArena({ currentUser, onBackToLobby }: CustomExamArenaP
               <input
                 type="text"
                 required
-                placeholder="e.g. Physics Final Exam Clash 2026, DBMS Mid-Term Mock"
+                placeholder="e.g. Physics Final Exam Clash 2026, DBMS Mid-Term Practice"
                 value={createTitle}
                 onChange={(e) => setCreateTitle(e.target.value)}
                 className="w-full bg-black/50 border border-white/20 rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:border-purple-400"
@@ -815,9 +933,9 @@ export function CustomExamArena({ currentUser, onBackToLobby }: CustomExamArenaP
 
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
               {[
-                { id: '1v1', label: '1v1 Duel Clash', desc: 'Direct 1-on-1 friend battle' },
-                { id: 'team', label: 'Team Battle', desc: 'Team Alpha vs Team Beta' },
-                { id: 'open', label: 'Multi-Student Free-for-All', desc: 'Ranked individual scores' },
+                { id: 'open', label: 'Multi-Student Free-for-All', desc: 'Ranked individual scores across all students' },
+                { id: '1v1', label: '1v1 Duel Clash', desc: 'Direct 1-on-1 classmate head-to-head' },
+                { id: 'team', label: 'Team Battle', desc: 'Team Alpha vs Team Beta clash' },
               ].map(t => (
                 <button
                   type="button"
@@ -835,17 +953,17 @@ export function CustomExamArena({ currentUser, onBackToLobby }: CustomExamArenaP
               ))}
             </div>
 
-            {/* Privacy switch */}
-            <div className="pt-2 border-t border-white/10 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+            {/* Privacy switch: Public vs Private */}
+            <div className="pt-3 border-t border-white/10 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
               <div>
                 <div className="text-xs font-bold text-white flex items-center gap-2">
                   {createIsPrivate ? <Lock className="w-3.5 h-3.5 text-amber-400" /> : <Unlock className="w-3.5 h-3.5 text-emerald-400" />}
-                  {createIsPrivate ? 'Private Room (Code & Password Protected)' : 'Public Room (Visible in Live Games)'}
+                  {createIsPrivate ? 'Private Squad (Team Code & Password Protected)' : 'Public Room (Broadcast to Live Students, No Password Needed)'}
                 </div>
-                <p className="text-[11px] text-white/40">
+                <p className="text-[11px] text-white/40 mt-0.5">
                   {createIsPrivate
-                    ? 'Only students with your team code & password can join'
-                    : 'Any student can see and join with 1-click Join Now button'}
+                    ? 'Only students with your team code & password can join.'
+                    : 'Dispatches real notification to live users. Any student can join directly with no password!'}
                 </p>
               </div>
 
@@ -853,52 +971,107 @@ export function CustomExamArena({ currentUser, onBackToLobby }: CustomExamArenaP
                 <button
                   type="button"
                   onClick={() => setCreateIsPrivate(false)}
-                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
-                    !createIsPrivate ? 'bg-emerald-600 text-white' : 'bg-white/5 text-white/50'
+                  className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                    !createIsPrivate ? 'bg-emerald-600 text-white shadow-md' : 'bg-white/5 text-white/50'
                   }`}
                 >
-                  Public
+                  🌐 Public
                 </button>
                 <button
                   type="button"
                   onClick={() => setCreateIsPrivate(true)}
-                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
-                    createIsPrivate ? 'bg-amber-600 text-white' : 'bg-white/5 text-white/50'
+                  className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                    createIsPrivate ? 'bg-amber-600 text-white shadow-md' : 'bg-white/5 text-white/50'
                   }`}
                 >
-                  Private
+                  🔒 Private
                 </button>
               </div>
             </div>
 
             {createIsPrivate && (
-              <div className="pt-2 animate-in fade-in">
-                <label className="text-xs font-bold text-white/70 block mb-1">Set Room Password</label>
+              <div className="pt-2 animate-in fade-in space-y-1">
+                <label className="text-xs font-bold text-amber-300 block">Set Room Password</label>
                 <input
                   type="password"
                   required
-                  placeholder="Enter a secret password for your squad..."
+                  placeholder="Enter secret team password (e.g. squad2026)..."
                   value={createPassword}
                   onChange={(e) => setCreatePassword(e.target.value)}
-                  className="w-full bg-black/50 border border-white/20 rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:border-amber-400"
+                  className="w-full bg-black/50 border border-amber-500/40 rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:border-amber-400"
                 />
               </div>
             )}
           </div>
 
-          {/* Exam Rules & Format */}
+          {/* 2. Prize Pool & Host Coin Stake */}
+          <div className="arena-card p-5 space-y-4 border-amber-500/30 bg-amber-950/10">
+            <h3 className="text-sm font-bold text-white flex items-center gap-2">
+              <Coins className="w-4 h-4 text-amber-400" /> 2. Prize Coins Stake &amp; Winner Badge (Host Funded)
+            </h3>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              {/* Coin Stake selector */}
+              <div>
+                <label className="text-xs font-bold text-white/70 block mb-1">
+                  Prize Coin Pool (Debited from Host)
+                </label>
+                <div className="flex items-center gap-2">
+                  {[50, 100, 200, 500].map(amt => (
+                    <button
+                      type="button"
+                      key={amt}
+                      onClick={() => setCreatePrizeCoins(amt)}
+                      className={`flex-1 py-1.5 rounded-lg text-xs font-mono font-bold transition-all ${
+                        createPrizeCoins === amt
+                          ? 'bg-amber-500 text-black shadow-md'
+                          : 'bg-white/5 text-white/70 border border-white/10 hover:border-white/20'
+                      }`}
+                    >
+                      {amt} 🪙
+                    </button>
+                  ))}
+                </div>
+                <p className="text-[10px] text-amber-300/80 mt-1.5 font-mono">
+                  💳 <strong>{createPrizeCoins} Coins</strong> will be debited from host account and credited to the Rank #1 winning student.
+                </p>
+              </div>
+
+              {/* Prize Badge selector */}
+              <div>
+                <label className="text-xs font-bold text-white/70 block mb-1">
+                  Winner Trophy Badge
+                </label>
+                <select
+                  value={createPrizeBadge}
+                  onChange={(e) => setCreatePrizeBadge(e.target.value)}
+                  className="w-full bg-black/60 border border-white/20 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-amber-400"
+                >
+                  <option value="Clash Champion 🏆">Clash Champion 🏆</option>
+                  <option value="Arena Master ⚔️">Arena Master ⚔️</option>
+                  <option value="Study Duel Grandmaster 🥇">Study Duel Grandmaster 🥇</option>
+                  <option value="Knowledge Sovereign 👑">Knowledge Sovereign 👑</option>
+                </select>
+                <p className="text-[10px] text-white/40 mt-1.5">
+                  Awarded permanently to the student who finishes with highest score.
+                </p>
+              </div>
+            </div>
+          </div>
+
+          {/* 3. Exam Rules & Format */}
           <div className="arena-card p-5 space-y-4">
             <h3 className="text-sm font-bold text-white flex items-center gap-2">
-              <Clock className="w-4 h-4 text-purple-400" /> 2. Exam Rules & Format (Creator Governed)
+              <Clock className="w-4 h-4 text-purple-400" /> 3. Exam Rules &amp; Format
             </h3>
 
             <div>
-              <label className="text-xs font-bold text-white/70 block mb-2">Select Exam Format</label>
+              <label className="text-xs font-bold text-white/70 block mb-2">Select Question Format</label>
               <div className="grid grid-cols-3 gap-3">
                 {[
-                  { id: 'mcqs', label: 'MCQs Only', desc: '4 options with instant grading' },
-                  { id: 'written', label: 'Written Only', desc: 'Subjective with Python ML score' },
-                  { id: 'mixed', label: 'Mixed Paper', desc: 'Both MCQs & written answers' },
+                  { id: 'mcqs', label: 'MCQs Only', desc: 'Instant grading with 4 options' },
+                  { id: 'written', label: 'Written Only', desc: 'Subjective with ML semantic scoring' },
+                  { id: 'mixed', label: 'Mixed Paper', desc: 'Both MCQs and analytical written Qs' },
                 ].map(f => (
                   <button
                     type="button"
@@ -919,7 +1092,7 @@ export function CustomExamArena({ currentUser, onBackToLobby }: CustomExamArenaP
 
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 pt-2">
               <div>
-                <label className="text-xs font-bold text-white/70 block mb-1">Max Students Allowed</label>
+                <label className="text-xs font-bold text-white/70 block mb-1">Max Students</label>
                 <input
                   type="number"
                   min={2}
@@ -956,11 +1129,11 @@ export function CustomExamArena({ currentUser, onBackToLobby }: CustomExamArenaP
             </div>
           </div>
 
-          {/* Document / Syllabus Feed */}
+          {/* 4. Document / Syllabus Feed */}
           <div className="arena-card p-5 space-y-4">
             <div className="flex items-center justify-between">
               <h3 className="text-sm font-bold text-white flex items-center gap-2">
-                <FileText className="w-4 h-4 text-cyan-400" /> 3. Feed Input Document / Syllabus
+                <FileText className="w-4 h-4 text-cyan-400" /> 4. Feed Input Document / Syllabus
               </h3>
               <div className="flex gap-1.5">
                 <button
@@ -1001,7 +1174,7 @@ export function CustomExamArena({ currentUser, onBackToLobby }: CustomExamArenaP
                     <span>{extractionStatus}</span>
                   </div>
                 ) : (
-                  <p className="text-[11px] text-white/40 mb-3">RAG AI extracts topics, generates balanced MCQs and grading matrix</p>
+                  <p className="text-[11px] text-white/40 mb-3">AI generates balanced questions and grading matrices</p>
                 )}
                 <input
                   type="file"
@@ -1014,7 +1187,7 @@ export function CustomExamArena({ currentUser, onBackToLobby }: CustomExamArenaP
               <div>
                 <textarea
                   rows={4}
-                  placeholder="Paste your syllabus chapters, exam topics, key formulas, or sample exam questions here... NumPy & Pandas will generate balanced questions."
+                  placeholder="Paste your syllabus chapters, exam topics, key formulas, or sample exam questions here... RAG generator will build questions."
                   value={createDocContent}
                   onChange={(e) => setCreateDocContent(e.target.value)}
                   className="w-full bg-black/50 border border-white/20 rounded-xl p-3 text-xs font-mono text-white/90 focus:outline-none focus:border-cyan-400"
@@ -1039,11 +1212,11 @@ export function CustomExamArena({ currentUser, onBackToLobby }: CustomExamArenaP
             >
               {creatingLoading ? (
                 <>
-                  <RefreshCw className="w-3.5 h-3.5 animate-spin mr-2" /> Generating Exam & Creating Room...
+                  <RefreshCw className="w-3.5 h-3.5 animate-spin mr-2" /> Generating Questions &amp; Staking Coins...
                 </>
               ) : (
                 <>
-                  <Sparkles className="w-3.5 h-3.5 mr-2" /> Generate Questions & Open Room
+                  <Sparkles className="w-3.5 h-3.5 mr-2" /> Open Room &amp; Multicast Questions
                 </>
               )}
             </Button>
@@ -1054,15 +1227,23 @@ export function CustomExamArena({ currentUser, onBackToLobby }: CustomExamArenaP
   }
 
   // =========================================================================
-  // VIEW 3: IN-ROOM LOBBY (HOST RULES, INVITE, TEAM SELECTION)
+  // VIEW 3: IN-ROOM LOBBY (INVITE CODE, PASSWORD, MULTICAST PREVIEW)
   // =========================================================================
   if (view === 'lobby' && currentRoom) {
+    const inviteMessage = `⚔️ Join my Study Clash on "${currentRoom.title}"!\n• Room Code: ${currentRoom.roomCode}\n• Status: ${currentRoom.isPrivate ? `Private (Password: ${currentRoom.password || 'Contact Host'})` : 'Public Live (No Password Required)'}\n• Prize Pool: ${currentRoom.prizeCoins || 100} Coins + "${currentRoom.prizeBadge || 'Clash Champion'}" Badge!\nJoin at: ${window?.location?.origin || ''}/?step=arena`
+
+    const handleCopyInvite = () => {
+      navigator.clipboard.writeText(inviteMessage)
+      setCopiedInvite(true)
+      setTimeout(() => setCopiedInvite(false), 2500)
+    }
+
     return (
       <div className="space-y-6">
         {/* Lobby Top Bar */}
-        <div className="arena-card p-6 bg-gradient-to-r from-purple-950/50 via-zinc-950 to-black border-purple-500/30 flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+        <div className="arena-card p-6 bg-gradient-to-r from-purple-950/50 via-zinc-950 to-black border-purple-500/30 flex flex-col md:flex-row items-start md:items-center justify-between gap-4 rounded-2xl">
           <div>
-            <div className="flex items-center gap-2 mb-1">
+            <div className="flex items-center gap-2 mb-1 flex-wrap">
               <Badge className="bg-purple-600/30 text-purple-300 border-purple-500/40 text-xs uppercase font-mono">
                 {currentRoom.matchType === 'team' ? '🛡️ Team Battle' : currentRoom.matchType === '1v1' ? '⚔️ 1v1 Clash' : '🌐 Multi-Student'}
               </Badge>
@@ -1071,25 +1252,29 @@ export function CustomExamArena({ currentUser, onBackToLobby }: CustomExamArenaP
               </Badge>
               {currentRoom.isPrivate ? (
                 <Badge className="bg-amber-500/20 text-amber-300 border-amber-500/40 text-xs">
-                  🔒 Private
+                  🔒 Private Squad
                 </Badge>
               ) : (
                 <Badge className="bg-emerald-500/20 text-emerald-300 border-emerald-500/40 text-xs">
-                  ⚡ Public Live
+                  ⚡ Public Live (Open Join)
                 </Badge>
               )}
+              <Badge className="bg-amber-500/10 text-amber-400 border-amber-500/20 text-xs font-mono">
+                🪙 {currentRoom.prizeCoins || 100} Coins Prize
+              </Badge>
             </div>
             <h2 className="text-2xl font-black text-white">{currentRoom.title}</h2>
-            <p className="text-xs text-white/50">
-              Host: <span className="text-white font-bold">{currentRoom.hostName}</span> • Paper: {currentRoom.questions.length} Questions • Limit: {currentRoom.timeLimitMinutes} Mins
+            <p className="text-xs text-white/50 mt-1">
+              Host: <span className="text-white font-bold">{currentRoom.hostName}</span> • Multicast Paper: {currentRoom.questions.length} Questions • Limit: {currentRoom.timeLimitMinutes || 10} Mins
             </p>
           </div>
 
           {/* Share Code & Host Start Clash */}
           <div className="flex items-center gap-2.5 flex-wrap">
-            <div className="flex items-center bg-black/60 border border-white/20 rounded-xl px-3 py-1.5">
+            {/* Team Room Code Pill */}
+            <div className="flex items-center bg-black/60 border border-white/20 rounded-xl px-3 py-1.5 font-mono">
               <span className="text-[10px] text-white/40 mr-2 uppercase">Code:</span>
-              <span className="text-xs font-mono font-black text-purple-300 mr-2">
+              <span className="text-xs font-black text-purple-300 mr-2">
                 {currentRoom.roomCode}
               </span>
               <button
@@ -1119,20 +1304,47 @@ export function CustomExamArena({ currentUser, onBackToLobby }: CustomExamArenaP
                   onClick={handleStartClash}
                   className="bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs px-5 shadow-lg shadow-emerald-600/30"
                 >
-                  <Play className="w-3.5 h-3.5 mr-1.5 fill-current" /> START CLASH FOR ALL
+                  <Play className="w-3.5 h-3.5 mr-1.5 fill-current" /> START CLASH FOR ALL ⚡
                 </Button>
               </>
             ) : (
               <div className="text-xs font-bold text-amber-400 flex items-center gap-2 bg-amber-500/10 border border-amber-500/30 px-3 py-1.5 rounded-xl animate-pulse">
-                <Clock className="w-3.5 h-3.5" /> Waiting for Host ({currentRoom.hostName}) to start...
+                <Clock className="w-3.5 h-3.5" /> Waiting for Host ({currentRoom.hostName}) to start clash...
               </div>
             )}
           </div>
         </div>
 
+        {/* Invite Classmates Box */}
+        <div className="p-4 rounded-2xl bg-purple-950/20 border border-purple-500/30 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+          <div className="space-y-1">
+            <h4 className="text-xs font-black text-purple-300 flex items-center gap-1.5 uppercase tracking-wide">
+              <Share2 className="w-3.5 h-3.5" /> Invite Classmates to Join Practice
+            </h4>
+            <p className="text-xs text-white/70">
+              Share the room code <strong className="font-mono text-purple-200">#{currentRoom.roomCode}</strong>
+              {currentRoom.isPrivate && (
+                <> and squad password: <strong className="font-mono text-amber-300">{currentRoom.password}</strong></>
+              )}
+              {!currentRoom.isPrivate && (
+                <> (Public room — classmates can join directly with 1 click!)</>
+              )}
+            </p>
+          </div>
+
+          <Button
+            size="sm"
+            onClick={handleCopyInvite}
+            className="bg-purple-600 hover:bg-purple-500 text-white text-xs font-bold gap-1.5 h-8 shrink-0"
+          >
+            {copiedInvite ? <Check className="w-3.5 h-3.5 text-emerald-300" /> : <Copy className="w-3.5 h-3.5" />}
+            {copiedInvite ? 'Copied Invite!' : 'Copy Full Invite Code'}
+          </Button>
+        </div>
+
         {/* Rule Edit Modal (Only for Host) */}
         {isEditingRules && isHost && (
-          <div className="arena-card p-5 border-amber-500/40 bg-amber-950/20 space-y-4 animate-in fade-in">
+          <div className="arena-card p-5 border-amber-500/40 bg-amber-950/20 space-y-4 animate-in fade-in rounded-2xl">
             <h4 className="text-white font-bold text-sm flex items-center gap-2">
               <Shield className="w-4 h-4 text-amber-400" /> Host Rule Controller
             </h4>
@@ -1175,7 +1387,7 @@ export function CustomExamArena({ currentUser, onBackToLobby }: CustomExamArenaP
         {currentRoom.matchType === 'team' ? (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             {/* Team Alpha */}
-            <div className="arena-card p-5 border-blue-500/40 bg-blue-950/20 space-y-4">
+            <div className="arena-card p-5 border-blue-500/40 bg-blue-950/20 space-y-4 rounded-2xl">
               <div className="flex items-center justify-between border-b border-blue-500/20 pb-3">
                 <div>
                   <h3 className="text-white font-black text-sm flex items-center gap-2">
@@ -1203,12 +1415,10 @@ export function CustomExamArena({ currentUser, onBackToLobby }: CustomExamArenaP
                       <div className="w-7 h-7 rounded-full bg-blue-600/40 border border-blue-400/40 flex items-center justify-center font-bold text-white text-xs">
                         {p.name.charAt(0)}
                       </div>
-                      <div>
-                        <div className="text-white font-bold flex items-center gap-1.5">
-                          {p.name}
-                          {p.isHost && <Crown className="w-3 h-3 text-amber-400" />}
-                          {p.userId === currentUser?.id && <span className="text-[10px] text-blue-400">(You)</span>}
-                        </div>
+                      <div className="text-white font-bold flex items-center gap-1.5">
+                        {p.name}
+                        {p.isHost && <Crown className="w-3 h-3 text-amber-400" />}
+                        {p.userId === currentUser?.id && <span className="text-[10px] text-blue-400">(You)</span>}
                       </div>
                     </div>
                     <Badge className="bg-blue-500/20 text-blue-300 border-blue-500/30 text-[10px]">Ready</Badge>
@@ -1218,7 +1428,7 @@ export function CustomExamArena({ currentUser, onBackToLobby }: CustomExamArenaP
             </div>
 
             {/* Team Beta */}
-            <div className="arena-card p-5 border-rose-500/40 bg-rose-950/20 space-y-4">
+            <div className="arena-card p-5 border-rose-500/40 bg-rose-950/20 space-y-4 rounded-2xl">
               <div className="flex items-center justify-between border-b border-rose-500/20 pb-3">
                 <div>
                   <h3 className="text-white font-black text-sm flex items-center gap-2">
@@ -1246,12 +1456,10 @@ export function CustomExamArena({ currentUser, onBackToLobby }: CustomExamArenaP
                       <div className="w-7 h-7 rounded-full bg-rose-600/40 border border-rose-400/40 flex items-center justify-center font-bold text-white text-xs">
                         {p.name.charAt(0)}
                       </div>
-                      <div>
-                        <div className="text-white font-bold flex items-center gap-1.5">
-                          {p.name}
-                          {p.isHost && <Crown className="w-3 h-3 text-amber-400" />}
-                          {p.userId === currentUser?.id && <span className="text-[10px] text-rose-400">(You)</span>}
-                        </div>
+                      <div className="text-white font-bold flex items-center gap-1.5">
+                        {p.name}
+                        {p.isHost && <Crown className="w-3 h-3 text-amber-400" />}
+                        {p.userId === currentUser?.id && <span className="text-[10px] text-rose-400">(You)</span>}
                       </div>
                     </div>
                     <Badge className="bg-rose-500/20 text-rose-300 border-rose-500/30 text-[10px]">Ready</Badge>
@@ -1262,7 +1470,7 @@ export function CustomExamArena({ currentUser, onBackToLobby }: CustomExamArenaP
           </div>
         ) : (
           /* Multi-User / 1v1 List */
-          <div className="arena-card p-5 space-y-4">
+          <div className="arena-card p-5 space-y-4 rounded-2xl">
             <h3 className="text-white font-bold text-sm flex items-center gap-2">
               <Users className="w-4 h-4 text-purple-400" /> CONNECTED STUDENTS ({currentRoom.participants.length} / {currentRoom.maxPlayers})
             </h3>
@@ -1277,9 +1485,10 @@ export function CustomExamArena({ currentUser, onBackToLobby }: CustomExamArenaP
                       <div className="text-white font-bold flex items-center gap-1">
                         {p.name}
                         {p.isHost && <Crown className="w-3 h-3 text-amber-400" />}
+                        {p.userId === currentUser?.id && <span className="text-[10px] text-purple-400">(You)</span>}
                       </div>
                       <span className="text-[10px] text-white/40">
-                        {p.userId === currentUser?.id ? 'You' : 'Classmate'}
+                        {p.isHost ? 'Host' : 'Competitor'}
                       </span>
                     </div>
                   </div>
@@ -1298,8 +1507,8 @@ export function CustomExamArena({ currentUser, onBackToLobby }: CustomExamArenaP
           >
             ← Leave Lobby
           </Button>
-          <div className="text-xs text-white/40 font-mono">
-            Same paper will be synchronized for all joined players
+          <div className="text-xs text-purple-300 font-mono font-bold flex items-center gap-1">
+            <Sparkles className="w-3 h-3" /> Questions will be multicast simultaneously to all students
           </div>
         </div>
       </div>
@@ -1307,7 +1516,7 @@ export function CustomExamArena({ currentUser, onBackToLobby }: CustomExamArenaP
   }
 
   // =========================================================================
-  // VIEW 4: SYNCHRONIZED EXAM GAMEPLAY (MCQS & WRITTEN WITH PYTHON ML)
+  // VIEW 4: SYNCHRONIZED MULTICAST EXAM GAMEPLAY (WITH LIVE SCORE TRACKING)
   // =========================================================================
   if (view === 'exam' && currentRoom) {
     const activeQ = currentRoom.questions[currentQuestionIndex]
@@ -1320,7 +1529,7 @@ export function CustomExamArena({ currentUser, onBackToLobby }: CustomExamArenaP
     return (
       <div className="space-y-6">
         {/* Top Synchronized Bar */}
-        <div className="arena-card p-4 bg-black/60 border-purple-500/30 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+        <div className="arena-card p-4 bg-black/60 border-purple-500/30 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 rounded-2xl">
           <div className="flex items-center gap-3">
             <Badge className="bg-purple-600 text-white font-bold text-xs uppercase px-2.5 py-1">
               Q {currentQuestionIndex + 1} of {currentRoom.questions.length}
@@ -1330,10 +1539,10 @@ export function CustomExamArena({ currentUser, onBackToLobby }: CustomExamArenaP
             </span>
           </div>
 
-          {/* Synchronized Timer & Team Scores */}
-          <div className="flex items-center gap-4 w-full sm:w-auto justify-between sm:justify-end">
+          {/* Synchronized Timer, Team Scores & Finish */}
+          <div className="flex items-center gap-3 w-full sm:w-auto justify-between sm:justify-end flex-wrap">
             {currentRoom.matchType === 'team' && (
-              <div className="flex items-center gap-3 bg-white/5 px-3 py-1 rounded-xl border border-white/10 text-xs">
+              <div className="flex items-center gap-3 bg-white/5 px-3 py-1 rounded-xl border border-white/10 text-xs font-mono">
                 <span className="text-blue-400 font-bold">Alpha: {currentRoom.teamScores?.alpha || 0}</span>
                 <span className="text-white/30">|</span>
                 <span className="text-rose-400 font-bold">Beta: {currentRoom.teamScores?.beta || 0}</span>
@@ -1352,20 +1561,45 @@ export function CustomExamArena({ currentUser, onBackToLobby }: CustomExamArenaP
             <Button
               size="sm"
               onClick={handleFinishExam}
-              className="bg-purple-600 hover:bg-purple-700 text-white text-xs font-bold h-7"
+              className="bg-purple-600 hover:bg-purple-700 text-white text-xs font-bold h-7 px-3"
             >
               Finish Paper
             </Button>
           </div>
         </div>
 
+        {/* Live Multicast Scoreboard Bar (Comparing All Joined Students in Real Time) */}
+        <div className="p-3 bg-white/5 border border-white/10 rounded-xl flex items-center justify-between gap-2 overflow-x-auto">
+          <div className="flex items-center gap-2 shrink-0">
+            <span className="text-[10px] uppercase font-bold text-amber-400 flex items-center gap-1">
+              <Trophy className="w-3 h-3" /> Live Standings:
+            </span>
+          </div>
+          <div className="flex items-center gap-2 overflow-x-auto py-0.5">
+            {rankedParticipants.map((p, idx) => (
+              <div
+                key={p.userId}
+                className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg border text-xs shrink-0 font-mono ${
+                  p.userId === currentUser?.id
+                    ? 'border-purple-500 bg-purple-950/40 text-purple-200'
+                    : 'border-white/10 bg-black/40 text-white/80'
+                }`}
+              >
+                <span className="font-bold text-[10px] text-amber-400">#{idx + 1}</span>
+                <span className="font-bold font-sans text-xs">{p.name}</span>
+                <span className="text-emerald-400 font-bold">{p.score} pts</span>
+              </div>
+            ))}
+          </div>
+        </div>
+
         {/* Question Solving Container */}
         {activeQ ? (
-          <div className="arena-card p-6 border-white/10 space-y-6">
+          <div className="arena-card p-6 border-white/10 space-y-6 rounded-2xl">
             <div>
               <div className="flex items-center justify-between mb-2">
                 <span className="text-[11px] font-mono text-purple-400 uppercase font-bold">
-                  {activeQ.type === 'mcq' ? '📝 Multiple Choice Question' : '✍️ Written / Subjective Answer'}
+                  {activeQ.type === 'mcq' ? '📝 Multiple Choice Question (Multicast)' : '✍️ Written / Subjective Answer'}
                 </span>
                 <span className="text-xs text-white/50">{activeQ.points || 10} Points</span>
               </div>
@@ -1401,13 +1635,13 @@ export function CustomExamArena({ currentUser, onBackToLobby }: CustomExamArenaP
               </div>
             )}
 
-            {/* WRITTEN / SUBJECTIVE INTERFACE (POWERED BY PYTHON ML) */}
+            {/* WRITTEN INTERFACE */}
             {activeQ.type === 'written' && (
               <div className="space-y-3 pt-2">
                 <div className="flex items-center justify-between text-xs text-white/60">
-                  <span>Write your detailed technical answer below:</span>
+                  <span>Write your detailed answer below:</span>
                   <Badge className="bg-cyan-500/20 text-cyan-300 border-cyan-500/30 text-[10px]">
-                    NumPy Vector + Pandas Keyword ML Scoring
+                    NumPy Vector + ML Semantic Scoring
                   </Badge>
                 </div>
                 <textarea
@@ -1420,7 +1654,7 @@ export function CustomExamArena({ currentUser, onBackToLobby }: CustomExamArenaP
               </div>
             )}
 
-            {/* ML Evaluation Feedback Box */}
+            {/* Evaluation Feedback Box */}
             {lastSubmissionFeedback && (
               <div className="p-4 rounded-xl bg-cyan-950/40 border border-cyan-500/40 space-y-2 animate-in fade-in">
                 <div className="flex items-center justify-between">
@@ -1428,7 +1662,7 @@ export function CustomExamArena({ currentUser, onBackToLobby }: CustomExamArenaP
                     <Sparkles className="w-3.5 h-3.5" /> Python ML Evaluation Result
                   </span>
                   <Badge className="bg-cyan-500/30 text-cyan-200 border-cyan-400 text-xs font-mono">
-                    Score: {lastSubmissionFeedback.awardedPoints} Pts ({Math.round((lastSubmissionFeedback.similarityScore || 0) * 100)}% match)
+                    Score: {lastSubmissionFeedback.score ?? lastSubmissionFeedback.awardedPoints} Pts ({Math.round((lastSubmissionFeedback.similarity || lastSubmissionFeedback.similarityScore || 0) * 100)}% match)
                   </Badge>
                 </div>
                 <p className="text-xs text-white/80">
@@ -1461,11 +1695,11 @@ export function CustomExamArena({ currentUser, onBackToLobby }: CustomExamArenaP
                 >
                   {submittingAnswer ? (
                     <>
-                      <RefreshCw className="w-3.5 h-3.5 animate-spin mr-1.5" /> Verifying with ML...
+                      <RefreshCw className="w-3.5 h-3.5 animate-spin mr-1.5" /> Verifying Answer...
                     </>
                   ) : (
                     <>
-                      Verify & Submit Q{currentQuestionIndex + 1} <ArrowRight className="w-3.5 h-3.5 ml-1.5" />
+                      Verify &amp; Submit Q{currentQuestionIndex + 1} <ArrowRight className="w-3.5 h-3.5 ml-1.5" />
                     </>
                   )}
                 </Button>
@@ -1476,9 +1710,9 @@ export function CustomExamArena({ currentUser, onBackToLobby }: CustomExamArenaP
           <div className="text-center py-16 arena-card">
             <CheckCircle2 className="w-12 h-12 text-emerald-400 mx-auto mb-3" />
             <h4 className="text-base font-bold text-white mb-2">Paper Completed!</h4>
-            <p className="text-xs text-white/50 mb-4">Click below to view the finalized scoreboard and team rankings.</p>
+            <p className="text-xs text-white/50 mb-4">Click below to finalize rankings and award prize coins &amp; badges.</p>
             <Button onClick={handleFinishExam} className="bg-purple-600 hover:bg-purple-700 text-white text-xs font-bold">
-              View Final Results
+              View Final Results &amp; Awards 🏆
             </Button>
           </div>
         )}
@@ -1487,7 +1721,7 @@ export function CustomExamArena({ currentUser, onBackToLobby }: CustomExamArenaP
   }
 
   // =========================================================================
-  // VIEW 5: RESULTS & TEAM RANKINGS (OUTSIDE AND POST-MATCH SUMMARY)
+  // VIEW 5: RESULTS & LEADERBOARD (PRIZE COIN DISTRIBUTION TO WINNER)
   // =========================================================================
   if (view === 'results' && currentRoom) {
     const isTeamBattle = currentRoom.matchType === 'team'
@@ -1499,121 +1733,118 @@ export function CustomExamArena({ currentUser, onBackToLobby }: CustomExamArenaP
       ? 'Team Beta'
       : 'Tie'
 
+    const topWinner = rankedParticipants[0]
+    const prizeAmount = currentRoom.prizeCoins || 100
+    const prizeBadgeName = currentRoom.prizeBadge || 'Clash Champion 🏆'
+
     return (
       <div className="space-y-6">
-        {/* Results Banner */}
-        <div className="arena-card p-6 bg-gradient-to-r from-purple-950/60 via-zinc-950 to-black border-purple-500/40 text-center space-y-3">
-          <Trophy className="w-12 h-12 text-amber-400 mx-auto" />
+        {/* Results Banner & Victory Trophy */}
+        <div className="arena-card p-6 bg-gradient-to-r from-purple-950/60 via-zinc-950 to-black border-purple-500/40 text-center space-y-3 rounded-2xl shadow-2xl">
+          <Trophy className="w-14 h-14 text-amber-400 mx-auto animate-bounce" />
           <h2 className="text-2xl font-black text-white tracking-tight">CLASH COMPLETED!</h2>
           <p className="text-xs text-white/60 max-w-md mx-auto">
-            Paper evaluation complete. Scores recorded via machine learning semantic similarity and grading matrices.
+            All submitted answers have been evaluated. Final student scores compared and ranked below.
           </p>
 
           {isTeamBattle && (
-            <div className="inline-block bg-white/5 border border-white/10 px-6 py-2.5 rounded-2xl mt-2">
-              <span className="text-xs uppercase text-white/40 block font-mono">Winning Team</span>
+            <div className="inline-block bg-white/5 border border-white/10 px-6 py-2 rounded-2xl mt-2">
+              <span className="text-[10px] uppercase text-white/40 block font-mono">Winning Squad</span>
               <span className="text-lg font-black text-amber-400">{winningTeam} 👑</span>
             </div>
           )}
         </div>
 
-        {/* Team Score Comparison & Inside-Team Ranking */}
-        {isTeamBattle && (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            {/* Team Alpha Breakdown */}
-            <div className="arena-card p-5 border-blue-500/40 bg-blue-950/20 space-y-4">
-              <div className="flex items-center justify-between border-b border-blue-500/20 pb-3">
-                <h3 className="text-white font-bold text-sm flex items-center gap-2">
-                  <Shield className="w-4 h-4 text-blue-400" /> TEAM ALPHA TOTAL
-                </h3>
-                <span className="text-xl font-black text-blue-400 font-mono">
-                  {alphaScore} Pts
-                </span>
+        {/* Prize Distribution Ceremony Card */}
+        {topWinner && (
+          <div className="p-6 rounded-2xl bg-gradient-to-r from-amber-500/15 via-purple-950/30 to-black border-2 border-amber-500/40 space-y-4 shadow-xl">
+            <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
+              <div className="flex items-center gap-3">
+                <div className="w-12 h-12 rounded-2xl bg-amber-500/20 border-2 border-amber-400/60 flex items-center justify-center text-2xl font-black text-amber-300 shadow-lg">
+                  👑
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <Badge className="bg-amber-500 text-black font-black text-[10px]">
+                      RANK #1 CLASH WINNER
+                    </Badge>
+                    <span className="text-xs text-amber-300/80 font-mono font-bold">
+                      {topWinner.score} Points
+                    </span>
+                  </div>
+                  <h3 className="text-xl font-black text-white mt-0.5">
+                    {topWinner.name} {topWinner.userId === currentUser?.id && '(You!)'}
+                  </h3>
+                </div>
               </div>
 
-              <div>
-                <span className="text-[11px] font-bold text-white/40 uppercase block mb-2">
-                  Inside-Team Leaderboard (Ranked)
-                </span>
-                <div className="space-y-2">
-                  {alphaParticipants.map((p, idx) => (
-                    <div key={p.userId} className="flex items-center justify-between bg-black/40 border border-blue-500/20 rounded-xl p-2.5 text-xs">
-                      <div className="flex items-center gap-2">
-                        <span className="w-5 h-5 rounded-full bg-blue-600/30 text-blue-300 font-bold flex items-center justify-center text-[10px]">
-                          #{idx + 1}
-                        </span>
-                        <span className="text-white font-bold">
-                          {p.name} {p.userId === currentUser?.id && '(You)'}
-                        </span>
-                        {idx === 0 && <Crown className="w-3.5 h-3.5 text-amber-400" />}
-                      </div>
-                      <span className="font-mono font-bold text-blue-300">{p.score} Pts</span>
-                    </div>
-                  ))}
+              <div className="flex items-center gap-3 flex-wrap justify-end">
+                {/* Prize Coins Box */}
+                <div className="bg-black/60 border border-amber-500/40 px-4 py-2.5 rounded-xl text-right">
+                  <span className="text-[10px] text-white/40 uppercase block font-mono">Coins Credited</span>
+                  <span className="text-base font-black text-amber-400 flex items-center gap-1 justify-end font-mono">
+                    <Coins className="w-4 h-4 text-amber-400" /> +{prizeAmount} Coins
+                  </span>
+                </div>
+
+                {/* Badge Awarded Box */}
+                <div className="bg-black/60 border border-purple-500/40 px-4 py-2.5 rounded-xl text-right">
+                  <span className="text-[10px] text-white/40 uppercase block font-mono">Badge Awarded</span>
+                  <span className="text-xs font-black text-purple-300 flex items-center gap-1 justify-end">
+                    <Medal className="w-4 h-4 text-purple-400" /> {prizeBadgeName}
+                  </span>
                 </div>
               </div>
             </div>
 
-            {/* Team Beta Breakdown */}
-            <div className="arena-card p-5 border-rose-500/40 bg-rose-950/20 space-y-4">
-              <div className="flex items-center justify-between border-b border-rose-500/20 pb-3">
-                <h3 className="text-white font-bold text-sm flex items-center gap-2">
-                  <Shield className="w-4 h-4 text-rose-400" /> TEAM BETA TOTAL
-                </h3>
-                <span className="text-xl font-black text-rose-400 font-mono">
-                  {betaScore} Pts
+            <div className="p-3 bg-black/40 border border-white/10 rounded-xl text-xs text-white/70 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2">
+              <div className="flex items-center gap-2">
+                <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+                <span>
+                  <strong>Host Account Debited:</strong> {currentRoom.hostName} staked and paid the {prizeAmount} Coins prize pool.
                 </span>
               </div>
-
-              <div>
-                <span className="text-[11px] font-bold text-white/40 uppercase block mb-2">
-                  Inside-Team Leaderboard (Ranked)
-                </span>
-                <div className="space-y-2">
-                  {betaParticipants.map((p, idx) => (
-                    <div key={p.userId} className="flex items-center justify-between bg-black/40 border border-rose-500/20 rounded-xl p-2.5 text-xs">
-                      <div className="flex items-center gap-2">
-                        <span className="w-5 h-5 rounded-full bg-rose-600/30 text-rose-300 font-bold flex items-center justify-center text-[10px]">
-                          #{idx + 1}
-                        </span>
-                        <span className="text-white font-bold">
-                          {p.name} {p.userId === currentUser?.id && '(You)'}
-                        </span>
-                        {idx === 0 && <Crown className="w-3.5 h-3.5 text-amber-400" />}
-                      </div>
-                      <span className="font-mono font-bold text-rose-300">{p.score} Pts</span>
-                    </div>
-                  ))}
-                </div>
-              </div>
+              <span className="text-[11px] font-mono text-emerald-300">
+                ✓ Prize credited to {topWinner.name}'s account balance
+              </span>
             </div>
           </div>
         )}
 
-        {/* Overall Individual Leaderboard */}
-        <div className="arena-card p-5 space-y-4">
+        {/* Overall Individual Leaderboard (Comparing Joined Students Ranks) */}
+        <div className="arena-card p-5 space-y-4 rounded-2xl">
           <h3 className="text-white font-bold text-sm flex items-center gap-2">
-            <Trophy className="w-4 h-4 text-amber-400" /> OVERALL INDIVIDUAL STANDINGS
+            <Trophy className="w-4 h-4 text-amber-400" /> FINAL PARTICIPANTS RANKING &amp; SCORES
           </h3>
+
           <div className="space-y-2">
             {rankedParticipants.map((p, idx) => (
               <div
                 key={p.userId}
-                className={`flex items-center justify-between rounded-xl p-3 border text-xs ${
-                  p.userId === currentUser?.id
-                    ? 'border-purple-500 bg-purple-950/30'
+                className={`flex items-center justify-between rounded-xl p-3.5 border text-xs transition-all ${
+                  idx === 0
+                    ? 'border-amber-500/50 bg-amber-500/10'
+                    : p.userId === currentUser?.id
+                    ? 'border-purple-500/40 bg-purple-950/30'
                     : 'border-white/10 bg-black/40'
                 }`}
               >
                 <div className="flex items-center gap-3">
-                  <span className={`w-6 h-6 rounded-full flex items-center justify-center font-bold text-xs ${
-                    idx === 0 ? 'bg-amber-400 text-black' : idx === 1 ? 'bg-slate-300 text-black' : idx === 2 ? 'bg-amber-700 text-white' : 'bg-white/10 text-white/60'
+                  <span className={`w-7 h-7 rounded-full flex items-center justify-center font-black text-xs ${
+                    idx === 0
+                      ? 'bg-amber-400 text-black shadow-md'
+                      : idx === 1
+                      ? 'bg-slate-300 text-black'
+                      : idx === 2
+                      ? 'bg-amber-700 text-white'
+                      : 'bg-white/10 text-white/60'
                   }`}>
-                    {idx + 1}
+                    #{idx + 1}
                   </span>
                   <div>
                     <div className="text-white font-bold flex items-center gap-2">
-                      {p.name}
+                      <span className="text-sm">{p.name}</span>
+                      {idx === 0 && <Crown className="w-3.5 h-3.5 text-amber-400" />}
                       {p.userId === currentUser?.id && <Badge className="bg-purple-600/30 text-purple-300 text-[10px]">You</Badge>}
                     </div>
                     {isTeamBattle && (
@@ -1624,9 +1855,11 @@ export function CustomExamArena({ currentUser, onBackToLobby }: CustomExamArenaP
                   </div>
                 </div>
 
-                <div className="text-right">
-                  <span className="text-sm font-black text-amber-400 font-mono">{p.score}</span>
-                  <span className="text-[10px] text-white/40 block">Points</span>
+                <div className="flex items-center gap-4 text-right">
+                  <div>
+                    <span className="text-base font-black text-amber-400 font-mono">{p.score}</span>
+                    <span className="text-[10px] text-white/40 block">Points</span>
+                  </div>
                 </div>
               </div>
             ))}
@@ -1639,7 +1872,7 @@ export function CustomExamArena({ currentUser, onBackToLobby }: CustomExamArenaP
             onClick={() => {
               setCurrentRoom(null)
               setView('browse')
-              fetchPublicRooms()
+              fetchLiveRooms()
             }}
             className="bg-white/10 hover:bg-white/20 text-white text-xs font-bold"
           >

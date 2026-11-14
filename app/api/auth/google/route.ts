@@ -59,17 +59,9 @@ export async function POST(req: Request) {
       }
     }
 
-    // 2. Fallback to direct verified profile parameters
-    if (!googleEmail && directEmail) {
-      googleEmail = String(directEmail).trim().toLowerCase();
-      googleName = directName || googleEmail.split("@")[0];
-      googlePicture = directPhoto || "";
-      googleSub = directId || "";
-    }
-
     if (!googleEmail) {
       return NextResponse.json(
-        { message: "Google account verification failed. No valid email received." },
+        { message: "Google account verification failed. A valid Google token is required." },
         { status: 400 }
       );
     }

@@ -60,6 +60,10 @@ export interface ICustomArenaRoom extends Document {
     name: string;
     score: number;
   };
+  prizeCoins?: number;
+  prizeBadge?: string;
+  hostDebited?: boolean;
+  prizeDistributed?: boolean;
   createdAt: Date;
   startedAt?: Date;
   completedAt?: Date;
@@ -82,6 +86,10 @@ const CustomArenaRoomSchema = new Schema<ICustomArenaRoom>({
   maxPlayers: { type: Number, default: 4 },
   questionCount: { type: Number, default: 5 },
   timeLimitSeconds: { type: Number, default: 300 },
+  prizeCoins: { type: Number, default: 0 },
+  prizeBadge: { type: String, default: 'Clash Champion' },
+  hostDebited: { type: Boolean, default: false },
+  prizeDistributed: { type: Boolean, default: false },
   expiresAt: { type: Date },
   status: { type: String, enum: ['waiting', 'playing', 'completed', 'expired'], default: 'waiting' },
   questions: [{

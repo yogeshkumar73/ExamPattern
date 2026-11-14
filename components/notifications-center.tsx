@@ -18,7 +18,8 @@ import {
   Mail,
   User,
   AlertCircle,
-  Trophy
+  Trophy,
+  Zap
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -353,6 +354,57 @@ export function NotificationsCenter({
     }
   }
 
+  const handleJoinGameNotification = (item: NotificationItem) => {
+    handleMarkRead(item._id)
+    setIsOpen(false)
+    const actionUrl = item.actionUrl || ''
+    const search = actionUrl.includes('?') ? actionUrl.split('?')[1] : ''
+    const params = new URLSearchParams(search)
+
+    const isTournament = item.title?.toLowerCase().includes("tournament") || actionUrl.includes("tournament") || item.message?.toLowerCase().includes("tournament")
+    const isClash = item.title?.toLowerCase().includes("clash") || actionUrl.includes("clash") || item.message?.toLowerCase().includes("clash")
+
+    // Extract roomCode or tournament invite code from params or message text
+    const codeMatch = item.message?.match(/(CLASH-[A-Za-z0-9]+|TRN-[A-Za-z0-9]+)/i)
+    const extractedCode = params.get('roomCode') || params.get('code') || params.get('invite') || (codeMatch ? codeMatch[1].toUpperCase() : '')
+
+    // Public room: no password needed. User can directly join.
+    const isPublic = params.get('isPublic') === 'true' || 
+      item.message?.toLowerCase().includes('without password') || 
+      item.message?.toLowerCase().includes('public') || 
+      (!item.message?.toLowerCase().includes('private') && !item.message?.toLowerCase().includes('password'))
+
+    // Private room: password needed. Land in join section and prompt password modal.
+    const isPrivate = !isPublic || 
+      params.get('isPrivate') === 'true' || 
+      item.message?.toLowerCase().includes('private') || 
+      item.message?.toLowerCase().includes('password')
+
+    const targetTab = isTournament ? 'tournament' : (isClash || extractedCode.startsWith('CLASH-')) ? 'study-clash' : (params.get('tab') || 'lobby')
+
+    if (typeof window !== 'undefined') {
+      const newSearch = `?step=arena&tab=${targetTab}${extractedCode ? `&roomCode=${extractedCode}` : ''}${params.get('tournamentId') ? `&tournamentId=${params.get('tournamentId')}` : ''}${isPublic ? '&isPublic=true' : ''}${isPrivate ? '&isPrivate=true' : ''}`
+      window.history.pushState({}, '', newSearch)
+      window.dispatchEvent(new CustomEvent('arena-navigate', {
+        detail: {
+          actionUrl,
+          tab: targetTab,
+          tournamentId: params.get('tournamentId'),
+          invite: extractedCode || params.get('invite'),
+          roomCode: extractedCode,
+          isPublic,
+          isPrivate,
+          autoJoin: isPublic,
+          promptPassword: isPrivate,
+        }
+      }))
+    }
+
+    if (onNavigate) {
+      onNavigate("arena")
+    }
+  }
+
   // --- Content Body (shared between Sheet and Embedded view) ---
   const renderContent = () => (
     <div className="flex flex-col h-full space-y-4">
@@ -459,7 +511,14 @@ export function NotificationsCenter({
               filteredNotifications.map(item => (
                 <div
                   key={item._id}
+                  onClick={() => {
+                    if (item.category === "battle_challenge") {
+                      handleJoinGameNotification(item)
+                    }
+                  }}
                   className={`p-3.5 rounded-2xl border transition-all text-left relative group ${
+                    item.category === "battle_challenge" ? "cursor-pointer hover:border-purple-500/50 hover:bg-purple-950/20" : ""
+                  } ${
                     item.isRead
                       ? "bg-muted/20 border-border/40 opacity-85 hover:opacity-100"
                       : "bg-primary/5 border-primary/30 shadow-sm"
@@ -500,7 +559,10 @@ export function NotificationsCenter({
                           <Button
                             size="sm"
                             variant="ghost"
-                            onClick={() => handleMarkRead(item._id)}
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              handleMarkRead(item._id)
+                            }}
                             className="h-6 px-2 text-[10px] font-bold text-primary hover:bg-primary/10"
                             title="Seen (Remove)"
                           >
@@ -511,39 +573,18 @@ export function NotificationsCenter({
                           <Button
                             size="sm"
                             variant="ghost"
-                            onClick={() => {
-                              handleMarkRead(item._id);
-                              setIsOpen(false);
-                              const actionUrl = item.actionUrl || '';
-                              const search = actionUrl.includes('?') ? actionUrl.split('?')[1] : '';
-                              const params = new URLSearchParams(search);
-                              const isTournament = item.title?.toLowerCase().includes("tournament") || actionUrl.includes("tournament");
-                              const targetTab = isTournament ? 'tournament' : (params.get('tab') || 'lobby');
-
-                              if (typeof window !== 'undefined') {
-                                const newSearch = search ? `?step=arena&${search}` : `?step=arena&tab=${targetTab}`;
-                                window.history.pushState({}, '', newSearch);
-                                window.dispatchEvent(new CustomEvent('arena-navigate', {
-                                  detail: {
-                                    actionUrl,
-                                    tab: targetTab,
-                                    tournamentId: params.get('tournamentId'),
-                                    invite: params.get('invite'),
-                                    roomCode: params.get('roomCode'),
-                                  }
-                                }));
-                              }
-
-                              if (onNavigate) {
-                                onNavigate("arena");
-                              }
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              handleJoinGameNotification(item)
                             }}
-                            className="h-6 px-2 text-[10px] font-bold text-rose-500 hover:bg-rose-500/10"
+                            className="h-6 px-2.5 text-[10px] font-black text-white bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 rounded-lg shadow-sm"
                           >
-                            {item.title?.toLowerCase().includes("tournament") ? (
+                            {item.title?.toLowerCase().includes("tournament") || item.message?.toLowerCase().includes("tournament") ? (
                               <><Trophy className="w-3 h-3 mr-1 text-yellow-400" /> Enter Tournament</>
+                            ) : (item.title?.toLowerCase().includes("clash") || item.message?.toLowerCase().includes("clash")) ? (
+                              <><Zap className="w-3 h-3 mr-1 text-yellow-300" /> Join Live Clash</>
                             ) : (
-                              <><Swords className="w-3 h-3 mr-1" /> Enter Duel</>
+                              <><Swords className="w-3 h-3 mr-1 text-rose-300" /> Enter Duel</>
                             )}
                           </Button>
                         )}

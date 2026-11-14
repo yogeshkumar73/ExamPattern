@@ -125,30 +125,19 @@ export function SmartLab() {
           Your ID is pending Admin Approval for Smart Lab access.
         </p>
         
-        <div className="pt-6 w-full space-y-3">
+        <div className="pt-4 w-full space-y-3">
+          <p className="text-xs text-muted-foreground">
+            Please log in with your verified student account or request approval from the administrator.
+          </p>
           <Button 
             onClick={() => {
-              setIsLabApproved(true);
-              setUserId("USR-GUESTBYPASS");
-              setUserEmail("guest@student.ai");
-              localStorage.setItem("aura_session", JSON.stringify({
-                user: {
-                  id: "USR-GUESTBYPASS",
-                  name: "GUEST STUDENT",
-                  email: "guest@student.ai",
-                  phone: "",
-                  photoUrl: "",
-                  branch: "Information Technology",
-                  bio: "Guest tester.",
-                  isLabApproved: true,
-                  status: "Active"
-                }
-              }));
-              window.location.reload(); // Reload to align states
+              if (typeof window !== "undefined") {
+                window.location.href = "/";
+              }
             }} 
-            className="w-full h-14 text-lg font-black bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl shadow-lg border-none"
+            className="w-full h-12 text-sm font-black bg-primary text-primary-foreground rounded-xl shadow-lg hover:scale-101 transition-transform"
           >
-            Enter as Guest (Demo Bypass)
+            Return to Dashboard
           </Button>
         </div>
       </div>

@@ -248,8 +248,13 @@ export async function POST(req: NextRequest) {
 
     // ── Action: Signal (Offer / Answer / Candidate) ───────────────────────────
     if (action === "signal") {
-      const { targetId, fromId, roomId, type, payload } = body;
-      if (!targetId || !fromId || !type || !payload) {
+      const targetId = body.targetId || body.payload?.targetId || body.payload?.target;
+      const fromId = body.fromId || body.payload?.fromId || body.payload?.from;
+      const roomId = body.roomId || body.payload?.roomId;
+      const type = body.type || body.payload?.type;
+      const payload = body.payload !== undefined ? body.payload : body;
+
+      if (!targetId || !fromId || !type || payload === undefined) {
         return NextResponse.json({ error: "Missing signal data" }, { status: 400 });
       }
 

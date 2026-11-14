@@ -30,7 +30,10 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ tournament });
     }
 
-    const tournaments = await Tournament.find({ status: { $ne: 'finished' } }).sort({ createdAt: -1 });
+    const tournaments = await Tournament.find({
+      status: { $ne: 'finished' },
+      isDestroyed: { $ne: true }
+    }).sort({ createdAt: -1 });
 
     // Format tournaments and protect password for non-hosts
     const sanitized = tournaments.map((t: any) => {
@@ -98,11 +101,35 @@ export async function POST(req: NextRequest) {
         const pool = Number(prizePool || prizeXP || 1000);
         const eventStartTime = scheduledStartTime ? new Date(scheduledStartTime) : (startTime ? new Date(startTime) : new Date());
         const generatedCode = `TRN-${Math.random().toString(36).substring(2, 8).toUpperCase()}`;
-        const hasPwd = Boolean(password && password.trim());
+        const isPrivateFlag = Boolean(body.isPrivate);
+        const hasPwd = Boolean(isPrivateFlag && password && password.trim());
         const durationSec = Number(matchDuration) || 300;
         const expHours = Number(expiryHours) || 24;
         const calculatedExpiresAt = expiresAt ? new Date(expiresAt) : new Date(Date.now() + expHours * 3600 * 1000);
         const qCount = Number(questionsPerMatch) || 10;
+
+        const firstPrizeCoins = Number(body.firstPrizeCoins) || Math.floor(pool * 0.6 / 5) || 200;
+        const firstPrizeBadge = body.firstPrizeBadge || '👑 Tournament Grand Champion';
+        const secondPrizeCoins = Number(body.secondPrizeCoins) || Math.floor(pool * 0.3 / 5) || 100;
+        const secondPrizeBadge = body.secondPrizeBadge || '🥈 Elite Runner-Up';
+        const totalPrizeCoins = firstPrizeCoins + secondPrizeCoins;
+
+        // Debit host coins for prize pool
+        let hostDebited = false;
+        try {
+          const hostUser = await User.findById(userId);
+          if (hostUser) {
+            if ((hostUser.coins || 0) >= totalPrizeCoins) {
+              hostUser.coins = (hostUser.coins || 0) - totalPrizeCoins;
+            } else {
+              hostUser.coins = Math.max(0, (hostUser.coins || 0) - Math.floor(totalPrizeCoins / 2));
+            }
+            await hostUser.save();
+            hostDebited = true;
+          }
+        } catch (hErr) {
+          console.warn("Host debit warning:", hErr);
+        }
 
         let cleanTournamentName = (name || '').trim();
         if (!cleanTournamentName || cleanTournamentName.includes('@')) {
@@ -110,10 +137,17 @@ export async function POST(req: NextRequest) {
           cleanTournamentName = `${modeLabel} Championship`;
         }
 
+        let normalizedDifficulty = (difficulty || 'intermediate').toLowerCase();
+        if (normalizedDifficulty === 'hard') normalizedDifficulty = 'advanced';
+        if (normalizedDifficulty === 'easy') normalizedDifficulty = 'beginner';
+        if (!['beginner', 'intermediate', 'advanced', 'expert', 'master', 'grandmaster'].includes(normalizedDifficulty)) {
+          normalizedDifficulty = 'intermediate';
+        }
+
         const tournament = await Tournament.create({
           name: cleanTournamentName,
-          mode,
-          difficulty: difficulty || 'intermediate',
+          mode: mode || 'math',
+          difficulty: normalizedDifficulty,
           maxParticipants: Number(maxParticipants) || 8,
           matchDuration: durationSec,
           expiryHours: expHours,
@@ -124,10 +158,16 @@ export async function POST(req: NextRequest) {
             pointsPerCorrect: 100,
             penaltyPerWrong: 0,
             allowBots: true,
+            passingCutoff: 50,
             customRules: '',
           },
           prizeXP: pool,
           prizePool: pool,
+          firstPrizeCoins,
+          firstPrizeBadge,
+          secondPrizeCoins,
+          secondPrizeBadge,
+          hostDebited,
           startTime: eventStartTime,
           scheduledStartTime: eventStartTime,
           status: 'open',
@@ -147,17 +187,53 @@ export async function POST(req: NextRequest) {
 
         // Broadcast tournament notification to ALL users
         try {
-          await createNotification({
-            userId: 'all',
+          const Notification = (await import('@/models/Notification')).default;
+          const otherUsers = await User.find(
+            userId ? { _id: { $ne: userId } } : {},
+            '_id email name'
+          ).limit(500).lean();
+
+          const isPublic = !hasPwd;
+          const notifs = otherUsers.map((u: any) => ({
+            userId: u._id.toString(),
+            recipientEmail: u.email || '',
+            recipientName: u.name || 'Student',
             senderId: userId,
             senderName: userName || 'Tournament Host',
             senderPhotoUrl: avatar || '',
-            title: `🏆 Tournament: ${cleanTournamentName}`,
-            message: `Hosted by ${userName || 'Host'}. Tap Enter Tournament to join.`,
+            title: isPublic ? `🏆 Live Tournament: ${cleanTournamentName}` : `🔒 Private Tournament: ${cleanTournamentName}`,
+            message: isPublic
+              ? `${userName || 'Host'} hosted public tournament "${cleanTournamentName}"! Code: ${generatedCode}. Join live now without password! 1st: ${firstPrizeCoins} Coins + 👑 | 2nd: ${secondPrizeCoins} Coins + 🥈!`
+              : `${userName || 'Host'} hosted private tournament "${cleanTournamentName}"! Code: ${generatedCode}. Enter password to join! 1st: ${firstPrizeCoins} Coins | 2nd: ${secondPrizeCoins} Coins.`,
             category: 'battle_challenge',
             priority: 'high',
-            actionUrl: `/?step=arena&tab=tournament&tournamentId=${tournament._id}&invite=${generatedCode}`,
-          });
+            actionUrl: `/?step=arena&tab=tournament&tournamentId=${tournament._id}&invite=${generatedCode}&roomCode=${generatedCode}&isPublic=${isPublic}&isPrivate=${!isPublic}`,
+            isRead: false,
+            createdAt: new Date(),
+          }));
+
+          // Also include a broadcast record
+          notifs.push({
+            userId: 'all',
+            recipientEmail: '',
+            recipientName: 'All Students',
+            senderId: userId,
+            senderName: userName || 'Tournament Host',
+            senderPhotoUrl: avatar || '',
+            title: isPublic ? `🏆 Live Tournament: ${cleanTournamentName}` : `🔒 Private Tournament: ${cleanTournamentName}`,
+            message: isPublic
+              ? `${userName || 'Host'} hosted public tournament "${cleanTournamentName}"! Code: ${generatedCode}. Join live now without password! 1st: ${firstPrizeCoins} Coins + 👑 | 2nd: ${secondPrizeCoins} Coins + 🥈!`
+              : `${userName || 'Host'} hosted private tournament "${cleanTournamentName}"! Code: ${generatedCode}. Enter password to join! 1st: ${firstPrizeCoins} Coins | 2nd: ${secondPrizeCoins} Coins.`,
+            category: 'battle_challenge',
+            priority: 'high',
+            actionUrl: `/?step=arena&tab=tournament&tournamentId=${tournament._id}&invite=${generatedCode}&roomCode=${generatedCode}&isPublic=${isPublic}&isPrivate=${!isPublic}`,
+            isRead: false,
+            createdAt: new Date(),
+          } as any);
+
+          if (notifs.length > 0) {
+            await Notification.insertMany(notifs);
+          }
         } catch (notifErr) {
           console.error('Failed to broadcast tournament notification:', notifErr);
         }
@@ -190,8 +266,9 @@ export async function POST(req: NextRequest) {
           return NextResponse.json({ error: 'Tournament registration is closed' }, { status: 400 });
         }
 
-        // Verify password if protected and user is not the host
-        if (tournament.password && tournament.password.trim() && tournament.createdBy !== userId) {
+        // Verify password ONLY if tournament is private and has non-empty password, and user is not host
+        const isPrivateTournament = Boolean(tournament.isPrivate && tournament.password && tournament.password.trim());
+        if (isPrivateTournament && tournament.createdBy !== userId) {
           const suppliedPassword = (body.password || '').trim();
           if (suppliedPassword !== tournament.password.trim()) {
             return NextResponse.json({ error: 'Incorrect tournament password' }, { status: 403 });
@@ -246,7 +323,7 @@ export async function POST(req: NextRequest) {
             bracket.push({ round: 2, match: 1, player1Id: null, player2Id: null, winnerId: null, status: 'pending' });
           }
 
-          tournament.bracket = bracket;
+          tournament.bracket = bracket as any;
         }
 
         await tournament.save();
@@ -316,15 +393,15 @@ export async function POST(req: NextRequest) {
           status: 'pending',
         });
       }
-      tournament.bracket = bracket;
+      tournament.bracket = bracket as any;
       tournament.currentRound = 1;
       await tournament.save();
 
       return NextResponse.json({ success: true, tournament });
     }
 
-    // Host Control: Cancel tournament
-    if (action === 'cancel_tournament') {
+    // Host Control: Cancel / Delete tournament
+    if (action === 'cancel_tournament' || action === 'delete_tournament') {
       const { tournamentId, userId } = body;
       const tournament = await Tournament.findById(tournamentId);
       if (!tournament) return NextResponse.json({ error: 'Tournament not found' }, { status: 404 });
@@ -338,7 +415,20 @@ export async function POST(req: NextRequest) {
       tournament.destroyedAt = new Date();
       await tournament.save();
 
-      return NextResponse.json({ success: true, message: 'Tournament cancelled successfully' });
+      // Automatically delete all notifications for this tournament
+      try {
+        const Notification = (await import('@/models/Notification')).default;
+        await Notification.deleteMany({
+          $or: [
+            { actionUrl: { $regex: tournamentId } },
+            { title: { $regex: tournament.name } },
+          ],
+        });
+      } catch (delErr) {
+        console.error('Failed to delete tournament notifications:', delErr);
+      }
+
+      return NextResponse.json({ success: true, message: 'Tournament cancelled and removed successfully' });
     }
 
     return NextResponse.json({ error: 'Invalid action. Must be create, join, start_tournament, or cancel_tournament' }, { status: 400 });
@@ -441,8 +531,23 @@ export async function PUT(req: NextRequest) {
         } else {
           // Tournament is finished
           tournament.status = 'finished';
+          tournament.isDestroyed = true;
+          tournament.destroyedAt = new Date();
           tournament.winnerId = winnerId;
           tournament.endTime = new Date();
+
+          // Clean up notifications for this finished tournament
+          try {
+            const Notification = (await import('@/models/Notification')).default;
+            await Notification.deleteMany({
+              $or: [
+                { actionUrl: { $regex: tournamentId } },
+                { title: { $regex: tournament.name } },
+              ],
+            });
+          } catch (notifErr) {
+            console.error('Failed to clean up tournament notifications on finish:', notifErr);
+          }
 
           // Create final rankings
           const rankings = tournament.participants
@@ -456,26 +561,53 @@ export async function PUT(req: NextRequest) {
               place: index + 1,
             }));
 
-          tournament.rankings = rankings;
+          tournament.rankings = rankings as any;
 
-          // Award prizes to top 3
-          const prizeMultiplier = [1, 0.6, 0.3];
-          for (let i = 0; i < Math.min(3, rankings.length); i++) {
+          // Award 1st Winner Prize and 2nd Runner-Up Prize
+          const firstCoins = tournament.firstPrizeCoins || 200;
+          const firstBadge = tournament.firstPrizeBadge || '👑 Tournament Grand Champion';
+          const secondCoins = tournament.secondPrizeCoins || 100;
+          const secondBadge = tournament.secondPrizeBadge || '🥈 Elite Runner-Up';
+
+          // 1st Winner Award
+          if (rankings[0] && !rankings[0].userId?.startsWith('bot-')) {
             try {
-              const user = await User.findById(rankings[i].userId);
-              if (user) {
-                const prizeXP = Math.floor((tournament.prizeXP || 1000) * prizeMultiplier[i]);
-                user.xp = (user.xp || 0) + prizeXP;
-                user.coins = (user.coins || 0) + Math.floor(prizeXP / 5);
-                const badges = ['👑', '🥈', '🥉'];
-                if (!user.badges.includes(badges[i])) user.badges.push(badges[i]);
-                if (i === 0) user.wins = (user.wins || 0) + 1;
-                await user.save();
+              const winnerUser = await User.findById(rankings[0].userId);
+              if (winnerUser) {
+                winnerUser.coins = (winnerUser.coins || 0) + firstCoins;
+                winnerUser.xp = (winnerUser.xp || 0) + (tournament.prizeXP || 1000);
+                winnerUser.wins = (winnerUser.wins || 0) + 1;
+                if (!winnerUser.badges) winnerUser.badges = [];
+                if (!winnerUser.badges.includes(firstBadge)) winnerUser.badges.push(firstBadge);
+                if (!winnerUser.badges.includes('👑')) winnerUser.badges.push('👑');
+                await winnerUser.save();
               }
-            } catch (userErr) {
-              console.error('Failed to award prize:', userErr);
+            } catch (wErr) {
+              console.error('Failed to award 1st prize:', wErr);
             }
           }
+
+          // 2nd Runner-Up Award
+          if (rankings[1] && !rankings[1].userId?.startsWith('bot-')) {
+            try {
+              const runnerUpUser = await User.findById(rankings[1].userId);
+              if (runnerUpUser) {
+                runnerUpUser.coins = (runnerUpUser.coins || 0) + secondCoins;
+                runnerUpUser.xp = (runnerUpUser.xp || 0) + Math.floor((tournament.prizeXP || 1000) * 0.5);
+                if (!runnerUpUser.badges) runnerUpUser.badges = [];
+                if (!runnerUpUser.badges.includes(secondBadge)) runnerUpUser.badges.push(secondBadge);
+                if (!runnerUpUser.badges.includes('🥈')) runnerUpUser.badges.push('🥈');
+                await runnerUpUser.save();
+              }
+            } catch (rErr) {
+              console.error('Failed to award 2nd prize:', rErr);
+            }
+          }
+
+          tournament.winnerId = rankings[0]?.userId || null;
+          tournament.winnerName = rankings[0]?.userName || null;
+          tournament.runnerUpId = rankings[1]?.userId || null;
+          tournament.runnerUpName = rankings[1]?.userName || null;
         }
       }
     }

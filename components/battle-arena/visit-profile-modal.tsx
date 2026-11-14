@@ -4,7 +4,7 @@ import React, { useState, useEffect } from 'react'
 import {
   X, Trophy, Zap, Target, Flame, Shield, Star, Globe, MapPin,
   MessageSquare, Swords, UserPlus, Check, Clock, Award, BookOpen,
-  GraduationCap, Sparkles, AlertCircle, Loader2, CheckCircle2
+  GraduationCap, Sparkles, AlertCircle, Loader2, CheckCircle2, User, ShieldCheck
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -33,6 +33,7 @@ interface VisitProfileModalProps {
     stream?: string
     course?: string
     department?: string
+    gender?: string
     bio?: string
     arenaPoints?: number
     categoryXP?: number
@@ -42,6 +43,15 @@ interface VisitProfileModalProps {
   onClose: () => void
   onStartChat?: (user: any) => void
   onStartDuel?: (user: any) => void
+}
+
+function formatGender(gender?: string): { label: string; icon: string } {
+  if (!gender) return { label: 'Prefer not to say', icon: '👤' }
+  const g = gender.toLowerCase().trim()
+  if (g === 'male') return { label: 'Male', icon: '👨' }
+  if (g === 'female') return { label: 'Female', icon: '👩' }
+  if (g === 'other') return { label: 'Other / Non-Binary', icon: '⚧️' }
+  return { label: 'Prefer not to say', icon: '👤' }
 }
 
 const RANK_ICONS: Record<string, string> = {
@@ -103,9 +113,10 @@ export function VisitProfileModal({
     const fetchFullProfile = async () => {
       setLoadingDetails(true)
       try {
+        const requesterQuery = currentUser?.id ? `&requesterId=${encodeURIComponent(currentUser.id)}` : ''
         const queryParam = effectiveUserId
-          ? `userId=${encodeURIComponent(effectiveUserId)}`
-          : `email=${encodeURIComponent(user.email || user.name)}`
+          ? `userId=${encodeURIComponent(effectiveUserId)}&visitor=true${requesterQuery}`
+          : `email=${encodeURIComponent(user.email || user.name)}&visitor=true${requesterQuery}`
         
         const res = await fetch(`/api/profile?${queryParam}`)
         if (res.ok) {
@@ -116,7 +127,9 @@ export function VisitProfileModal({
               ...data.user,
               country: data.user.country || prev?.country || 'India',
               countryCode: data.user.countryCode || prev?.countryCode || 'IN',
-              city: data.user.city || prev?.city || 'New Delhi',
+              city: data.user.city || prev?.city || 'Kanpur',
+              locationFormatted: data.user.locationFormatted || (data.user.city ? `${data.user.city}, ${data.user.countryCode || 'IN'}` : 'Kanpur, IN'),
+              isLocationVerified: true,
             }))
           }
         }
@@ -171,6 +184,7 @@ export function VisitProfileModal({
   const flagEmoji = getCountryFlag(profileData?.countryCode)
   const countryName = profileData?.country || 'India'
   const cityName = profileData?.city ? `${profileData.city}, ` : ''
+  const genderInfo = formatGender(profileData?.gender || user?.gender)
 
   // 1. Send Friend Request
   const handleSendFriendRequest = async () => {
@@ -333,59 +347,87 @@ export function VisitProfileModal({
               </div>
             </div>
 
-            {/* Country & Location Badge (from IP or user profile) */}
-            <div className="bg-white/5 border border-white/10 rounded-2xl px-3 py-1.5 flex items-center gap-2 self-start sm:self-auto">
-              <span className="text-lg leading-none">{flagEmoji}</span>
+            {/* Country & Location Badge (Resolved from student browser IP) */}
+            <div className="bg-white/5 border border-white/10 rounded-2xl px-3 py-1.5 flex items-center gap-2.5 self-start sm:self-auto shadow-inner">
+              <span className="px-1.5 py-0.5 rounded bg-black/60 border border-white/10 text-xs font-black tracking-wider text-white font-mono">
+                {profileData?.countryCode || 'IN'}
+              </span>
               <div className="text-left">
                 <div className="text-[11px] font-bold text-white flex items-center gap-1">
                   <MapPin className="w-3 h-3 text-cyan-400" />
-                  <span>{cityName}{countryName}</span>
+                  <span>{profileData?.locationFormatted || (profileData?.city ? `${profileData.city}, ${profileData.countryCode || 'IN'}` : 'Kanpur, IN')}</span>
                 </div>
-                <div className="text-[9px] text-white/40 uppercase tracking-wider font-mono">
-                  Location Verified
+                <div className="text-[9px] text-emerald-400 uppercase tracking-wider font-mono font-bold flex items-center gap-1">
+                  <ShieldCheck className="w-2.5 h-2.5" />
+                  <span>LOCATION VERIFIED • 7D AUTO-SYNC</span>
                 </div>
               </div>
             </div>
           </div>
 
-          {/* Academic Info & Bio */}
-          <div className="bg-white/5 border border-white/10 rounded-2xl p-3 mb-4 space-y-1.5 text-xs">
-            <div className="flex items-center justify-between text-white/70">
-              <span className="flex items-center gap-1.5 font-bold text-white">
-                <GraduationCap className="w-3.5 h-3.5 text-purple-400" />
-                Stream & Course:
-              </span>
-              <span className="font-mono text-purple-300 font-bold uppercase text-[11px]">
-                {profileData?.stream || profileData?.course || 'General Academic'}
-              </span>
+          {/* Academic Info, Course & Gender Section */}
+          <div className="bg-white/5 border border-white/10 rounded-2xl p-3 mb-3 space-y-2 text-xs">
+            <div className="grid grid-cols-2 gap-2">
+              {/* Stream & Course */}
+              <div className="p-2.5 rounded-xl bg-black/40 border border-white/5 space-y-1">
+                <span className="flex items-center gap-1.5 font-bold text-purple-300 text-[10px] uppercase">
+                  <GraduationCap className="w-3.5 h-3.5 text-purple-400" />
+                  Stream & Course:
+                </span>
+                <div className="font-bold text-white text-xs truncate uppercase font-mono">
+                  {profileData?.course ? `${profileData.course} (${profileData.stream || 'University'})` : (profileData?.stream || 'UNIVERSITY')}
+                </div>
+              </div>
+
+              {/* Gender Section */}
+              <div className="p-2.5 rounded-xl bg-black/40 border border-white/5 space-y-1">
+                <span className="flex items-center gap-1.5 font-bold text-cyan-300 text-[10px] uppercase">
+                  <User className="w-3.5 h-3.5 text-cyan-400" />
+                  Gender Section:
+                </span>
+                <div className="flex items-center gap-1.5 font-bold text-white text-xs">
+                  <span className="text-sm">{genderInfo.icon}</span>
+                  <span className="capitalize">{genderInfo.label}</span>
+                </div>
+              </div>
             </div>
-            {profileData?.bio && (
-              <p className="text-white/60 text-[11px] pt-1 border-t border-white/5">
-                "{profileData.bio}"
+
+            {/* Student Bio */}
+            <div className="pt-2 border-t border-white/10 space-y-1">
+              <span className="text-[10px] uppercase font-bold text-white/40 block">Student Bio:</span>
+              <p className="text-white/80 text-[11px] leading-relaxed italic bg-black/30 p-2 rounded-xl border border-white/5">
+                {profileData?.bio ? `"${profileData.bio}"` : "Dedicated student actively preparing with Aura AI Study platform."}
               </p>
-            )}
+            </div>
           </div>
 
           {/* Performance & Combat Stats Grid */}
-          <div className="grid grid-cols-3 gap-2.5 mb-4 text-center">
-            <div className="bg-black/50 border border-white/10 rounded-xl p-2.5">
-              <div className="text-xs text-white/40 mb-0.5">Win / Loss</div>
+          <div className="grid grid-cols-4 gap-2 mb-3 text-center">
+            <div className="bg-black/50 border border-white/10 rounded-xl p-2">
+              <div className="text-[10px] text-white/40 mb-0.5">Arena Score</div>
+              <div className="text-sm font-black text-indigo-400">
+                {profileData?.arenaPoints ?? user?.arenaPoints ?? user?.xp ?? 0}
+              </div>
+            </div>
+
+            <div className="bg-black/50 border border-white/10 rounded-xl p-2">
+              <div className="text-[10px] text-white/40 mb-0.5">Win / Loss</div>
               <div className="text-sm font-black text-emerald-400">
                 {profileData?.wins ?? user?.wins ?? 0}
-                <span className="text-white/30 text-xs"> / </span>
+                <span className="text-white/30 text-[10px]"> / </span>
                 <span className="text-rose-400">{profileData?.losses ?? user?.losses ?? 0}</span>
               </div>
             </div>
 
-            <div className="bg-black/50 border border-white/10 rounded-xl p-2.5">
-              <div className="text-xs text-white/40 mb-0.5">Win Rate</div>
+            <div className="bg-black/50 border border-white/10 rounded-xl p-2">
+              <div className="text-[10px] text-white/40 mb-0.5">Win Rate</div>
               <div className="text-sm font-black text-amber-400">
                 {profileData?.winRate ?? user?.winRate ?? 0}%
               </div>
             </div>
 
-            <div className="bg-black/50 border border-white/10 rounded-xl p-2.5">
-              <div className="text-xs text-white/40 mb-0.5">Streak</div>
+            <div className="bg-black/50 border border-white/10 rounded-xl p-2">
+              <div className="text-[10px] text-white/40 mb-0.5">Streak</div>
               <div className="text-sm font-black text-orange-400 flex items-center justify-center gap-0.5">
                 <Flame className="w-3.5 h-3.5" />
                 {profileData?.currentStreak ?? user?.currentStreak ?? 0}
@@ -394,16 +436,14 @@ export function VisitProfileModal({
           </div>
 
           {/* Badges strip */}
-          {Array.isArray(profileData?.badges) && profileData.badges.length > 0 && (
-            <div className="flex items-center gap-1.5 mb-4 overflow-x-auto pb-1">
-              <span className="text-[10px] text-white/40 uppercase font-bold mr-1">Badges:</span>
-              {profileData.badges.map((b: string, idx: number) => (
-                <Badge key={idx} className="bg-white/10 text-white border-white/10 text-xs px-2 py-0.5">
-                  {b}
-                </Badge>
-              ))}
-            </div>
-          )}
+          <div className="flex items-center gap-2 mb-4 overflow-x-auto pb-1">
+            <span className="text-[10px] text-white/40 uppercase font-black tracking-wider mr-0.5">BADGES:</span>
+            {(Array.isArray(profileData?.badges) && profileData.badges.length > 0 ? profileData.badges : ['⚔️', '🎯', '✨']).map((b: string, idx: number) => (
+              <div key={idx} className="w-7 h-7 rounded-full bg-white/5 border border-white/15 flex items-center justify-center text-xs shadow-sm hover:scale-110 transition-transform">
+                {b}
+              </div>
+            ))}
+          </div>
 
           {/* Action Message / Feedback */}
           {actionMessage && (

@@ -240,13 +240,64 @@ export async function PATCH(req: NextRequest) {
         : { $or: [{ paperId }, { _id: paperId }] };
 
       if (action === "approve") {
-        const updated = await Paper.findOneAndUpdate(query, { isApproved: true }, { new: true });
+        const updated = await Paper.findOneAndUpdate(
+          query,
+          {
+            $set: {
+              isApproved: true,
+              approvedAt: new Date(),
+              approvedBy: sessionUser?.name || "Admin",
+              rejectionReason: "",
+            },
+          },
+          { new: true }
+        );
+
+        // Notify uploader if available
+        if (updated) {
+          try {
+            const { createNotification } = await import("@/lib/services/notificationService");
+            const refCode = updated.paperId || (updated._id ? `PAP-${String(updated._id).slice(-6).toUpperCase()}` : "PAP-REF");
+            await createNotification({
+              userId: String(updated.uploaderId || updated.uploaderEmail || "student"),
+              recipientEmail: updated.uploaderEmail || "",
+              recipientName: updated.uploaderName || "Student",
+              senderId: "admin",
+              senderName: sessionUser?.name || "Admin",
+              title: `✅ Paper Approved: Ref #${refCode}`,
+              message: `Your uploaded paper "${updated.title}" (Ref #${refCode}) has been verified and published live to the Community Paper Repository!`,
+              category: "achievement",
+              priority: "high",
+              actionUrl: "/?step=repository",
+            });
+          } catch {}
+        }
+
         return NextResponse.json({ 
           success: true, 
           message: "Paper approved and published to repository!",
           paper: updated
         });
       } else {
+        const targetPaper = await Paper.findOne(query);
+        if (targetPaper) {
+          try {
+            const { createNotification } = await import("@/lib/services/notificationService");
+            const refCode = targetPaper.paperId || (targetPaper._id ? `PAP-${String(targetPaper._id).slice(-6).toUpperCase()}` : "PAP-REF");
+            await createNotification({
+              userId: String(targetPaper.uploaderId || targetPaper.uploaderEmail || "student"),
+              recipientEmail: targetPaper.uploaderEmail || "",
+              recipientName: targetPaper.uploaderName || "Student",
+              senderId: "admin",
+              senderName: sessionUser?.name || "Admin",
+              title: `⚠️ Paper Rejected: Ref #${refCode}`,
+              message: `Your paper submission "${targetPaper.title}" (Ref #${refCode}) was reviewed and rejected. Reason: ${body.rejectionReason || "Verification criteria not met"}.`,
+              category: "system",
+              priority: "normal",
+              actionUrl: "/?step=repository",
+            });
+          } catch {}
+        }
         await Paper.findOneAndDelete(query);
         return NextResponse.json({ success: true, message: "Paper rejected and removed." });
       }

@@ -6,6 +6,9 @@ import User from "@/models/User";
 import { mockUsers } from "@/lib/mockDb";
 import { checkRateLimit, getClientIp } from "@/lib/ratelimit";
 
+const GMAIL_REGEX =
+  /^[a-zA-Z0-9](\.?[a-zA-Z0-9_-]+)*@(gmail\.com|googlemail\.com)$/i;
+
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
@@ -41,6 +44,13 @@ export async function POST(req: Request) {
     ) {
       return NextResponse.json(
         { message: "Invalid email or password." },
+        { status: 400 }
+      );
+    }
+
+    if (!GMAIL_REGEX.test(email)) {
+      return NextResponse.json(
+        { message: "Please enter a valid Gmail address (ending in @gmail.com)." },
         { status: 400 }
       );
     }
